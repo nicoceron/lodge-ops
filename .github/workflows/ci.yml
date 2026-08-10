@@ -36,6 +36,7 @@ jobs:
           working-directory: apps/api
       - run: cp .env.example .env && php artisan key:generate
       - run: ./vendor/bin/pint --test
+      - run: composer audit --locked
       - run: php artisan migrate --force
         env:
           DB_CONNECTION: pgsql
@@ -67,7 +68,16 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm run test:run
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
 
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse the checked-in API contract
+        run: ruby -e 'require "yaml"; doc=YAML.load_file("contracts/openapi.yaml"); abort "missing OpenAPI paths" unless doc["paths"].is_a?(Hash)'
