@@ -45,6 +45,8 @@ jobs:
           DB_DATABASE: lodge_ops_test
           DB_USERNAME: lodge_ops
           DB_PASSWORD: lodge_ops
+      - name: Verify Laravel routes match the OpenAPI contract
+        run: php artisan route:list --json > /tmp/lodge-ops-routes.json && ruby ../../scripts/verify-openapi.rb ../../contracts/openapi.yaml /tmp/lodge-ops-routes.json
       - run: php artisan test --compact
         env:
           DB_CONNECTION: pgsql
@@ -71,13 +73,15 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm run test:run
-      - run: npm run build
+      - name: Build the live-data production application
+        run: NEXT_PUBLIC_DEMO_MODE=false GUEST_PORTAL_DEMO_MODE=false npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - name: Run desktop and mobile browser journeys against an explicit demo build
+        run: npm run e2e
 
   contract:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse the checked-in API contract
-        run: ruby -e 'require "yaml"; doc=YAML.load_file("contracts/openapi.yaml"); abort "missing OpenAPI paths" unless doc["paths"].is_a?(Hash)'
+      - name: Verify the checked-in API contract
+        run: ruby scripts/verify-openapi.rb

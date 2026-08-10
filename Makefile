@@ -1,4 +1,4 @@
-.PHONY: bootstrap up down test test-api test-web lint verify migrate seed shell-api
+.PHONY: bootstrap up down test test-api test-web lint contract verify migrate seed shell-api
 
 bootstrap:
 	test -f .env || cp .env.example .env
@@ -26,7 +26,11 @@ lint:
 	cd apps/api && ./vendor/bin/pint --test
 	cd apps/web && npm run lint && npm run typecheck
 
-verify: lint test
+contract:
+	cd apps/api && php artisan route:list --json > /tmp/lodge-ops-routes.json
+	ruby scripts/verify-openapi.rb contracts/openapi.yaml /tmp/lodge-ops-routes.json
+
+verify: lint contract test
 
 migrate:
 	docker compose run --rm api php artisan migrate

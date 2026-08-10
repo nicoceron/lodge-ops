@@ -32,9 +32,9 @@ make up
 - Staff sign-in: http://localhost:3000/login
 - API and Filament: http://localhost:8000 and http://localhost:8000/admin
 - Local email inbox: http://localhost:8025
-- Guest preview: http://localhost:3000/guest/g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA
+- Guest preview: http://localhost:3000/guest/access/g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA
 
-The deterministic development seed creates `admin@example.com` / `password` for tenant `11111111-1111-4111-8111-111111111111`. Demo credentials are never pre-filled unless `NEXT_PUBLIC_DEMO_MODE=true`.
+The deterministic development seed creates `admin@example.com` / `password` for tenant `11111111-1111-4111-8111-111111111111` and a resettable, one-time guest preview link. Demo credentials are never pre-filled unless `NEXT_PUBLIC_DEMO_MODE=true`; normal local Compose runs use the live Laravel API and persisted PostgreSQL data.
 
 Run the complete formatter, type, unit, production-build, and browser suite with:
 
@@ -54,9 +54,9 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 
 - A responsive staff workspace for the unified calendar, reservations, CRM, operations, kitchen, finance, and configuration.
 - A branded mobile-first guest reservation center with itinerary, pre-arrival data, consent, waivers, payment evidence, final folio, and post-stay survey flows.
-- Stateful Sanctum authentication, verified-email enforcement, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and a centralized audit history.
+- Stateful Sanctum authentication, verified-email enforcement, password recovery, shared TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and a centralized audit history.
 - Transaction-safe reservation confirmation, half-open allocation checks, service capacity, holds/status transitions, optimistic revisions, minor-unit money, payments, folio credits, and retry-safe commands.
-- Tenant-aware Filament resources for day-to-day configuration and exception work.
+- Tenant-aware Filament resources for day-to-day configuration, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, Next.js, accessibility-oriented component tests, and Playwright desktop/mobile journeys.
 

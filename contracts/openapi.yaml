@@ -22,6 +22,13 @@ tags:
   - name: Reservations
   - name: Tasks
   - name: Payments
+  - name: Operations
+  - name: Finance
+  - name: Proposals
+  - name: Guest Portal
+  - name: CRM
+  - name: Retail
+  - name: Integrations
 
 paths:
   /auth/login:
@@ -41,13 +48,33 @@ paths:
                 email: { type: string, format: email }
                 password: { type: string }
                 remember: { type: boolean, default: false }
+                mfa_code:
+                  type: [string, 'null']
+                  description: Current TOTP code when multi-factor authentication is enabled.
+                recovery_code:
+                  type: [string, 'null']
+                  description: Single-use recovery code used instead of a TOTP code.
       responses:
         '200':
           description: Authenticated user and active tenant memberships.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthSession' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '422':
+          description: Invalid credentials, unverified email, validation failure, or an MFA challenge.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      mfa_required: { type: boolean }
+                      errors:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items: { type: string }
   /auth/me:
     get:
       tags: [Authentication]
@@ -68,6 +95,50 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }
+  /auth/forgot-password:
+    post:
+      tags: [Authentication]
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Always returns the same response to prevent account enumeration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+  /auth/reset-password:
+    post:
+      tags: [Authentication]
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string, minLength: 12 }
+      responses:
+        '200':
+          description: Password replaced and reset token consumed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /dashboard:
     get:
       tags: [Dashboard]
@@ -111,6 +182,33 @@ paths:
                     items: { $ref: '#/components/schemas/CalendarEvent' }
         '422':
           $ref: '#/components/responses/ValidationError'
+  /operations:
+    get:
+      tags: [Operations]
+      operationId: getOperationsProjection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /finance:
+    get:
+      tags: [Finance]
+      operationId: getFinanceProjection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /guests:
     get:
       tags: [Guests]
@@ -172,11 +270,46 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/GuestEnvelope' }
         '422': { $ref: '#/components/responses/ValidationError' }
+    put:
+      tags: [Guests]
+      operationId: replaceGuest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestInput' }
+      responses:
+        '200':
+          description: Guest replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Guests]
       operationId: archiveGuest
       responses:
         '204': { description: Guest archived or deleted according to retention policy. }
+  /guests/{guest}/merge:
+    post:
+      tags: [CRM]
+      operationId: mergeGuest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/GuestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_guest_id]
+              properties:
+                target_guest_id: { type: string, format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /resources:
     get:
       tags: [Resources]
@@ -216,6 +349,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ResourceEnvelope' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /resources/suggestions:
+    get:
+      tags: [Resources]
+      operationId: suggestResources
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: type, in: query, required: true, schema: { $ref: '#/components/schemas/ResourceType' } }
+        - { name: starts_at, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: ends_at, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: quantity, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: 'capabilities[]', in: query, schema: { type: array, items: { type: string } } }
+        - { name: 'languages[]', in: query, schema: { type: array, items: { type: string } } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /resources/{resource}:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -244,6 +392,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+    put:
+      tags: [Resources]
+      operationId: replaceResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResourceInput' }
+      responses:
+        '200':
+          description: Resource replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Resources]
       operationId: archiveResource
@@ -325,6 +488,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
+    put:
+      tags: [Reservations]
+      operationId: replaceReservation
+      parameters:
+        - name: If-Match
+          in: header
+          description: Revision observed by the client.
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationUpdateInput' }
+      responses:
+        '200':
+          description: Reservation replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /reservations/{reservation}/confirm:
     post:
       tags: [Reservations]
@@ -356,12 +540,50 @@ paths:
               required: [status]
               properties:
                 status: { $ref: '#/components/schemas/ReservationStatus' }
+                hold_minutes:
+                  type: integer
+                  minimum: 1
+                  maximum: 1440
+                  description: Optional hold lifetime; the tenant default is used when omitted.
       responses:
         '200':
           description: Reservation moved through a permitted transition.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/folio:
+    get:
+      tags: [Finance]
+      operationId: getReservationFolio
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+  /reservations/{reservation}/folio-lines:
+    post:
+      tags: [Finance]
+      operationId: postFolioLine
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /folio-lines/{folioLine}/reverse:
+    post:
+      tags: [Finance]
+      operationId: reverseFolioLine
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: folioLine, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
   /tasks:
     get:
@@ -428,6 +650,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskEnvelope' }
+    put:
+      tags: [Tasks]
+      operationId: replaceTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '200':
+          description: Task replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Tasks]
       operationId: deleteTask
@@ -484,6 +721,348 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PaymentEnvelope' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /payments/{payment}/reconcile:
+    post:
+      tags: [Payments]
+      operationId: reconcilePayment
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payments/{payment}/reverse:
+    post:
+      tags: [Payments]
+      operationId: reversePayment
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /proposals:
+    get:
+      tags: [Proposals]
+      operationId: listProposals
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+    post:
+      tags: [Proposals]
+      operationId: createProposal
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /proposals/{proposal}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Proposals]
+      operationId: getProposal
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Proposals]
+      operationId: updateProposal
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    put:
+      tags: [Proposals]
+      operationId: replaceProposal
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /proposals/{proposal}/send:
+    post:
+      tags: [Proposals]
+      operationId: sendProposal
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /proposals/{proposal}/revise:
+    post:
+      tags: [Proposals]
+      operationId: reviseProposal
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /proposals/{proposal}/convert:
+    post:
+      tags: [Proposals]
+      operationId: convertProposal
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /deposits:
+    get:
+      tags: [Finance]
+      operationId: listDeposits
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+    post:
+      tags: [Finance]
+      operationId: createDeposit
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+  /deposits/{deposit}:
+    get:
+      tags: [Finance]
+      operationId: getDeposit
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: deposit, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+  /deposits/{deposit}/waive:
+    post:
+      tags: [Finance]
+      operationId: waiveDeposit
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: deposit, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /catalog:
+    get:
+      tags: [Retail]
+      operationId: listCatalogItems
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+    post:
+      tags: [Retail]
+      operationId: createCatalogItem
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /stock-receipts:
+    post:
+      tags: [Retail]
+      operationId: receiveStock
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /retail-sales:
+    post:
+      tags: [Retail]
+      operationId: postRetailSale
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /financial-summary:
+    get:
+      tags: [Finance]
+      operationId: getFinancialSummary
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
+        - { name: starts_at, in: query, schema: { type: string, format: date } }
+        - { name: ends_at, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /costs:
+    post:
+      tags: [Finance]
+      operationId: recordCost
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /integrations:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationConnections
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Integrations]
+      operationId: configureIntegration
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /organizations:
+    get:
+      tags: [CRM]
+      operationId: listOrganizations
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+    post:
+      tags: [CRM]
+      operationId: createOrganization
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+  /opportunities:
+    get:
+      tags: [CRM]
+      operationId: listOpportunities
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+    post:
+      tags: [CRM]
+      operationId: createOpportunity
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+  /opportunities/{opportunity}/transition:
+    post:
+      tags: [CRM]
+      operationId: transitionOpportunity
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: opportunity, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /guest-portal/exchange:
+    post:
+      tags: [Guest Portal]
+      operationId: exchangeGuestPortalMagicLink
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 32, maxLength: 256 }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /guest-portal/reservation:
+    get:
+      tags: [Guest Portal]
+      operationId: getGuestPortalReservation
+      security: [{ guestPortalSession: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /guest-portal/pre-arrival:
+    put:
+      tags: [Guest Portal]
+      operationId: updateGuestPreArrival
+      security: [{ guestPortalSession: [] }]
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /guest-portal/waiver:
+    post:
+      tags: [Guest Portal]
+      operationId: acknowledgeGuestDocument
+      security: [{ guestPortalSession: [] }]
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /guest-portal/payment-evidence:
+    post:
+      tags: [Guest Portal]
+      operationId: uploadGuestPaymentEvidence
+      security: [{ guestPortalSession: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [evidence]
+              properties:
+                evidence:
+                  type: string
+                  format: binary
+                  description: PDF, JPEG, or PNG, at most 10 MiB. MIME, size, and hash are recomputed server-side.
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /guest-portal/folio:
+    get:
+      tags: [Guest Portal]
+      operationId: getGuestPortalFolio
+      security: [{ guestPortalSession: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+  /guest-portal/survey:
+    post:
+      tags: [Guest Portal]
+      operationId: submitGuestSurvey
+      security: [{ guestPortalSession: [] }]
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -492,6 +1071,11 @@ components:
       in: cookie
       name: laravel_session
       description: First-party Sanctum stateful browser session with CSRF protection.
+    guestPortalSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Opaque guest portal session
+      description: Short-lived, revocable guest session obtained by exchanging a single-use magic link.
   parameters:
     TenantId:
       name: X-Tenant-ID
@@ -538,7 +1122,25 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+  requestBodies:
+    GenericCommand:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
   responses:
+    GenericSuccess:
+      description: Command completed successfully.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/GenericDataEnvelope' }
+    Unauthenticated:
+      description: Authentication is missing, expired, invalid, or revoked.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
       description: The authenticated user has no active membership or permission.
       content:
@@ -569,6 +1171,12 @@ components:
                       type: array
                       items: { type: string }
   schemas:
+    GenericDataEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          description: Endpoint-specific response data.
     Message:
       type: object
       required: [message]
@@ -727,6 +1335,10 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Allocation' }
         revision: { type: integer, minimum: 1 }
+        hold_expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Expiration instant for an active capacity hold.
     ReservationInput:
       type: object
       required: [property_id, starts_at, ends_at, adults, currency]
