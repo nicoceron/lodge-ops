@@ -2,6 +2,8 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\ResolveFilamentTenant;
+use App\Models\Tenant;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -28,6 +30,9 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->tenant(Tenant::class, slugAttribute: 'slug', ownershipRelationship: 'tenant')
+            ->tenantRoutePrefix('workspace')
+            ->tenantMiddleware([ResolveFilamentTenant::class], isPersistent: true)
             ->colors([
                 'primary' => Color::Amber,
             ])

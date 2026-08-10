@@ -14,6 +14,7 @@ servers:
 security:
   - cookieAuth: []
 tags:
+  - name: Authentication
   - name: Dashboard
   - name: Calendar
   - name: Guests
@@ -23,6 +24,50 @@ tags:
   - name: Payments
 
 paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      security: []
+      description: Establishes the stateful browser session after the Sanctum CSRF-cookie handshake.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                remember: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Authenticated user and active tenant memberships.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current authenticated user and active tenant memberships.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      responses:
+        '200':
+          description: Session invalidated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
   /dashboard:
     get:
       tags: [Dashboard]
@@ -44,17 +89,17 @@ paths:
       operationId: getCalendar
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - name: from
+        - name: start
           in: query
           required: true
           schema: { type: string, format: date }
-        - name: to
+        - name: end
           in: query
           required: true
           schema: { type: string, format: date }
       responses:
         '200':
-          description: Canonical allocations and resource blocks for a date range.
+          description: Unified reservation, activity, task, and resource-block events for a date range.
           content:
             application/json:
               schema:
@@ -63,7 +108,7 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/Allocation' }
+                    items: { $ref: '#/components/schemas/CalendarEvent' }
         '422':
           $ref: '#/components/responses/ValidationError'
   /guests:
@@ -239,7 +284,7 @@ paths:
             schema: { $ref: '#/components/schemas/ReservationInput' }
       responses:
         '201':
-          description: Draft or tentative reservation created.
+          description: Draft reservation created.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
@@ -272,7 +317,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ReservationInput' }
+            schema: { $ref: '#/components/schemas/ReservationUpdateInput' }
       responses:
         '200':
           description: Reservation updated.
@@ -326,7 +371,7 @@ paths:
         - $ref: '#/components/parameters/TenantId'
         - name: status
           in: query
-          schema: { type: string, enum: [todo, in_progress, completed, cancelled] }
+          schema: { type: string, enum: [todo, in_progress, blocked, done, cancelled] }
         - $ref: '#/components/parameters/Page'
       responses:
         '200':
@@ -524,6 +569,32 @@ components:
                       type: array
                       items: { type: string }
   schemas:
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    TenantSummary:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+    AuthSession:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, name, email, tenants]
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            email: { type: string, format: email }
+            tenants:
+              type: array
+              items: { $ref: '#/components/schemas/TenantSummary' }
     Error:
       type: object
       required: [message]
@@ -538,10 +609,10 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$' }
     ReservationStatus:
       type: string
-      enum: [draft, held, tentative, confirmed, in_house, completed, cancelled, no_show]
+      enum: [draft, hold, confirmed, checked_in, checked_out, cancelled, no_show]
     ResourceType:
       type: string
-      enum: [room, guide, horse, boat, vehicle, equipment, venue]
+      enum: [room, guide, horse, boat, vehicle, equipment, venue, staff]
     Guest:
       type: object
       required: [id, first_name, marketing_consent, created_at]
@@ -620,9 +691,23 @@ components:
         starts_at: { type: string, format: date-time }
         ends_at: { type: string, format: date-time }
         quantity: { type: integer, minimum: 1 }
+    CalendarEvent:
+      type: object
+      required: [id, type, title, start, end, property_id]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [reservation, activity, resource_block, task] }
+        title: { type: string }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        status: { type: [string, 'null'] }
+        property_id: { type: string, format: uuid }
+        resource_ids:
+          type: array
+          items: { type: string, format: uuid }
     Reservation:
       type: object
-      required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, money]
+      required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, currency, subtotal_minor, tax_minor, total_minor, revision]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
@@ -634,7 +719,8 @@ components:
         ends_at: { type: string, format: date-time }
         adults: { type: integer, minimum: 0 }
         children: { type: integer, minimum: 0 }
-        money: { $ref: '#/components/schemas/Money' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotal_minor: { type: integer }
         tax_minor: { type: integer }
         total_minor: { type: integer }
         allocations:
@@ -647,27 +733,48 @@ components:
       properties:
         property_id: { type: string, format: uuid }
         primary_guest_id: { type: [string, 'null'], format: uuid }
-        status: { $ref: '#/components/schemas/ReservationStatus' }
+        guest_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
         source: { type: [string, 'null'], maxLength: 50 }
         starts_at: { type: string, format: date-time }
         ends_at: { type: string, format: date-time }
-        adults: { type: integer, minimum: 1, maximum: 200 }
-        children: { type: integer, minimum: 0, maximum: 200 }
+        adults: { type: integer, minimum: 1, maximum: 1000 }
+        children: { type: integer, minimum: 0, maximum: 1000 }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         subtotal_minor: { type: integer, minimum: 0 }
         tax_minor: { type: integer, minimum: 0 }
-        notes: { type: [string, 'null'] }
+        notes: { type: [string, 'null'], maxLength: 10000 }
         allocations:
           type: array
           items:
             type: object
-            required: [starts_at, ends_at, quantity]
+            required: [starts_at, ends_at]
             properties:
               resource_id: { type: [string, 'null'], format: uuid }
               service_occurrence_id: { type: [string, 'null'], format: uuid }
               starts_at: { type: string, format: date-time }
               ends_at: { type: string, format: date-time }
               quantity: { type: integer, minimum: 1 }
+    ReservationUpdateInput:
+      type: object
+      properties:
+        property_id: { type: string, format: uuid }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        guest_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        source: { type: [string, 'null'], maxLength: 50 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        adults: { type: integer, minimum: 1, maximum: 1000 }
+        children: { type: integer, minimum: 0, maximum: 1000 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotal_minor: { type: integer, minimum: 0 }
+        tax_minor: { type: integer, minimum: 0 }
+        notes: { type: [string, 'null'], maxLength: 10000 }
     ReservationEnvelope:
       type: object
       required: [data]
@@ -692,7 +799,7 @@ components:
         assignee_id: { type: [integer, 'null'] }
         title: { type: string }
         description: { type: [string, 'null'] }
-        status: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        status: { type: string, enum: [todo, in_progress, blocked, done, cancelled] }
         priority: { type: string, enum: [low, normal, high, urgent] }
         due_at: { type: [string, 'null'], format: date-time }
         completed_at: { type: [string, 'null'], format: date-time }
@@ -705,7 +812,7 @@ components:
         assignee_id: { type: [integer, 'null'] }
         title: { type: string, maxLength: 255 }
         description: { type: [string, 'null'] }
-        status: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        status: { type: string, enum: [todo, in_progress, blocked, done, cancelled] }
         priority: { type: string, enum: [low, normal, high, urgent] }
         due_at: { type: [string, 'null'], format: date-time }
     TaskEnvelope:
@@ -715,27 +822,27 @@ components:
         data: { $ref: '#/components/schemas/Task' }
     Payment:
       type: object
-      required: [id, reservation_id, status, method, money]
+      required: [id, reservation_id, status, method, currency, amount_minor]
       properties:
         id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
-        status: { type: string, enum: [pending, received, failed, refunded, reversed] }
+        status: { type: string, enum: [pending, succeeded, failed, refunded, reversed] }
         method: { type: string, enum: [bank_transfer, cash, card, other] }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
-        money: { $ref: '#/components/schemas/Money' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount_minor: { type: integer }
         processed_at: { type: [string, 'null'], format: date-time }
     PaymentInput:
       type: object
-      required: [reservation_id, method, currency, amount_minor]
+      required: [reservation_id, method, amount_minor]
       properties:
         reservation_id: { type: string, format: uuid }
         method: { type: string, enum: [bank_transfer, cash, card, other] }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
         amount_minor: { type: integer, minimum: 1 }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
-        processed_at: { type: [string, 'null'], format: date-time }
+        captured: { type: boolean, default: false }
         metadata: { type: [object, 'null'], additionalProperties: true }
     PaymentEnvelope:
       type: object
@@ -748,10 +855,13 @@ components:
       properties:
         data:
           type: object
-          required: [occupancy, arrivals, departures, tasks, finance]
+          required: [date, timezone, arrivals, departures, in_house, active_resources, open_tasks, occupancy_percent]
           properties:
-            occupancy: { type: object, additionalProperties: true }
-            arrivals: { type: array, items: { $ref: '#/components/schemas/Reservation' } }
-            departures: { type: array, items: { $ref: '#/components/schemas/Reservation' } }
-            tasks: { type: array, items: { $ref: '#/components/schemas/Task' } }
-            finance: { type: object, additionalProperties: true }
+            date: { type: string, format: date }
+            timezone: { type: string, description: IANA timezone name. }
+            arrivals: { type: integer, minimum: 0 }
+            departures: { type: integer, minimum: 0 }
+            in_house: { type: integer, minimum: 0 }
+            active_resources: { type: integer, minimum: 0 }
+            open_tasks: { type: integer, minimum: 0 }
+            occupancy_percent: { type: number, minimum: 0 }
