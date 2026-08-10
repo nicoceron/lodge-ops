@@ -89,6 +89,7 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+      LODGEOPS_TENANT_ID: 11111111-1111-4111-8111-111111111111
     ports:
       - "${WEB_PORT:-3000}:3000"
     volumes:
@@ -102,4 +103,3 @@ volumes:
   redis-data:
   api-vendor:
   web-node-modules:
-
