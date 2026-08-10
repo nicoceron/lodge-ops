@@ -2,28 +2,44 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
-export type MoneyDto = {
-  amount_minor: number;
-  currency: string;
-};
-
 export type DashboardDto = {
-  occupancy: Record<string, number>;
-  arrivals: Array<{ id: string; confirmation_number: string; starts_at: string }>;
-  departures: Array<{ id: string; confirmation_number: string; ends_at: string }>;
-  tasks: Array<{ id: string; title: string; status: string; due_at: string | null }>;
-  finance: Record<string, number | MoneyDto>;
+  date: string;
+  timezone: string;
+  arrivals: number;
+  departures: number;
+  in_house: number;
+  active_resources: number;
+  open_tasks: number;
+  occupancy_percent: number;
 };
 
-export type CalendarAllocationDto = {
+export type CalendarEventDto = {
   id: string;
-  reservation_id: string;
-  resource_id: string | null;
-  service_occurrence_id: string | null;
-  status: "tentative" | "confirmed" | "released";
+  type: "reservation" | "activity" | "resource_block" | "task";
+  title: string;
+  start: string;
+  end: string;
+  status?: string | null;
+  property_id: string;
+  resource_ids?: string[];
+};
+
+export type ReservationDto = {
+  id: string;
+  property_id: string;
+  confirmation_number: string;
+  status: "draft" | "hold" | "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show";
+  source: string | null;
   starts_at: string;
   ends_at: string;
-  quantity: number;
+  adults: number;
+  children: number;
+  currency: string;
+  subtotal_minor: number;
+  tax_minor: number;
+  total_minor: number;
+  revision: number;
+  primary_guest?: { id: string; first_name: string; last_name: string | null } | null;
 };
 
 export class LodgeApiError extends Error {
@@ -74,6 +90,12 @@ export async function getDashboard() {
 }
 
 export async function getCalendar(from: string, to: string) {
-  const query = new URLSearchParams({ from, to });
-  return request<{ data: CalendarAllocationDto[] }>(`/calendar?${query.toString()}`);
+  const query = new URLSearchParams({ start: from, end: to });
+  return request<{ data: CalendarEventDto[] }>(`/calendar?${query.toString()}`);
 }
+
+export async function listReservations() {
+  return request<{ data: ReservationDto[]; meta: Record<string, unknown> }>("/reservations?per_page=100");
+}
+
+export const liveApiEnabled = process.env.LODGEOPS_USE_API === "true";

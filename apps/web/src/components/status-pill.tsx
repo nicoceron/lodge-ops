@@ -1,9 +1,9 @@
 import { AlertTriangle, Check, Clock3, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tone = "ready" | "attention" | "blocked" | "confirmed" | "tentative" | "in_house" | "completed" | "neutral";
+export type StatusTone = "ready" | "attention" | "blocked" | "confirmed" | "tentative" | "in_house" | "completed" | "neutral";
 
-const config: Record<Tone, { label: string; classes: string; icon: typeof Check }> = {
+const config: Record<StatusTone, { label: string; classes: string; icon: typeof Check }> = {
   ready: { label: "Ready", classes: "bg-[var(--forest-soft)] text-[var(--forest)]", icon: Check },
   attention: { label: "Needs attention", classes: "bg-[var(--amber-soft)] text-[#8a501f]", icon: Clock3 },
   blocked: { label: "Blocked", classes: "bg-[var(--red-soft)] text-[var(--red)]", icon: AlertTriangle },
@@ -14,7 +14,7 @@ const config: Record<Tone, { label: string; classes: string; icon: typeof Check 
   neutral: { label: "Status", classes: "bg-black/5 text-[var(--muted)]", icon: CircleDot },
 };
 
-export function StatusPill({ tone, label, compact = false }: { tone: Tone; label?: string; compact?: boolean }) {
+export function StatusPill({ tone, label, compact = false }: { tone: StatusTone; label?: string; compact?: boolean }) {
   const item = config[tone];
   const Icon = item.icon;
   return (

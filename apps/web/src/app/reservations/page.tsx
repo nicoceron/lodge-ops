@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { ArrowRight, CalendarClock, Filter, Search, UserRoundCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { StatusPill } from "@/components/status-pill";
+import { StatusPill, type StatusTone } from "@/components/status-pill";
+import { listReservations, liveApiEnabled, type ReservationDto } from "@/data/api-client";
 import { reservations } from "@/lib/demo-data";
 import { formatMoney } from "@/lib/utils";
 
@@ -14,7 +15,30 @@ const pipeline = [
   { label: "Confirmed", value: 31, note: "Next 90 days", tone: "bg-[var(--forest-soft)] text-[var(--forest)]" },
 ];
 
-export default function ReservationsPage() {
+const statusPresentation: Record<ReservationDto["status"], { tone: StatusTone; label: string }> = {
+  draft: { tone: "tentative", label: "Draft" },
+  hold: { tone: "tentative", label: "On hold" },
+  confirmed: { tone: "confirmed", label: "Confirmed" },
+  checked_in: { tone: "in_house", label: "In house" },
+  checked_out: { tone: "completed", label: "Completed" },
+  cancelled: { tone: "neutral", label: "Cancelled" },
+  no_show: { tone: "blocked", label: "No show" },
+};
+
+function shortDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
+}
+
+export default async function ReservationsPage() {
+  let liveReservations: ReservationDto[] | null = null;
+  if (liveApiEnabled) {
+    try {
+      liveReservations = (await listReservations()).data;
+    } catch {
+      liveReservations = null;
+    }
+  }
+
   return (
     <AppShell
       eyebrow="Sales & stays"
@@ -64,21 +88,27 @@ export default function ReservationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black/6">
-              {reservations.map((reservation) => (
-                <tr key={reservation.code} className="group hover:bg-[var(--forest-soft)]/25">
+              {(liveReservations ?? reservations).map((reservation) => {
+                const live = "confirmation_number" in reservation;
+                const presentation = live ? statusPresentation[reservation.status] : { tone: reservation.status, label: undefined };
+                const code = live ? reservation.confirmation_number : reservation.code;
+                const guest = live ? [reservation.primary_guest?.first_name, reservation.primary_guest?.last_name].filter(Boolean).join(" ") || "Guest details pending" : reservation.guest;
+                const party = live ? reservation.adults + reservation.children : reservation.party;
+                return (
+                <tr key={code} className="group hover:bg-[var(--forest-soft)]/25">
                   <td className="px-5 py-4">
-                    <p className="text-xs font-bold">{reservation.guest}</p>
-                    <p className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--muted)]"><span className="font-mono">{reservation.code}</span> · {reservation.party} guests · {reservation.channel}</p>
+                    <p className="text-xs font-bold">{guest}</p>
+                    <p className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--muted)]"><span className="font-mono">{code}</span> · {party} guests · {live ? reservation.source ?? "Direct" : reservation.channel}</p>
                   </td>
-                  <td className="px-4 py-4"><p className="text-xs font-semibold">{reservation.arrival} → {reservation.departure}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Property time</p></td>
-                  <td className="px-4 py-4 text-xs font-semibold">{reservation.program}</td>
-                  <td className="px-4 py-4"><StatusPill tone={reservation.status} compact /></td>
-                  <td className="px-4 py-4"><span className={reservation.payment === "Overdue" ? "text-[var(--red)]" : "text-[var(--muted)]"}><span className="text-[11px] font-semibold">{reservation.payment}</span></span></td>
-                  <td className="px-4 py-4"><StatusPill tone={reservation.readiness} compact /></td>
-                  <td className="px-4 py-4 text-right font-mono text-xs font-semibold">{formatMoney(reservation.total)}</td>
-                  <td className="pr-4"><button type="button" aria-label={`Open ${reservation.code}`} className="grid size-8 place-items-center rounded-lg text-black/30 group-hover:bg-white group-hover:text-[var(--forest)]"><ArrowRight aria-hidden="true" className="size-4" /></button></td>
+                  <td className="px-4 py-4"><p className="text-xs font-semibold">{live ? shortDate(reservation.starts_at) : reservation.arrival} → {live ? shortDate(reservation.ends_at) : reservation.departure}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Property time</p></td>
+                  <td className="px-4 py-4 text-xs font-semibold">{live ? "Lodge stay" : reservation.program}</td>
+                  <td className="px-4 py-4"><StatusPill tone={presentation.tone} label={presentation.label} compact /></td>
+                  <td className="px-4 py-4"><span className={!live && reservation.payment === "Overdue" ? "text-[var(--red)]" : "text-[var(--muted)]"}><span className="text-[11px] font-semibold">{live ? "See folio" : reservation.payment}</span></span></td>
+                  <td className="px-4 py-4"><StatusPill tone={live ? "attention" : reservation.readiness} label={live ? "Review" : undefined} compact /></td>
+                  <td className="px-4 py-4 text-right font-mono text-xs font-semibold">{formatMoney(live ? reservation.total_minor : reservation.total, live ? reservation.currency : "USD")}</td>
+                  <td className="pr-4"><button type="button" aria-label={`Open ${code}`} className="grid size-8 place-items-center rounded-lg text-black/30 group-hover:bg-white group-hover:text-[var(--forest)]"><ArrowRight aria-hidden="true" className="size-4" /></button></td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
