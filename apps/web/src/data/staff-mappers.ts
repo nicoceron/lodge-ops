@@ -73,6 +73,11 @@ export function mapCalendarProjection(dto: CalendarProjectionDto, isDemo = false
       span: Math.max(1, Math.min(dayCount - start, rawEnd - start)),
       tone: eventTone(event.type, event.status),
       warning: event.status === "blocked" || event.status === "cancelled" ? "Attention needed" : undefined,
+      href: event.type === "reservation"
+        ? `/reservations/${event.id}`
+        : event.type === "task"
+          ? `/operations?task=${event.id}`
+          : `/calendar/events/${event.type}/${event.id}`,
     };
   };
   const lanes: CalendarLaneView[] = dto.resources.map((resource) => ({

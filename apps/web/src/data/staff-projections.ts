@@ -104,12 +104,11 @@ export async function loadDashboardProjection(): Promise<StaffLoadState<Dashboar
   }
 }
 
-export async function loadCalendarProjection(): Promise<StaffLoadState<CalendarView>> {
+export async function loadCalendarProjection(startDate = today()): Promise<StaffLoadState<CalendarView>> {
   if (demoModeEnabled) return { data: demoCalendar(), mode: "demo", error: null };
 
   try {
-    const start = today();
-    const data = mapCalendarProjection(await getCalendar(start, addDays(start, 7)));
+    const data = mapCalendarProjection(await getCalendar(startDate, addDays(startDate, 7)));
     return { data, mode: "live", error: null };
   } catch (error) {
     return { data: null, mode: "live", error: safeError(error, "master calendar") };

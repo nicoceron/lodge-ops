@@ -162,6 +162,8 @@ export type ReservationDto = {
   total_minor: number;
   revision: number;
   hold_expires_at?: string | null;
+  program_id?: string | null;
+  program?: { id: string; name: string; display_color?: string | null } | null;
   primary_guest?: { id: string; first_name: string; last_name: string | null } | null;
 };
 
@@ -176,7 +178,7 @@ export class LodgeApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function staffApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const apiUrl = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
   const cookieStore = await cookies();
   const tenantId = cookieStore.get("lodgeops_tenant_id")?.value ?? process.env.LODGEOPS_TENANT_ID;
@@ -212,24 +214,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getDashboard() {
-  return request<{ data: DashboardDto }>("/dashboard");
+  return staffApiRequest<{ data: DashboardDto }>("/dashboard");
 }
 
 export async function getCalendar(from: string, to: string) {
   const query = new URLSearchParams({ start: from, end: to });
-  return request<CalendarProjectionDto>(`/calendar?${query.toString()}`);
+  return staffApiRequest<CalendarProjectionDto>(`/calendar?${query.toString()}`);
 }
 
 export async function getOperations() {
-  return request<{ data: OperationsDto }>("/operations");
+  return staffApiRequest<{ data: OperationsDto }>("/operations");
 }
 
 export async function getFinance() {
-  return request<{ data: FinanceDto }>("/finance");
+  return staffApiRequest<{ data: FinanceDto }>("/finance");
 }
 
-export async function listReservations() {
-  return request<{ data: ReservationDto[]; meta: Record<string, unknown> }>("/reservations?per_page=100");
+export async function listReservations(filters: { status?: string; propertyId?: string; from?: string; to?: string } = {}) {
+  const query = new URLSearchParams({ per_page: "100" });
+  if (filters.status) query.set("status", filters.status);
+  if (filters.propertyId) query.set("property_id", filters.propertyId);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  return staffApiRequest<{ data: ReservationDto[]; meta: Record<string, unknown> }>(`/reservations?${query}`);
 }
 
 export const demoModeEnabled = process.env.NEXT_PUBLIC_DEMO_MODE === "true";

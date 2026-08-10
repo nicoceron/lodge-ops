@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { ChefHat, CircleCheck, Clock3, CookingPot, House, Languages, UtensilsCrossed } from "lucide-react";
+import { ChefHat, Clock3, CookingPot, House, Languages, UtensilsCrossed } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { DataState } from "@/components/data-state";
+import { TaskStatusButton } from "@/components/staff/task-status-button";
 import { loadOperationsProjection } from "@/data/staff-projections";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +17,7 @@ export default async function OperationsPage() {
       eyebrow="Daily service"
       title="Operations"
       description="Role-specific briefs for hosts, guides, kitchen, and housekeeping—with only the guest information each team needs."
-      action={{ label: "Create task", shortLabel: "Task" }}
+      action={{ label: "Create task", shortLabel: "Task", href: "/operations/tasks/new" }}
     >
       {!operations ? <DataState kind="error" title="Operations board unavailable" description={state.error ?? "The live role-specific brief could not be loaded."} /> : null}
       {operations ? <>
@@ -29,7 +30,7 @@ export default async function OperationsPage() {
           <div className="divide-y divide-black/6">
             {operations.tasks.map((task) => (
               <div key={task.id} className="flex items-center gap-3 px-5 py-4">
-                <button type="button" aria-label={`${task.done ? "Reopen" : "Complete"} ${task.title}`} className={cn("grid size-8 place-items-center rounded-full border", task.done ? "border-[var(--forest)] bg-[var(--forest)] text-white" : "border-black/12 bg-white text-black/20")}><CircleCheck aria-hidden="true" className="size-4" /></button>
+                <TaskStatusButton id={task.id} title={task.title} done={task.done} demo={state.mode === "demo"} />
                 <div className="min-w-0 flex-1"><p className={cn("truncate text-xs font-bold", task.done && "text-[var(--muted)] line-through")}>{task.title}</p><p className="mt-1 flex items-center gap-1 truncate text-[10px] text-[var(--muted)]"><Clock3 aria-hidden="true" className="size-3" />{task.meta}</p></div>
                 <span className="grid size-8 place-items-center rounded-lg bg-black/5 text-[9px] font-bold">{task.owner}</span>
               </div>

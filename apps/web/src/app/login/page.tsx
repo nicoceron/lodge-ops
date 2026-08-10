@@ -11,7 +11,8 @@ const promises = [
   "Conflict prevention before a reservation is confirmed",
 ];
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
   return (
     <main className="min-h-screen bg-[var(--forest)] p-3 sm:p-6">
       <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-6xl overflow-hidden rounded-[28px] bg-[var(--surface)] shadow-2xl sm:min-h-[calc(100vh-3rem)] lg:grid-cols-[1.05fr_0.95fr]">
@@ -38,7 +39,7 @@ export default function LoginPage() {
             <p className="text-[11px] font-bold tracking-[0.16em] text-[var(--amber)] uppercase">Welcome back</p>
             <h2 className="mt-3 font-display text-5xl leading-none font-medium tracking-[-0.03em]">Sign in to your lodge</h2>
             <p className="mt-4 text-sm leading-6 text-[var(--muted)]">Use your verified staff account. Your available lodges and permissions are resolved after sign-in.</p>
-            <LoginForm />
+            <LoginForm nextPath={next} />
             <p className="mt-8 text-center text-xs text-[var(--muted)]">Need access? Ask a lodge owner or manager to invite you.</p>
             <p className="mt-3 text-center text-[10px] text-black/35"><Link href="/guest/g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA" className="underline decoration-black/20 underline-offset-4 hover:text-[var(--forest)]">Preview the guest experience</Link></p>
           </div>

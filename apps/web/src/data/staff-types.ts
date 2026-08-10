@@ -19,6 +19,7 @@ export type CalendarLaneView = {
     span: number;
     tone: "stag" | "double" | "stay" | "activity" | "block";
     warning?: string;
+    href?: string;
   }>;
 };
 

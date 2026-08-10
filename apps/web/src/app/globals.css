@@ -70,6 +70,23 @@ a {
   box-shadow: 0 1px 0 rgb(255 255 255 / 80%), var(--shadow);
 }
 
+.field-input {
+  min-height: 2.75rem;
+  width: 100%;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 0.75rem;
+  background: white;
+  padding-inline: 0.75rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.field-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .subtle-grid {
   background-image:
     linear-gradient(to right, rgb(24 35 30 / 3%) 1px, transparent 1px),

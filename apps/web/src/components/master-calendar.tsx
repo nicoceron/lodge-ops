@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   CalendarRange,
@@ -32,7 +33,6 @@ export function MasterCalendar({
 }) {
   const [group, setGroup] = useState<(typeof groupOptions)[number]>("All resources");
   const [query, setQuery] = useState("");
-  const [weekOffset, setWeekOffset] = useState(0);
 
   const lanes = useMemo(() => {
     return calendar.lanes.filter((lane) => {
@@ -43,7 +43,13 @@ export function MasterCalendar({
   }, [calendar.lanes, group, query]);
 
   const visibleLanes = compact ? lanes.slice(0, 4) : lanes;
-  const dateLabel = weekOffset === 0 ? calendar.rangeLabel : weekOffset < 0 ? "Previous seven-day window" : "Next seven-day window";
+  const firstDay = calendar.days[0]?.key;
+  const shiftDate = (days: number) => {
+    if (!firstDay) return "/calendar";
+    const date = new Date(`${firstDay}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return `/calendar?start=${date.toISOString().slice(0, 10)}`;
+  };
 
   return (
     <section className="surface-card overflow-hidden rounded-2xl" aria-labelledby="calendar-title">
@@ -54,7 +60,7 @@ export function MasterCalendar({
           </span>
           <div>
             <h2 id="calendar-title" className="text-sm font-bold">{compact ? "This week at a glance" : "Unified resource plan"}</h2>
-            <p className="mt-0.5 text-xs text-[var(--muted)]">Property time · {dateLabel}</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">Property time · {calendar.rangeLabel}</p>
           </div>
         </div>
 
@@ -83,32 +89,26 @@ export function MasterCalendar({
             </select>
           </label>
           <div className="flex h-9 items-center rounded-lg border border-black/8 bg-white/75 p-0.5">
-            <button
-              type="button"
+            <Link
+              href={calendar.isDemo ? "#calendar-title" : shiftDate(-7)}
               aria-label="Previous week"
-              onClick={() => setWeekOffset((value) => Math.max(-1, value - 1))}
-              className="grid size-8 place-items-center rounded-md text-[var(--muted)] hover:bg-black/5"
+              aria-disabled={calendar.isDemo}
+              className={cn("grid size-8 place-items-center rounded-md text-[var(--muted)] hover:bg-black/5", calendar.isDemo && "pointer-events-none opacity-40")}
             >
               <ChevronLeft aria-hidden="true" className="size-4" />
-            </button>
-            <button type="button" onClick={() => setWeekOffset(0)} className="px-2 text-[11px] font-bold">Today</button>
-            <button
-              type="button"
+            </Link>
+            <Link href={calendar.isDemo ? "#calendar-title" : "/calendar"} aria-disabled={calendar.isDemo} className={cn("px-2 text-[11px] font-bold", calendar.isDemo && "pointer-events-none opacity-40")}>Today</Link>
+            <Link
+              href={calendar.isDemo ? "#calendar-title" : shiftDate(7)}
               aria-label="Next week"
-              onClick={() => setWeekOffset((value) => Math.min(1, value + 1))}
-              className="grid size-8 place-items-center rounded-md text-[var(--muted)] hover:bg-black/5"
+              aria-disabled={calendar.isDemo}
+              className={cn("grid size-8 place-items-center rounded-md text-[var(--muted)] hover:bg-black/5", calendar.isDemo && "pointer-events-none opacity-40")}
             >
               <ChevronRight aria-hidden="true" className="size-4" />
-            </button>
+            </Link>
           </div>
         </div>
       </div>
-
-      {weekOffset !== 0 ? (
-        <div className="border-b border-[var(--amber)]/15 bg-[var(--amber-soft)]/45 px-5 py-2 text-center text-xs text-[#84552d]">
-          {calendar.isDemo ? "Demo data is pinned to its sample week." : "Live allocations are loaded for the selected server-side window."} Return to <button type="button" onClick={() => setWeekOffset(0)} className="font-bold underline">today</button> to see allocations.
-        </div>
-      ) : null}
 
       <div className="scrollbar-slim overflow-x-auto">
         <div className="min-w-[980px]">
@@ -141,24 +141,21 @@ export function MasterCalendar({
                     <span className="text-[9px] font-semibold text-[var(--muted)]">{lane.utilization}%</span>
                   </div>
                   {calendar.days.map((day) => <div key={day.key} className={cn("border-r border-black/6 last:border-r-0", day.today && "bg-[var(--forest-soft)]/22")} />)}
-                  {weekOffset === 0 ? lane.events.map((event) => (
-                    <button
+                  {lane.events.map((event) => {
+                    const eventClass = cn(
+                      "z-20 m-1.5 min-w-0 overflow-hidden rounded-lg border px-2.5 py-2 text-left shadow-[0_1px_2px_rgb(0_0_0/5%)] transition-transform",
+                      event.href && "hover:-translate-y-0.5 hover:shadow-md",
+                      eventTone[event.tone],
+                    );
+                    const content = <><span className="flex items-center gap-1.5 truncate text-[10px] font-bold">{event.warning ? <AlertTriangle aria-hidden="true" className="size-3 shrink-0" /> : null}{event.label}</span>{event.span > 1 ? <span className="mt-1 block truncate text-[9px] opacity-70">{event.sublabel}</span> : null}</>;
+                    return event.href ? <Link
                       key={event.id}
-                      type="button"
+                      href={event.href}
                       style={{ gridColumn: `${event.start + 2} / span ${event.span}`, gridRow: 1 }}
                       aria-label={`${event.label}, ${event.sublabel}, ${event.span} day${event.span === 1 ? "" : "s"}`}
-                      className={cn(
-                        "z-20 m-1.5 min-w-0 overflow-hidden rounded-lg border px-2.5 py-2 text-left shadow-[0_1px_2px_rgb(0_0_0/5%)] transition-transform hover:-translate-y-0.5 hover:shadow-md",
-                        eventTone[event.tone],
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5 truncate text-[10px] font-bold">
-                        {event.warning ? <AlertTriangle aria-hidden="true" className="size-3 shrink-0" /> : null}
-                        {event.label}
-                      </span>
-                      {event.span > 1 ? <span className="mt-1 block truncate text-[9px] opacity-70">{event.sublabel}</span> : null}
-                    </button>
-                  )) : null}
+                      className={eventClass}
+                    >{content}</Link> : <div key={event.id} style={{ gridColumn: `${event.start + 2} / span ${event.span}`, gridRow: 1 }} className={eventClass}>{content}</div>;
+                  })}
                 </div>
               </div>
             );

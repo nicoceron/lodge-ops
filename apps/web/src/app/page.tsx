@@ -20,7 +20,7 @@ export default async function OverviewPage() {
       eyebrow={dashboard?.dateLabel ?? "Live operations"}
       title={state.mode === "demo" ? "Good morning, Nico" : "Operations overview"}
       description={dashboard?.description ?? "A tenant-scoped view of arrivals, readiness, assignments, and today’s operating pulse."}
-      action={{ label: "New reservation", shortLabel: "Reservation" }}
+      action={{ label: "New reservation", shortLabel: "Reservation", href: "/reservations/new" }}
     >
       {!dashboard ? <DataState kind="error" title="Overview unavailable" description={state.error ?? "Live operations could not be loaded."} /> : null}
       {dashboard && state.notice ? <DataNotice>{state.notice}</DataNotice> : null}

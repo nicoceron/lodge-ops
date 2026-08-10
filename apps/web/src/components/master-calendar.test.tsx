@@ -20,7 +20,7 @@ describe("MasterCalendar", () => {
 
     expect(screen.getByRole("heading", { name: "Unified resource plan" })).toBeInTheDocument();
     expect(screen.getByText("Andes Suite")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Miller · 4, Patagonian Double/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Miller · 4").length).toBeGreaterThan(0);
   });
 
   it("filters the grid by resource type", async () => {
