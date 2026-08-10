@@ -1,0 +1,757 @@
+openapi: 3.1.2
+info:
+  title: LodgeOps API
+  version: 1.0.0
+  description: >-
+    Tenant-scoped HTTP contract used by the LodgeOps Next.js experience and
+    explicit third-party integrations. Money is always represented in minor
+    units and timestamps are UTC ISO-8601 instants.
+servers:
+  - url: https://api.example.com/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Local development
+security:
+  - cookieAuth: []
+tags:
+  - name: Dashboard
+  - name: Calendar
+  - name: Guests
+  - name: Resources
+  - name: Reservations
+  - name: Tasks
+  - name: Payments
+
+paths:
+  /dashboard:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboard
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Operational summary for the current tenant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /calendar:
+    get:
+      tags: [Calendar]
+      operationId: getCalendar
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Canonical allocations and resource blocks for a date range.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Allocation' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /guests:
+    get:
+      tags: [Guests]
+      operationId: listGuests
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Paginated tenant guest directory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestCollection' }
+    post:
+      tags: [Guests]
+      operationId: createGuest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestInput' }
+      responses:
+        '201':
+          description: Guest created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEnvelope' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /guests/{guest}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/GuestId'
+    get:
+      tags: [Guests]
+      operationId: getGuest
+      responses:
+        '200':
+          description: Guest detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Guests]
+      operationId: updateGuest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestInput' }
+      responses:
+        '200':
+          description: Guest updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Guests]
+      operationId: archiveGuest
+      responses:
+        '204': { description: Guest archived or deleted according to retention policy. }
+  /resources:
+    get:
+      tags: [Resources]
+      operationId: listResources
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/ResourceType' }
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Tenant resource inventory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Resource' }
+    post:
+      tags: [Resources]
+      operationId: createResource
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResourceInput' }
+      responses:
+        '201':
+          description: Resource created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /resources/{resource}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Resources]
+      operationId: getResource
+      responses:
+        '200':
+          description: Resource detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Resources]
+      operationId: updateResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResourceInput' }
+      responses:
+        '200':
+          description: Resource updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+    delete:
+      tags: [Resources]
+      operationId: archiveResource
+      responses:
+        '204': { description: Resource archived. }
+  /reservations:
+    get:
+      tags: [Reservations]
+      operationId: listReservations
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReservationStatus' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Paginated tenant reservations.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationCollection' }
+    post:
+      tags: [Reservations]
+      operationId: createReservation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationInput' }
+      responses:
+        '201':
+          description: Draft or tentative reservation created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ReservationId'
+    get:
+      tags: [Reservations]
+      operationId: getReservation
+      responses:
+        '200':
+          description: Reservation detail and current allocations.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Reservations]
+      operationId: updateReservation
+      parameters:
+        - name: If-Match
+          in: header
+          description: Revision observed by the client.
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationInput' }
+      responses:
+        '200':
+          description: Reservation updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/confirm:
+    post:
+      tags: [Reservations]
+      operationId: confirmReservation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Reservation and its allocations confirmed atomically.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/transition:
+    post:
+      tags: [Reservations]
+      operationId: transitionReservation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ReservationStatus' }
+      responses:
+        '200':
+          description: Reservation moved through a permitted transition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tasks:
+    get:
+      tags: [Tasks]
+      operationId: listTasks
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Operational work queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Task' }
+    post:
+      tags: [Tasks]
+      operationId: createTask
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '201':
+          description: Task created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskEnvelope' }
+  /tasks/{task}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/TaskId'
+    get:
+      tags: [Tasks]
+      operationId: getTask
+      responses:
+        '200':
+          description: Task detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskEnvelope' }
+    patch:
+      tags: [Tasks]
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '200':
+          description: Task updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskEnvelope' }
+    delete:
+      tags: [Tasks]
+      operationId: deleteTask
+      responses:
+        '204': { description: Task deleted. }
+  /payments:
+    get:
+      tags: [Payments]
+      operationId: listPayments
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Tenant payment ledger.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Payment' }
+    post:
+      tags: [Payments]
+      operationId: recordPayment
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentInput' }
+      responses:
+        '201':
+          description: Payment recorded; externally settled methods remain append-only.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /payments/{payment}:
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Payment detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: laravel_session
+      description: First-party Sanctum stateful browser session with CSRF protection.
+  parameters:
+    TenantId:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      description: Active tenant UUID selected by an authenticated membership.
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Tenant-scoped opaque key for safely retried commands.
+      schema: { type: string, minLength: 16, maxLength: 128 }
+    Search:
+      name: search
+      in: query
+      schema: { type: string, maxLength: 120 }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    GuestId:
+      name: guest
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ResourceId:
+      name: resource
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ReservationId:
+      name: reservation
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: task
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PaymentId:
+      name: payment
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Forbidden:
+      description: The authenticated user has no active membership or permission.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: The resource does not exist in the active tenant.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Capacity, allocation, status, idempotency, or optimistic-lock conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: One or more fields are invalid.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - type: object
+                properties:
+                  errors:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: { type: string }
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        request_id: { type: [string, 'null'] }
+    Money:
+      type: object
+      required: [amount_minor, currency]
+      properties:
+        amount_minor: { type: integer }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    ReservationStatus:
+      type: string
+      enum: [draft, held, tentative, confirmed, in_house, completed, cancelled, no_show]
+    ResourceType:
+      type: string
+      enum: [room, guide, horse, boat, vehicle, equipment, venue]
+    Guest:
+      type: object
+      required: [id, first_name, marketing_consent, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        first_name: { type: string }
+        last_name: { type: [string, 'null'] }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        language: { type: [string, 'null'] }
+        preferences: { type: [object, 'null'], additionalProperties: true }
+        marketing_consent: { type: boolean }
+        created_at: { type: string, format: date-time }
+    GuestInput:
+      type: object
+      required: [first_name]
+      properties:
+        first_name: { type: string, maxLength: 255 }
+        last_name: { type: [string, 'null'], maxLength: 255 }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'], maxLength: 40 }
+        language: { type: [string, 'null'], maxLength: 12 }
+        preferences: { type: [object, 'null'], additionalProperties: true }
+        marketing_consent: { type: boolean }
+    GuestEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Guest' }
+    GuestCollection:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Guest' }
+        meta: { type: object, additionalProperties: true }
+        links: { type: object, additionalProperties: true }
+    Resource:
+      type: object
+      required: [id, property_id, name, code, type, capacity, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        type: { $ref: '#/components/schemas/ResourceType' }
+        capacity: { type: integer, minimum: 1 }
+        attributes: { type: [object, 'null'], additionalProperties: true }
+        is_active: { type: boolean }
+    ResourceInput:
+      type: object
+      required: [property_id, name, code, type, capacity]
+      properties:
+        property_id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        type: { $ref: '#/components/schemas/ResourceType' }
+        capacity: { type: integer, minimum: 1 }
+        attributes: { type: [object, 'null'], additionalProperties: true }
+        is_active: { type: boolean }
+    ResourceEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Resource' }
+    Allocation:
+      type: object
+      required: [id, reservation_id, status, starts_at, ends_at, quantity]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        resource_id: { type: [string, 'null'], format: uuid }
+        service_occurrence_id: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [tentative, confirmed, released] }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        quantity: { type: integer, minimum: 1 }
+    Reservation:
+      type: object
+      required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, money]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        confirmation_number: { type: string }
+        status: { $ref: '#/components/schemas/ReservationStatus' }
+        source: { type: [string, 'null'] }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        adults: { type: integer, minimum: 0 }
+        children: { type: integer, minimum: 0 }
+        money: { $ref: '#/components/schemas/Money' }
+        tax_minor: { type: integer }
+        total_minor: { type: integer }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/Allocation' }
+        revision: { type: integer, minimum: 1 }
+    ReservationInput:
+      type: object
+      required: [property_id, starts_at, ends_at, adults, currency]
+      properties:
+        property_id: { type: string, format: uuid }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        status: { $ref: '#/components/schemas/ReservationStatus' }
+        source: { type: [string, 'null'], maxLength: 50 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        adults: { type: integer, minimum: 1, maximum: 200 }
+        children: { type: integer, minimum: 0, maximum: 200 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotal_minor: { type: integer, minimum: 0 }
+        tax_minor: { type: integer, minimum: 0 }
+        notes: { type: [string, 'null'] }
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [starts_at, ends_at, quantity]
+            properties:
+              resource_id: { type: [string, 'null'], format: uuid }
+              service_occurrence_id: { type: [string, 'null'], format: uuid }
+              starts_at: { type: string, format: date-time }
+              ends_at: { type: string, format: date-time }
+              quantity: { type: integer, minimum: 1 }
+    ReservationEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Reservation' }
+    ReservationCollection:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Reservation' }
+        meta: { type: object, additionalProperties: true }
+        links: { type: object, additionalProperties: true }
+    Task:
+      type: object
+      required: [id, property_id, title, status, priority]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        reservation_id: { type: [string, 'null'], format: uuid }
+        assignee_id: { type: [integer, 'null'] }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        status: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        due_at: { type: [string, 'null'], format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+    TaskInput:
+      type: object
+      required: [property_id, title]
+      properties:
+        property_id: { type: string, format: uuid }
+        reservation_id: { type: [string, 'null'], format: uuid }
+        assignee_id: { type: [integer, 'null'] }
+        title: { type: string, maxLength: 255 }
+        description: { type: [string, 'null'] }
+        status: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        due_at: { type: [string, 'null'], format: date-time }
+    TaskEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Task' }
+    Payment:
+      type: object
+      required: [id, reservation_id, status, method, money]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, received, failed, refunded, reversed] }
+        method: { type: string, enum: [bank_transfer, cash, card, other] }
+        provider: { type: [string, 'null'] }
+        provider_reference: { type: [string, 'null'] }
+        money: { $ref: '#/components/schemas/Money' }
+        processed_at: { type: [string, 'null'], format: date-time }
+    PaymentInput:
+      type: object
+      required: [reservation_id, method, currency, amount_minor]
+      properties:
+        reservation_id: { type: string, format: uuid }
+        method: { type: string, enum: [bank_transfer, cash, card, other] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount_minor: { type: integer, minimum: 1 }
+        provider: { type: [string, 'null'] }
+        provider_reference: { type: [string, 'null'] }
+        processed_at: { type: [string, 'null'], format: date-time }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+    PaymentEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Payment' }
+    Dashboard:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [occupancy, arrivals, departures, tasks, finance]
+          properties:
+            occupancy: { type: object, additionalProperties: true }
+            arrivals: { type: array, items: { $ref: '#/components/schemas/Reservation' } }
+            departures: { type: array, items: { $ref: '#/components/schemas/Reservation' } }
+            tasks: { type: array, items: { $ref: '#/components/schemas/Task' } }
+            finance: { type: object, additionalProperties: true }
