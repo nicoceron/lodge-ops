@@ -24,6 +24,11 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => 'The provided credentials are invalid.']);
         }
 
+        if (! Auth::guard('web')->user()?->hasVerifiedEmail()) {
+            Auth::guard('web')->logout();
+            throw ValidationException::withMessages(['email' => 'Verify your email address before signing in.']);
+        }
+
         $request->session()->regenerate();
 
         return $this->userPayload($request);

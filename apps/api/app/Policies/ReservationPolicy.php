@@ -19,16 +19,16 @@ class ReservationPolicy extends TenantPolicy
 
     public function create(User $user): bool
     {
-        return $this->canWrite($user);
+        return $this->canManageReservations($user);
     }
 
     public function update(User $user, Reservation $reservation): bool
     {
-        return $this->canWrite($user, $reservation);
+        return $this->canManageReservations($user, $reservation);
     }
 
     public function transition(User $user, Reservation $reservation): bool
     {
-        return $this->canWrite($user, $reservation);
+        return $this->canManageReservations($user, $reservation);
     }
 }

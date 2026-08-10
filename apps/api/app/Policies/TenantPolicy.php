@@ -30,4 +30,28 @@ abstract class TenantPolicy
         return $this->canView($user, $model)
             && app(TenantContext::class)->membership()?->role->canManageMoney() === true;
     }
+
+    protected function canManageReservations(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageReservations() === true;
+    }
+
+    protected function canManageGuests(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageGuests() === true;
+    }
+
+    protected function canManageOperations(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageOperations() === true;
+    }
+
+    protected function canManageConfiguration(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageConfiguration() === true;
+    }
 }

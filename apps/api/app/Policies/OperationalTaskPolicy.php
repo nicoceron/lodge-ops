@@ -19,16 +19,16 @@ class OperationalTaskPolicy extends TenantPolicy
 
     public function create(User $user): bool
     {
-        return $this->canWrite($user);
+        return $this->canManageOperations($user);
     }
 
     public function update(User $user, OperationalTask $task): bool
     {
-        return $this->canWrite($user, $task);
+        return $this->canManageOperations($user, $task);
     }
 
     public function delete(User $user, OperationalTask $task): bool
     {
-        return $this->canWrite($user, $task);
+        return $this->canManageOperations($user, $task);
     }
 }

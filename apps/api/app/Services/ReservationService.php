@@ -5,13 +5,16 @@ namespace App\Services;
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
 use App\Exceptions\InvalidStatusTransitionException;
-use App\Models\Outbox;
 use App\Models\Reservation;
+use App\Services\Automation\OutboxRecorder;
 use Illuminate\Support\Facades\DB;
 
 class ReservationService
 {
-    public function __construct(private AvailabilityService $availability) {}
+    public function __construct(
+        private AvailabilityService $availability,
+        private OutboxRecorder $outbox,
+    ) {}
 
     public function confirm(Reservation $reservation): Reservation
     {
@@ -42,14 +45,12 @@ class ReservationService
                 'revision' => $locked->revision + 1,
             ]);
 
-            Outbox::query()->create([
-                'aggregate_type' => 'reservation',
-                'aggregate_id' => $locked->id,
-                'event_type' => 'reservation.confirmed',
-                'payload' => ['reservation_id' => $locked->id, 'confirmation_number' => $locked->confirmation_number],
-                'occurred_at' => now(),
-                'available_at' => now(),
-            ]);
+            $this->outbox->record(
+                'reservation',
+                $locked->id,
+                'reservation.confirmed',
+                ['reservation_id' => $locked->id, 'confirmation_number' => $locked->confirmation_number],
+            );
 
             return $locked->fresh(['allocations.resource', 'primaryGuest']);
         }, 3);
@@ -81,14 +82,12 @@ class ReservationService
                 $locked->allocations()->update(['status' => AllocationStatus::Released]);
             }
 
-            Outbox::query()->create([
-                'aggregate_type' => 'reservation',
-                'aggregate_id' => $locked->id,
-                'event_type' => 'reservation.status_changed',
-                'payload' => ['reservation_id' => $locked->id, 'status' => $next->value],
-                'occurred_at' => now(),
-                'available_at' => now(),
-            ]);
+            $this->outbox->record(
+                'reservation',
+                $locked->id,
+                'reservation.status_changed',
+                ['reservation_id' => $locked->id, 'status' => $next->value],
+            );
 
             return $locked->fresh(['allocations.resource', 'primaryGuest']);
         }, 3);

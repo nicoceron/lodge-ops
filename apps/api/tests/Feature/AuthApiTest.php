@@ -33,4 +33,16 @@ class AuthApiTest extends TestCase
             ->assertJsonValidationErrors('email')
             ->assertJsonPath('message', 'The provided credentials are invalid.');
     }
+
+    public function test_unverified_accounts_cannot_open_a_staff_session(): void
+    {
+        [, , $user] = $this->tenantEnvironment(authenticate: false);
+        $user->forceFill(['email_verified_at' => null])->save();
+
+        $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('email');
+
+        $this->assertGuest();
+    }
 }

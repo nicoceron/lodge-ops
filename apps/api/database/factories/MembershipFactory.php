@@ -12,6 +12,6 @@ class MembershipFactory extends Factory
 {
     public function definition(): array
     {
-        return ['user_id' => User::factory(), 'role' => MembershipRole::Staff, 'is_active' => true];
+        return ['user_id' => User::factory(), 'role' => MembershipRole::Operations, 'is_active' => true];
     }
 }

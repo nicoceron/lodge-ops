@@ -19,16 +19,16 @@ class ResourcePolicy extends TenantPolicy
 
     public function create(User $user): bool
     {
-        return $this->canWrite($user);
+        return $this->canManageConfiguration($user);
     }
 
     public function update(User $user, Resource $resource): bool
     {
-        return $this->canWrite($user, $resource);
+        return $this->canManageConfiguration($user, $resource);
     }
 
     public function delete(User $user, Resource $resource): bool
     {
-        return $this->canWrite($user, $resource);
+        return $this->canManageConfiguration($user, $resource);
     }
 }

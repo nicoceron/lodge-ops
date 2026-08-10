@@ -19,16 +19,16 @@ class GuestPolicy extends TenantPolicy
 
     public function create(User $user): bool
     {
-        return $this->canWrite($user);
+        return $this->canManageGuests($user);
     }
 
     public function update(User $user, Guest $guest): bool
     {
-        return $this->canWrite($user, $guest);
+        return $this->canManageGuests($user, $guest);
     }
 
     public function delete(User $user, Guest $guest): bool
     {
-        return $this->canWrite($user, $guest);
+        return $this->canManageGuests($user, $guest);
     }
 }

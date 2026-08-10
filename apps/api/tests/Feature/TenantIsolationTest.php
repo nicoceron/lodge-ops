@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MembershipRole;
 use App\Models\Guest;
 use App\Models\Property;
+use App\Models\Reservation;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\QueryException;
@@ -93,5 +94,33 @@ class TenantIsolationTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    public function test_finance_and_kitchen_roles_only_mutate_their_own_workspaces(): void
+    {
+        [$financeTenant, $financeProperty] = $this->tenantEnvironment(MembershipRole::Finance);
+        $reservation = Reservation::factory()->create(['property_id' => $financeProperty->id]);
+
+        $this->withHeader('X-Tenant-ID', $financeTenant->id)
+            ->postJson('/api/v1/guests', ['first_name' => 'Not allowed'])
+            ->assertForbidden();
+        $this->withHeader('X-Tenant-ID', $financeTenant->id)
+            ->postJson('/api/v1/payments', [
+                'reservation_id' => $reservation->id,
+                'method' => 'cash',
+                'amount_minor' => 5000,
+                'captured' => true,
+            ])->assertCreated();
+
+        app(TenantContext::class)->clear();
+        [$kitchenTenant, $kitchenProperty] = $this->tenantEnvironment(MembershipRole::Kitchen);
+        $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
+            ->postJson('/api/v1/tasks', [
+                'property_id' => $kitchenProperty->id,
+                'title' => 'Prepare allergen-safe service',
+            ])->assertCreated();
+        $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
+            ->postJson('/api/v1/guests', ['first_name' => 'Not allowed'])
+            ->assertForbidden();
     }
 }

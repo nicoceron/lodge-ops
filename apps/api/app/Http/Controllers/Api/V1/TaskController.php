@@ -33,7 +33,11 @@ class TaskController extends Controller
     public function store(StoreTaskRequest $request): TaskResource
     {
         $this->authorize('create', OperationalTask::class);
-        $task = OperationalTask::query()->create($this->withCompletionTimestamp($request->validated()));
+        $task = OperationalTask::query()->create($this->withCompletionTimestamp([
+            'status' => TaskStatus::Todo->value,
+            'priority' => 'normal',
+            ...$request->validated(),
+        ]));
 
         return new TaskResource($task->load('assignee'));
     }

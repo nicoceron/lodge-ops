@@ -3,10 +3,12 @@
 namespace App\Http\Middleware;
 
 use App\Models\IdempotencyKey;
+use App\Support\Tenancy\TenantContext;
 use Closure;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
@@ -27,18 +29,21 @@ class EnsureIdempotentCommand
         $command = $request->method().' '.$request->route()->uri();
         $requestHash = hash('sha256', $request->getContent());
 
-        try {
-            $record = IdempotencyKey::query()->create([
-                'key' => $key,
-                'command' => $command,
-                'request_hash' => $requestHash,
-                'expires_at' => now()->addDay(),
-            ]);
-        } catch (QueryException $exception) {
-            $existing = IdempotencyKey::query()->where('key', $key)->first();
-            if ($existing === null) {
-                throw $exception;
-            }
+        $now = now();
+        $inserted = DB::table('idempotency_keys')->insertOrIgnore([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => app(TenantContext::class)->id(),
+            'key' => $key,
+            'command' => $command,
+            'request_hash' => $requestHash,
+            'expires_at' => $now->copy()->addDay(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $record = IdempotencyKey::query()->where('key', $key)->firstOrFail();
+        if ($inserted === 0) {
+            $existing = $record;
             if ($existing->command !== $command || $existing->request_hash !== $requestHash) {
                 throw new ConflictHttpException('This idempotency key was already used for a different command or payload.');
             }

@@ -7,15 +7,17 @@ use App\Enums\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePaymentRequest;
 use App\Http\Resources\PaymentResource;
-use App\Models\Outbox;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Services\Automation\OutboxRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
+    public function __construct(private readonly OutboxRecorder $outbox) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Payment::class);
@@ -69,14 +71,12 @@ class PaymentController extends Controller
                 ]);
             }
 
-            Outbox::query()->create([
-                'aggregate_type' => 'payment',
-                'aggregate_id' => $payment->id,
-                'event_type' => $captured ? 'payment.succeeded' : 'payment.created',
-                'payload' => ['payment_id' => $payment->id, 'reservation_id' => $reservation->id, 'amount_minor' => $payment->amount_minor],
-                'occurred_at' => now(),
-                'available_at' => now(),
-            ]);
+            $this->outbox->record(
+                'payment',
+                $payment->id,
+                $captured ? 'payment.succeeded' : 'payment.created',
+                ['payment_id' => $payment->id, 'reservation_id' => $reservation->id, 'amount_minor' => $payment->amount_minor],
+            );
 
             return $payment;
         }, 3);

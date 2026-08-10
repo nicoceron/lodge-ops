@@ -33,6 +33,12 @@ class ReservationApiTest extends TestCase
             ->assertJsonPath('data.total_minor', 59500000)
             ->assertJsonPath('data.status', 'draft');
 
+        $this->assertDatabaseHas('audits', [
+            'tenant_id' => $tenant->id,
+            'event' => 'created',
+            'auditable_type' => Reservation::class,
+        ]);
+
         app(TenantContext::class)->clear();
         $otherTenant = Tenant::factory()->create();
         app(TenantContext::class)->set($otherTenant);
