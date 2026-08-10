@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     && apk del $PHPIZE_DEPS
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY docker/php-upload.ini /usr/local/etc/php/conf.d/lodgeops-upload.ini
 WORKDIR /app
 COPY apps/api/composer.json apps/api/composer.lock ./
 RUN composer install --no-interaction --prefer-dist --no-scripts

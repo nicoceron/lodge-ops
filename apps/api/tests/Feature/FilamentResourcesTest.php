@@ -4,15 +4,32 @@ namespace Tests\Feature;
 
 use App\Enums\MembershipRole;
 use App\Filament\Resources\AutomationRules\AutomationRuleResource;
+use App\Filament\Resources\CatalogItems\CatalogItemResource;
+use App\Filament\Resources\CommissionAccruals\CommissionAccrualResource;
+use App\Filament\Resources\CommunicationSuppressions\CommunicationSuppressionResource;
+use App\Filament\Resources\CostRecords\CostRecordResource;
+use App\Filament\Resources\Deposits\DepositResource;
+use App\Filament\Resources\DocumentTemplates\DocumentTemplateResource;
+use App\Filament\Resources\ExchangeRates\ExchangeRateResource;
+use App\Filament\Resources\FolioLines\FolioLineResource;
+use App\Filament\Resources\GeneratedDocuments\GeneratedDocumentResource;
 use App\Filament\Resources\Guests\GuestResource;
 use App\Filament\Resources\Guests\Pages\CreateGuest;
+use App\Filament\Resources\IntegrationConnections\IntegrationConnectionResource;
+use App\Filament\Resources\MessageTemplates\MessageTemplateResource;
 use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
+use App\Filament\Resources\Opportunities\OpportunityResource;
+use App\Filament\Resources\Organizations\OrganizationResource;
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Programs\ProgramResource;
 use App\Filament\Resources\Properties\PropertyResource;
+use App\Filament\Resources\Proposals\ProposalResource;
+use App\Filament\Resources\ReportExports\ReportExportResource;
 use App\Filament\Resources\Reservations\Pages\CreateReservation;
 use App\Filament\Resources\Reservations\ReservationResource;
 use App\Filament\Resources\Resources\ResourceResource;
+use App\Filament\Resources\RetailSales\RetailSaleResource;
+use App\Filament\Resources\StockLocations\StockLocationResource;
 use App\Models\Guest;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
@@ -174,7 +191,24 @@ class FilamentResourcesTest extends TestCase
             ReservationResource::class,
             OperationalTaskResource::class,
             PaymentResource::class,
+            ProposalResource::class,
+            DepositResource::class,
+            FolioLineResource::class,
             AutomationRuleResource::class,
+            OrganizationResource::class,
+            OpportunityResource::class,
+            CatalogItemResource::class,
+            StockLocationResource::class,
+            RetailSaleResource::class,
+            CostRecordResource::class,
+            CommissionAccrualResource::class,
+            ExchangeRateResource::class,
+            DocumentTemplateResource::class,
+            GeneratedDocumentResource::class,
+            MessageTemplateResource::class,
+            CommunicationSuppressionResource::class,
+            IntegrationConnectionResource::class,
+            ReportExportResource::class,
         ];
     }
 }

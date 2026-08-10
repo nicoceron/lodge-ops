@@ -27,6 +27,7 @@ class ReservationResource extends JsonResource
             'revision' => $this->revision,
             'notes' => $this->notes,
             'confirmed_at' => $this->confirmed_at,
+            'hold_expires_at' => $this->hold_expires_at,
             'primary_guest' => $this->whenLoaded('primaryGuest', fn () => new GuestResource($this->primaryGuest)),
             'guests' => GuestResource::collection($this->whenLoaded('guests')),
             'allocations' => $this->whenLoaded('allocations', fn () => $this->allocations->map(fn ($allocation) => [

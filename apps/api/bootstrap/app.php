@@ -1,8 +1,10 @@
 <?php
 
 use App\Exceptions\AllocationConflictException;
+use App\Exceptions\CommercialWorkflowException;
 use App\Exceptions\InvalidStatusTransitionException;
 use App\Http\Middleware\EnsureIdempotentCommand;
+use App\Http\Middleware\ResolveGuestPortalSession;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->alias([
             'idempotent' => EnsureIdempotentCommand::class,
+            'guest.portal' => ResolveGuestPortalSession::class,
             'tenant' => ResolveTenant::class,
         ]);
         $middleware->prependToPriorityList(SubstituteBindings::class, ResolveTenant::class);
@@ -36,6 +39,9 @@ return Application::configure(basePath: dirname(__DIR__))
             ], 409)
             : null);
         $exceptions->render(fn (InvalidStatusTransitionException $exception, Request $request) => $request->is('api/*')
+            ? response()->json(['message' => $exception->getMessage()], 409)
+            : null);
+        $exceptions->render(fn (CommercialWorkflowException $exception, Request $request) => $request->is('api/*')
             ? response()->json(['message' => $exception->getMessage()], 409)
             : null);
     })->create();

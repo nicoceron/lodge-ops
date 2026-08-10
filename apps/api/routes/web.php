@@ -8,3 +8,5 @@ Route::get('/', function () {
 });
 
 Route::post('/api/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/api/v1/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/api/v1/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');

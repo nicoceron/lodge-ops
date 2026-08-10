@@ -32,6 +32,18 @@ class PaymentResource extends TenantResource
 
     protected static ?string $viewCapability = 'canManageMoney';
 
+    protected static string $writeCapability = 'canManageMoney';
+
+    public static function canRunWorkflow(Payment $payment): bool
+    {
+        return static::belongsToCurrentTenant($payment) && static::canWrite();
+    }
+
+    public static function canRecordManual(): bool
+    {
+        return static::canWrite();
+    }
+
     public static function form(Schema $schema): Schema
     {
         return PaymentForm::configure($schema);

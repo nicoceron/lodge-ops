@@ -20,4 +20,9 @@ class Property extends TenantModel
     {
         return $this->hasMany(Reservation::class);
     }
+
+    public function guestPortalDocuments(): HasMany
+    {
+        return $this->hasMany(GuestPortalDocument::class);
+    }
 }

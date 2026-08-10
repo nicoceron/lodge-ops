@@ -137,8 +137,15 @@ class ReservationController extends Controller
     public function transition(Request $request, Reservation $reservation, ReservationService $service): ReservationResource
     {
         $this->authorize('transition', $reservation);
-        $validated = $request->validate(['status' => ['required', Rule::enum(ReservationStatus::class)]]);
+        $validated = $request->validate([
+            'status' => ['required', Rule::enum(ReservationStatus::class)],
+            'hold_minutes' => ['sometimes', 'integer', 'min:1', 'max:1440'],
+        ]);
 
-        return new ReservationResource($service->transition($reservation, ReservationStatus::from($validated['status'])));
+        return new ReservationResource($service->transition(
+            $reservation,
+            ReservationStatus::from($validated['status']),
+            $validated['hold_minutes'] ?? null,
+        ));
     }
 }

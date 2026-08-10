@@ -9,7 +9,13 @@ class Deposit extends TenantModel
 {
     protected function casts(): array
     {
-        return ['status' => DepositStatus::class, 'amount_minor' => 'integer', 'due_at' => 'immutable_datetime', 'paid_at' => 'immutable_datetime'];
+        return [
+            'status' => DepositStatus::class,
+            'amount_minor' => 'integer',
+            'due_at' => 'immutable_datetime',
+            'paid_at' => 'immutable_datetime',
+            'waived_at' => 'immutable_datetime',
+        ];
     }
 
     public function reservation(): BelongsTo
@@ -20,5 +26,10 @@ class Deposit extends TenantModel
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    public function waivedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'waived_by');
     }
 }

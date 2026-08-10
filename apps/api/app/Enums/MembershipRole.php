@@ -43,4 +43,14 @@ enum MembershipRole: string
     {
         return in_array($this, [self::Owner, self::Manager], true);
     }
+
+    public function canManageRetail(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Operations, self::Finance], true);
+    }
+
+    public function canManageSales(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Sales], true);
+    }
 }

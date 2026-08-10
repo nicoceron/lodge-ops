@@ -16,6 +16,7 @@ class Reservation extends TenantModel
             'starts_at' => 'immutable_datetime',
             'ends_at' => 'immutable_datetime',
             'confirmed_at' => 'immutable_datetime',
+            'hold_expires_at' => 'immutable_datetime',
             'adults' => 'integer',
             'children' => 'integer',
             'subtotal_minor' => 'integer',
@@ -61,5 +62,35 @@ class Reservation extends TenantModel
     public function folioLines(): HasMany
     {
         return $this->hasMany(FolioLine::class);
+    }
+
+    public function deposits(): HasMany
+    {
+        return $this->hasMany(Deposit::class);
+    }
+
+    public function guestPortalAccessTokens(): HasMany
+    {
+        return $this->hasMany(GuestPortalAccessToken::class);
+    }
+
+    public function guestPortalProfiles(): HasMany
+    {
+        return $this->hasMany(GuestPortalProfile::class);
+    }
+
+    public function guestPortalAcknowledgements(): HasMany
+    {
+        return $this->hasMany(GuestPortalAcknowledgement::class);
+    }
+
+    public function guestPaymentEvidence(): HasMany
+    {
+        return $this->hasMany(GuestPaymentEvidence::class);
+    }
+
+    public function surveys(): HasMany
+    {
+        return $this->hasMany(Survey::class);
     }
 }

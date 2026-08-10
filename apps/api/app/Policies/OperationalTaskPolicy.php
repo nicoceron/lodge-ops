@@ -17,6 +17,11 @@ class OperationalTaskPolicy extends TenantPolicy
         return $this->canView($user, $task);
     }
 
+    public function viewOperations(User $user): bool
+    {
+        return $this->canManageOperations($user);
+    }
+
     public function create(User $user): bool
     {
         return $this->canManageOperations($user);

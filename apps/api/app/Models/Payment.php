@@ -4,16 +4,49 @@ namespace App\Models;
 
 use App\Enums\PaymentStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Payment extends TenantModel
 {
     protected function casts(): array
     {
-        return ['status' => PaymentStatus::class, 'amount_minor' => 'integer', 'processed_at' => 'immutable_datetime', 'metadata' => 'array'];
+        return [
+            'status' => PaymentStatus::class,
+            'amount_minor' => 'integer',
+            'processed_at' => 'immutable_datetime',
+            'reconciled_at' => 'immutable_datetime',
+            'reversed_at' => 'immutable_datetime',
+            'metadata' => 'array',
+        ];
     }
 
     public function reservation(): BelongsTo
     {
         return $this->belongsTo(Reservation::class);
+    }
+
+    public function deposits(): HasMany
+    {
+        return $this->hasMany(Deposit::class);
+    }
+
+    public function folioLines(): HasMany
+    {
+        return $this->hasMany(FolioLine::class);
+    }
+
+    public function recorder(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function reconciler(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reconciled_by');
+    }
+
+    public function reverser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reversed_by');
     }
 }

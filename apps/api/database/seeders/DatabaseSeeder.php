@@ -8,6 +8,8 @@ use App\Enums\ReservationStatus;
 use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Models\Guest;
+use App\Models\GuestPortalAccessToken;
+use App\Models\GuestPortalDocument;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Property;
@@ -21,6 +23,8 @@ use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
+    public const DEMO_GUEST_PORTAL_TOKEN = 'g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA';
+
     /**
      * Seed the application's database.
      */
@@ -86,6 +90,27 @@ class DatabaseSeeder extends Seeder
             OperationalTask::query()->firstOrCreate(
                 ['reservation_id' => $reservation->id, 'title' => 'Preparar habitacion'],
                 ['property_id' => $property->id, 'status' => TaskStatus::Todo, 'priority' => 'high', 'due_at' => $reservation->starts_at->subHours(2)],
+            );
+            GuestPortalDocument::query()->firstOrCreate(
+                ['property_id' => $property->id, 'slug' => 'outdoor-waiver', 'version' => '1.0'],
+                [
+                    'title' => 'Outdoor activity waiver',
+                    'body' => 'I understand the inherent risks of remote outdoor activities and agree to follow the instructions of the lodge team.',
+                    'is_active' => true,
+                ],
+            );
+            GuestPortalAccessToken::query()->updateOrCreate(
+                ['token_hash' => hash('sha256', self::DEMO_GUEST_PORTAL_TOKEN)],
+                [
+                    'reservation_id' => $reservation->id,
+                    'guest_id' => $guest->id,
+                    'session_hash' => null,
+                    'expires_at' => now()->addWeek(),
+                    'exchanged_at' => null,
+                    'session_expires_at' => null,
+                    'last_used_at' => null,
+                    'revoked_at' => null,
+                ],
             );
 
             $context->clear();

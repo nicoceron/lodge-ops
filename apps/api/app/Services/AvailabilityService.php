@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AllocationStatus;
+use App\Enums\ReservationStatus;
 use App\Exceptions\AllocationConflictException;
 use App\Models\Allocation;
 use App\Models\Resource;
@@ -19,10 +20,20 @@ class AvailabilityService
 
         if ($allocation->resource_id !== null) {
             // Locking the resource serializes confirmations for this resource.
-            Resource::query()->lockForUpdate()->findOrFail($allocation->resource_id);
+            $resource = Resource::query()->lockForUpdate()->findOrFail($allocation->resource_id);
+
+            $propertyResourceIds = Resource::query()->where('property_id', $resource->property_id)->pluck('id');
+            $buyoutResourceIds = Resource::query()
+                ->where('property_id', $resource->property_id)
+                ->get()
+                ->filter(fn (Resource $candidate): bool => (bool) data_get($candidate->attributes, 'buyout', false))
+                ->pluck('id');
+            $conflictingResourceIds = (bool) data_get($resource->attributes, 'buyout', false)
+                ? $propertyResourceIds
+                : $buyoutResourceIds->push($resource->id)->unique();
 
             $block = ResourceBlock::query()
-                ->where('resource_id', $allocation->resource_id)
+                ->whereIn('resource_id', $conflictingResourceIds)
                 ->where('starts_at', '<', $allocation->ends_at)
                 ->where('ends_at', '>', $allocation->starts_at)
                 ->lockForUpdate()
@@ -33,10 +44,16 @@ class AvailabilityService
             }
 
             $conflict = Allocation::query()
-                ->where('resource_id', $allocation->resource_id)
+                ->whereIn('resource_id', $conflictingResourceIds)
                 ->whereKeyNot($allocation->id)
                 ->where(function ($query) use ($allocation): void {
                     $query->where('status', AllocationStatus::Confirmed)
+                        ->orWhere(function ($query): void {
+                            $query->where('status', AllocationStatus::Tentative)
+                                ->whereHas('reservation', fn ($reservation) => $reservation
+                                    ->where('status', ReservationStatus::Hold)
+                                    ->where('hold_expires_at', '>', now()));
+                        })
                         ->orWhere(function ($query) use ($allocation): void {
                             $query->where('reservation_id', $allocation->reservation_id)
                                 ->where('status', AllocationStatus::Tentative);
@@ -59,6 +76,12 @@ class AvailabilityService
                 ->whereKeyNot($allocation->id)
                 ->where(function ($query) use ($allocation): void {
                     $query->where('status', AllocationStatus::Confirmed)
+                        ->orWhere(function ($query): void {
+                            $query->where('status', AllocationStatus::Tentative)
+                                ->whereHas('reservation', fn ($reservation) => $reservation
+                                    ->where('status', ReservationStatus::Hold)
+                                    ->where('hold_expires_at', '>', now()));
+                        })
                         ->orWhere('reservation_id', $allocation->reservation_id);
                 })
                 ->sum('quantity');

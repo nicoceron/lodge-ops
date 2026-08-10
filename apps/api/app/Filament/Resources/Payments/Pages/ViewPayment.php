@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Payments\Pages;
 
 use App\Filament\Resources\Payments\PaymentResource;
+use App\Filament\Resources\Payments\PaymentWorkflowActions;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewPayment extends ViewRecord
@@ -11,6 +12,6 @@ class ViewPayment extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return PaymentWorkflowActions::forRecord();
     }
 }

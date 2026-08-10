@@ -12,3 +12,8 @@ Schedule::command('outbox:publish --batch=100')
     ->everyMinute()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('reservation-holds:expire --batch=100')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();

@@ -28,10 +28,10 @@ final class LodgeOpsPresentation
         $value = $status instanceof BackedEnum ? $status->value : $status;
 
         return match ($value) {
-            'confirmed', 'checked_in', 'succeeded', 'done', 'active' => 'success',
-            'hold', 'pending', 'in_progress', 'todo' => 'warning',
-            'cancelled', 'failed', 'blocked', 'no_show', 'reversed' => 'danger',
-            'checked_out', 'refunded' => 'info',
+            'confirmed', 'checked_in', 'succeeded', 'done', 'active', 'configured', 'connected', 'won', 'paid', 'generated', 'published' => 'success',
+            'hold', 'pending', 'in_progress', 'todo', 'proposal', 'accrued' => 'warning',
+            'cancelled', 'failed', 'blocked', 'no_show', 'reversed', 'lost', 'disconnected' => 'danger',
+            'checked_out', 'refunded', 'qualified' => 'info',
             default => 'gray',
         };
     }

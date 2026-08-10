@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\Payments\Tables;
 
 use App\Enums\PaymentStatus;
+use App\Filament\Resources\Payments\PaymentWorkflowActions;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Payment;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -57,6 +59,9 @@ class PaymentsTable
             ])
             ->recordActions([
                 ViewAction::make(),
+                ActionGroup::make(PaymentWorkflowActions::forRecord())
+                    ->label('Workflow')
+                    ->icon('heroicon-m-ellipsis-horizontal'),
             ])
             ->defaultSort('processed_at', 'desc')
             ->striped()
