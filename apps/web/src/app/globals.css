@@ -1,8 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f2eb;
+  --surface: #fffdf8;
+  --surface-strong: #ffffff;
+  --foreground: #18231e;
+  --muted: #6e746f;
+  --line: #dddcd4;
+  --forest: #173d2e;
+  --forest-soft: #e5eee7;
+  --moss: #60816e;
+  --amber: #c8792f;
+  --amber-soft: #f8e9d5;
+  --red: #aa4a3b;
+  --red-soft: #f8e4df;
+  --blue: #3d6572;
+  --blue-soft: #e1edf0;
+  --shadow: 0 16px 40px rgb(35 45 39 / 7%);
 }
 
 @theme inline {
@@ -10,17 +24,81 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-newsreader);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+::selection {
+  background: #cfe0d4;
+  color: var(--forest);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  outline-color: var(--amber);
+  outline-offset: 3px;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: var(--font-newsreader), Georgia, serif;
+}
+
+.surface-card {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, white);
+  background: color-mix(in srgb, var(--surface) 96%, white);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 80%), var(--shadow);
+}
+
+.subtle-grid {
+  background-image:
+    linear-gradient(to right, rgb(24 35 30 / 3%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(24 35 30 / 3%) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: #c7c9c3 transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-enter {
+    animation: enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+  }
+
+  .animate-enter-delay {
+    animation: enter 520ms 80ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
