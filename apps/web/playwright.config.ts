@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     command: `npm run start -- --hostname 127.0.0.1 --port ${e2ePort}`,
     url: e2eBaseUrl,
-    env: { NEXT_PUBLIC_DEMO_MODE: "true", GUEST_PORTAL_DEMO_MODE: "true" },
+    env: { NEXT_PUBLIC_DEMO_MODE: "true", GUEST_PORTAL_DEMO_MODE: "true", NEXT_DIST_DIR: ".next-e2e" },
     reuseExistingServer: false,
   },
 });
