@@ -1,8 +1,10 @@
-.PHONY: bootstrap up down test test-api test-web lint migrate seed shell-api
+.PHONY: bootstrap up down test test-api test-web lint verify migrate seed shell-api
 
 bootstrap:
-	cp .env.example .env
+	test -f .env || cp .env.example .env
+	test -f apps/api/.env || cp apps/api/.env.example apps/api/.env
 	docker compose build
+	docker compose up -d postgres redis
 	docker compose run --rm api php artisan key:generate
 	docker compose run --rm api php artisan migrate --seed
 
@@ -18,11 +20,13 @@ test-api:
 	cd apps/api && php artisan test --compact
 
 test-web:
-	cd apps/web && npm run test:run && npm run build
+	cd apps/web && npm run test:run && npm run e2e
 
 lint:
 	cd apps/api && ./vendor/bin/pint --test
 	cd apps/web && npm run lint && npm run typecheck
+
+verify: lint test
 
 migrate:
 	docker compose run --rm api php artisan migrate
@@ -32,4 +36,3 @@ seed:
 
 shell-api:
 	docker compose exec api sh
-

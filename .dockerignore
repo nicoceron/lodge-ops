@@ -1,0 +1,15 @@
+.git
+.github
+.env
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/vendor
+**/.next
+**/coverage
+**/test-results
+**/playwright-report
+**/.phpunit.cache
+**/database/*.sqlite
+docs

@@ -5,7 +5,7 @@ RUN apk add --no-cache \
         icu-dev \
         libzip-dev \
         postgresql-dev \
-    && docker-php-ext-install bcmath intl opcache pcntl pdo_pgsql zip \
+    && docker-php-ext-install bcmath intl pcntl pdo_pgsql zip \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS
@@ -18,4 +18,3 @@ COPY apps/api .
 RUN php artisan package:discover --ansi
 
 EXPOSE 8000
-
