@@ -13,6 +13,7 @@ import {
   listPayments,
   listResources,
   listTasks,
+  requireStaffUser,
   type DepositDto,
   type FolioLineDto,
   type PaymentDto,
@@ -32,12 +33,14 @@ export default async function ReservationPage({ params }: { params: Promise<{ id
   let deposits: DepositDto[] = [];
   let payments: PaymentDto[] = [];
   let folio: FolioLineDto[] = [];
+  let role = "viewer";
 
   if (demoModeEnabled) {
     reservation = { id, property_id: "demo-property", confirmation_number: "VS-2642", status: "confirmed", source: "direct", starts_at: "2026-08-13T15:00:00Z", ends_at: "2026-08-16T11:00:00Z", adults: 2, children: 0, currency: "USD", subtotal_minor: 184000, tax_minor: 0, total_minor: 184000, revision: 1, notes: "Demo reservation workspace. Changes are intentionally disabled.", primary_guest: { id: "demo-guest", first_name: "Sofia", last_name: "Martinez" }, guests: [], allocations: [], program: { id: "demo-program", name: "Patagonia Explorer" } };
     resources = [{ id: "demo-room", property_id: "demo-property", name: "Coihue Suite", code: "COI-01", type: "room" as const, capacity: 2, attributes: null, is_active: true }];
   } else {
     try {
+      role = (await requireStaffUser()).membership?.role ?? "viewer";
       const response = await getReservation(id);
       reservation = response.data;
       const [resourceResponse, taskResponse, depositResponse, paymentResponse, folioResponse] = await Promise.all([
@@ -56,6 +59,6 @@ export default async function ReservationPage({ params }: { params: Promise<{ id
 
   return <AppShell eyebrow="Reservation workspace" title={reservation?.confirmation_number ?? "Reservation"} description={reservation ? `${reservation.primary_guest?.first_name ?? "Guest"} · ${reservation.status.replaceAll("_", " ")}` : "Live reservation details"}>
     <Link href="/reservations" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-[var(--forest)]"><ArrowLeft className="size-3.5" />Back to reservations</Link>
-    {error || !reservation ? <DataState kind="error" title="Reservation unavailable" description={error ?? "This reservation could not be found."} /> : <ReservationWorkspace reservation={reservation} resources={resources} tasks={tasks} deposits={deposits} payments={payments} folio={folio} demo={demoModeEnabled} />}
+    {error || !reservation ? <DataState kind="error" title="Reservation unavailable" description={error ?? "This reservation could not be found."} /> : <ReservationWorkspace reservation={reservation} resources={resources} tasks={tasks} deposits={deposits} payments={payments} folio={folio} canManageGuestMoney={["owner", "manager", "operations", "finance"].includes(role)} canManageOperations={["owner", "manager", "operations"].includes(role)} demo={demoModeEnabled} />}
   </AppShell>;
 }

@@ -16,7 +16,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie = process.env.SESSION_COOKIE_NAME ?? "laravel-session";
+  const sessionCookie = process.env.SESSION_COOKIE_NAME ?? "lodgeops-session";
   if (!request.cookies.has(sessionCookie) || !request.cookies.has("lodgeops_tenant_id")) {
     const login = new URL("/login", request.url);
     if (pathname !== "/") login.searchParams.set("next", `${pathname}${search}`);

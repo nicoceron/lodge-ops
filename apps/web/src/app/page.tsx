@@ -1,17 +1,30 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowRight, CircleCheck, Clock3, MapPin, Plane, UsersRound } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { DataNotice, DataState } from "@/components/data-state";
 import { MasterCalendar } from "@/components/master-calendar";
 import { MetricCard } from "@/components/metric-card";
 import { StatusPill } from "@/components/status-pill";
+import { requireStaffUser, selectedTenant } from "@/data/staff-api";
 import { loadDashboardProjection } from "@/data/staff-projections";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Overview" };
 
 export default async function OverviewPage() {
+  const user = await requireStaffUser();
+  const selectedId = (await cookies()).get("lodgeops_tenant_id")?.value;
+  const activeTenant = selectedTenant(user, selectedId);
+  const role = user.membership?.role ?? activeTenant?.role ?? "viewer";
+
+  if (role === "finance") redirect("/finance");
+  if (["guide", "kitchen", "housekeeping"].includes(role)) redirect("/operations");
+
+  const canManageReservations = ["owner", "manager", "sales", "operations"].includes(role);
+  const canViewOperations = ["owner", "manager", "operations"].includes(role);
   const state = await loadDashboardProjection();
   const dashboard = state.data;
 
@@ -20,7 +33,7 @@ export default async function OverviewPage() {
       eyebrow={dashboard?.dateLabel ?? "Live operations"}
       title={state.mode === "demo" ? "Good morning, Nico" : "Operations overview"}
       description={dashboard?.description ?? "A tenant-scoped view of arrivals, readiness, assignments, and today’s operating pulse."}
-      action={{ label: "New reservation", shortLabel: "Reservation", href: "/reservations/new" }}
+      action={canManageReservations ? { label: "New reservation", shortLabel: "Reservation", href: "/reservations/new" } : undefined}
     >
       {!dashboard ? <DataState kind="error" title="Overview unavailable" description={state.error ?? "Live operations could not be loaded."} /> : null}
       {dashboard && state.notice ? <DataNotice>{state.notice}</DataNotice> : null}
@@ -40,9 +53,9 @@ export default async function OverviewPage() {
               <h2 id="arrivals-heading" className="text-sm font-bold">Today&apos;s arrivals</h2>
               <p className="mt-1 text-xs text-[var(--muted)]">{dashboard.arrivals.reduce((total, arrival) => total + arrival.guests, 0)} guests across {dashboard.arrivals.length} parties</p>
             </div>
-            <Link href="/reservations" className="inline-flex items-center gap-1 text-xs font-bold text-[var(--forest)] hover:underline">
+            {canManageReservations ? <Link href="/reservations" className="inline-flex items-center gap-1 text-xs font-bold text-[var(--forest)] hover:underline">
               All reservations <ArrowRight aria-hidden="true" className="size-3.5" />
-            </Link>
+            </Link> : null}
           </div>
           <div className="divide-y divide-black/6">
             {dashboard.arrivals.map((arrival) => (
@@ -93,9 +106,9 @@ export default async function OverviewPage() {
               );
             })}
           </div>
-          <Link href="/operations" className="mt-5 flex items-center justify-center gap-1.5 rounded-xl border border-black/8 bg-white/65 py-2.5 text-xs font-bold text-[var(--forest)] hover:bg-white">
+          {canViewOperations ? <Link href="/operations" className="mt-5 flex items-center justify-center gap-1.5 rounded-xl border border-black/8 bg-white/65 py-2.5 text-xs font-bold text-[var(--forest)] hover:bg-white">
             Open readiness board <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Link>
+          </Link> : null}
         </section>
       </div>
 
@@ -105,7 +118,7 @@ export default async function OverviewPage() {
             <h2 id="tasks-heading" className="text-sm font-bold">Operations pulse</h2>
             <p className="mt-1 text-xs text-[var(--muted)]">What needs a decision next</p>
           </div>
-          <Link href="/operations" className="text-xs font-bold text-[var(--forest)] hover:underline">View task board</Link>
+          {canViewOperations ? <Link href="/operations" className="text-xs font-bold text-[var(--forest)] hover:underline">View task board</Link> : null}
         </div>
         <div className="grid divide-y divide-black/6 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="divide-y divide-black/6">

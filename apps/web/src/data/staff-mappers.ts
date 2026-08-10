@@ -157,6 +157,8 @@ export function mapDashboardProjection(dto: DashboardDto, calendar: CalendarView
 export function mapOperationsProjection(dto: OperationsDto): OperationsView {
   return {
     date: dto.date,
+    role: dto.role_scope.role,
+    visibleSections: dto.role_scope.visible_sections,
     readiness: dto.readiness,
     tasks: dto.tasks.map((task) => ({
       id: task.id,
@@ -170,6 +172,7 @@ export function mapOperationsProjection(dto: OperationsDto): OperationsView {
       note: item.serious ? "Separate preparation required" : "Current service window",
     })),
     kitchenGuests: dto.kitchen.guest_count,
+    kitchenIdentityRestricted: dto.kitchen.identity_restricted,
     guideAssignments: dto.guide_assignments.map((assignment) => ({
       id: assignment.id,
       guide: assignment.guide || "Unassigned",
@@ -190,7 +193,9 @@ export function mapFinanceProjection(dto: FinanceDto): FinanceView {
       { label: "Booked revenue", value: formatMoney(dto.summary.booked_revenue_minor, dto.currency), note: dto.period.label, tone: "forest" },
       { label: "Cash collected", value: formatMoney(dto.summary.cash_collected_minor, dto.currency), note: `${dto.summary.collection_percent}% of booked`, tone: "blue" },
       { label: "Receivables", value: formatMoney(dto.summary.receivables_minor, dto.currency), note: `${dto.deposits.overdue_count} overdue deposits`, tone: "red" },
-      { label: "Deposit position", value: formatMoney(dto.deposits.due_minor, dto.currency), note: `${dto.deposits.due_count} still due`, tone: "amber" },
+      { label: "Loaded costs", value: formatMoney(dto.summary.loaded_costs_minor, dto.currency), note: "Actual costs in tenant currency", tone: "amber" },
+      { label: "Commissions", value: formatMoney(dto.summary.commission_accruals_minor, dto.currency), note: "Accrued by sales channel", tone: "red" },
+      { label: "Operating margin", value: formatMoney(dto.summary.margin_minor, dto.currency), note: `${dto.summary.margin_percent}% of booked revenue`, tone: "forest" },
     ],
     series: dto.revenue_series.map((item) => ({ label: item.label, value: item.value_minor })),
     deposits: {
@@ -210,8 +215,24 @@ export function mapFinanceProjection(dto: FinanceDto): FinanceView {
       channel: channel.channel,
       bookings: channel.bookings,
       revenueMinor: channel.revenue_minor,
+      commissionsMinor: channel.commission_accruals_minor,
+      netRevenueMinor: channel.net_revenue_minor,
       collectionPercent: channel.collection_percent,
     })),
+    programs: dto.programs.map((program) => ({
+      id: program.program_id ?? "unallocated",
+      name: program.program,
+      bookings: program.bookings,
+      revenueMinor: program.revenue_minor,
+      costsMinor: program.loaded_costs_minor,
+      commissionsMinor: program.commission_accruals_minor,
+      marginMinor: program.margin_minor,
+    })),
+    reconciliation: {
+      balanced: dto.reconciliation.is_balanced,
+      differenceMinor: dto.reconciliation.difference_minor + dto.reconciliation.program_difference_minor,
+      policy: dto.reconciliation.currency_policy,
+    },
     recentFolios: dto.recent_folios.map((folio) => ({
       id: folio.reservation_id,
       confirmationNumber: folio.confirmation_number,

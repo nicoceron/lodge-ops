@@ -26,6 +26,8 @@ export async function AppShell({ children, eyebrow, title, description, action }
   const selectedId = (await cookies()).get("lodgeops_tenant_id")?.value;
   const activeTenant = selectedTenant(user, selectedId);
   const role = user.membership?.role ?? activeTenant?.role ?? "staff";
+  const canViewOperations = ["owner", "manager", "operations", "guide", "kitchen", "housekeeping"].includes(role);
+  const canSearch = ["owner", "manager", "sales", "operations"].includes(role);
   const workspace = isDemo
     ? tenant
     : {
@@ -51,7 +53,7 @@ export async function AppShell({ children, eyebrow, title, description, action }
             </div>
           </div>
         </div>
-        <SidebarNav />
+        <SidebarNav role={role} />
         <div className="m-3 rounded-2xl border border-white/10 bg-black/10 p-3">
           <div className="flex w-full items-center gap-3 text-left">
             <span className="grid size-9 place-items-center rounded-lg bg-[#dbe6da] text-xs font-bold text-[var(--forest)]">
@@ -74,15 +76,15 @@ export async function AppShell({ children, eyebrow, title, description, action }
               <div className="grid size-9 place-items-center rounded-xl bg-[var(--forest)] font-display text-lg text-white">L</div>
               <span className="font-display text-xl">LodgeOps</span>
             </div>
-            <form action="/search" role="search" className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-xl border border-black/8 bg-white/70 px-3 py-2 text-sm text-[var(--muted)] shadow-sm sm:flex lg:ml-0">
+            {canSearch ? <form action="/search" role="search" className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-xl border border-black/8 bg-white/70 px-3 py-2 text-sm text-[var(--muted)] shadow-sm sm:flex lg:ml-0">
               <Search aria-hidden="true" className="size-4" />
               <label className="min-w-0 flex-1"><span className="sr-only">Search guests, reservations, and resources</span><input name="q" placeholder="Search guests, reservations, resources…" className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted)]" /></label>
               <span className="flex items-center gap-1 rounded-md border border-black/8 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-black/45">
                 <Command aria-hidden="true" className="size-3" /> K
               </span>
-            </form>
+            </form> : <div className="ml-auto" />}
             <Link
-              href="/operations"
+              href={canViewOperations ? "/operations" : role === "finance" ? "/finance" : "/"}
               aria-label={isDemo ? "Notifications, 3 unread" : "Notifications"}
               className="relative grid size-10 place-items-center rounded-xl border border-black/8 bg-white/70 text-[var(--muted)] shadow-sm"
             >
@@ -99,7 +101,7 @@ export async function AppShell({ children, eyebrow, title, description, action }
             </div>
             <div className="lg:hidden"><LogoutButton compact /></div>
           </div>
-          <MobileNav />
+          <MobileNav role={role} />
         </header>
 
         <main className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

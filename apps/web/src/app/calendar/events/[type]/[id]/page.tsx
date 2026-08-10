@@ -11,18 +11,24 @@ export const metadata: Metadata = { title: "Calendar event" };
 
 export default async function CalendarEventPage({ params }: { params: Promise<{ type: string; id: string }> }) {
   const { type, id } = await params;
-  if (!['activity', 'resource_block'].includes(type)) notFound();
+  if (!["activity", "resource_block"].includes(type)) notFound();
+  let loaded;
   try {
     if (type === "activity") {
       const [eventResponse, programResponse, resourceResponse] = await Promise.all([getServiceOccurrence(id), listPrograms(), listResources()]);
-      return <Shell><CalendarEventEditor occurrence={eventResponse.data} programs={programResponse.data} resources={resourceResponse.data} /></Shell>;
+      loaded = { kind: "activity" as const, event: eventResponse.data, programs: programResponse.data, resources: resourceResponse.data };
+    } else {
+      const [eventResponse, programResponse, resourceResponse] = await Promise.all([getResourceBlock(id), listPrograms(), listResources()]);
+      loaded = { kind: "resource_block" as const, event: eventResponse.data, programs: programResponse.data, resources: resourceResponse.data };
     }
-    const [eventResponse, programResponse, resourceResponse] = await Promise.all([getResourceBlock(id), listPrograms(), listResources()]);
-    return <Shell><CalendarEventEditor block={eventResponse.data} programs={programResponse.data} resources={resourceResponse.data} /></Shell>;
   } catch (reason) {
     if (reason instanceof LodgeApiError && reason.status === 404) notFound();
     throw reason;
   }
+
+  return <Shell>{loaded.kind === "activity"
+    ? <CalendarEventEditor occurrence={loaded.event} programs={loaded.programs} resources={loaded.resources} />
+    : <CalendarEventEditor block={loaded.event} programs={loaded.programs} resources={loaded.resources} />}</Shell>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
