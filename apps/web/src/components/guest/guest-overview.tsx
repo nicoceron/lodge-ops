@@ -13,12 +13,11 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { guestReservation } from "@/data/guest-demo";
 import { useGuestPortal } from "@/components/guest/guest-state";
 import styles from "@/components/guest/guest-portal.module.css";
 
-export function GuestOverview({ token }: { token: string }) {
-  const { completion, completedCount, completionPercent } = useGuestPortal();
+export function GuestOverview({ basePath }: { basePath: string }) {
+  const { completion, completedCount, completionPercent, reservation } = useGuestPortal();
   const readinessItems = [
     { key: "trip", label: "Reservation confirmed" },
     { key: "pre-arrival", label: "Arrival details" },
@@ -36,7 +35,7 @@ export function GuestOverview({ token }: { token: string }) {
             Your itinerary stays flexible around weather and trail conditions. We will always confirm tomorrow&apos;s plan over dinner.
           </p>
         </div>
-        <Link href={`/guest/${token}/pre-arrival`} className={styles.actionLink}>
+        <Link href={`${basePath}/pre-arrival`} className={styles.actionLink}>
           Finish preparing <ArrowRight aria-hidden="true" size={15} />
         </Link>
       </div>
@@ -51,7 +50,7 @@ export function GuestOverview({ token }: { token: string }) {
             <span className={styles.pill}><Sparkles aria-hidden="true" size={13} /> Host-curated</span>
           </div>
           <div className={styles.timeline}>
-            {guestReservation.itinerary.map((item) => (
+            {reservation.itinerary.map((item) => (
               <article className={styles.timelineItem} key={`${item.day}-${item.title}`}>
                 <time className={styles.timelineDay}>{item.day}</time>
                 <span className={styles.timelineMarker} aria-hidden="true" />
@@ -107,19 +106,19 @@ export function GuestOverview({ token }: { token: string }) {
             <dl className={styles.detailList}>
               <div className={styles.detailRow}>
                 <dt className={styles.detailLabel}><MapPin aria-hidden="true" size={13} /> Property</dt>
-                <dd className={styles.detailValue}>{guestReservation.property}</dd>
+                <dd className={styles.detailValue}>{reservation.property}</dd>
               </div>
               <div className={styles.detailRow}>
                 <dt className={styles.detailLabel}><BedDouble aria-hidden="true" size={13} /> Suite</dt>
-                <dd className={styles.detailValue}>{guestReservation.room}</dd>
+                <dd className={styles.detailValue}>{reservation.room}</dd>
               </div>
               <div className={styles.detailRow}>
                 <dt className={styles.detailLabel}><Users aria-hidden="true" size={13} /> Party</dt>
-                <dd className={styles.detailValue}>{guestReservation.guests} guests</dd>
+                <dd className={styles.detailValue}>{reservation.guests} guests</dd>
               </div>
               <div className={styles.detailRow}>
                 <dt className={styles.detailLabel}><Phone aria-hidden="true" size={13} /> Your host</dt>
-                <dd className={styles.detailValue}>{guestReservation.host}</dd>
+                <dd className={styles.detailValue}>{reservation.host}</dd>
               </div>
             </dl>
           </section>

@@ -10,7 +10,7 @@ import {
   Layers3,
   Search,
 } from "lucide-react";
-import { calendarDays, calendarLanes } from "@/lib/demo-data";
+import type { CalendarView } from "@/data/staff-types";
 import { cn } from "@/lib/utils";
 
 const eventTone = {
@@ -21,23 +21,29 @@ const eventTone = {
   block: "border-black/8 bg-[#e7e6e1] text-[#646762]",
 };
 
-const groupOptions = ["All resources", "Rooms", "Guides", "Equipment"] as const;
+const groupOptions = ["All resources", "Rooms", "Guides", "Equipment", "Operations"] as const;
 
-export function MasterCalendar({ compact = false }: { compact?: boolean }) {
+export function MasterCalendar({
+  calendar,
+  compact = false,
+}: {
+  calendar: CalendarView;
+  compact?: boolean;
+}) {
   const [group, setGroup] = useState<(typeof groupOptions)[number]>("All resources");
   const [query, setQuery] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
 
   const lanes = useMemo(() => {
-    return calendarLanes.filter((lane) => {
+    return calendar.lanes.filter((lane) => {
       const groupMatch = group === "All resources" || lane.group === group;
       const queryMatch = `${lane.label} ${lane.detail}`.toLowerCase().includes(query.toLowerCase());
       return groupMatch && queryMatch;
     });
-  }, [group, query]);
+  }, [calendar.lanes, group, query]);
 
   const visibleLanes = compact ? lanes.slice(0, 4) : lanes;
-  const dateLabel = weekOffset === 0 ? "10–16 August 2026" : weekOffset < 0 ? "3–9 August 2026" : "17–23 August 2026";
+  const dateLabel = weekOffset === 0 ? calendar.rangeLabel : weekOffset < 0 ? "Previous seven-day window" : "Next seven-day window";
 
   return (
     <section className="surface-card overflow-hidden rounded-2xl" aria-labelledby="calendar-title">
@@ -100,7 +106,7 @@ export function MasterCalendar({ compact = false }: { compact?: boolean }) {
 
       {weekOffset !== 0 ? (
         <div className="border-b border-[var(--amber)]/15 bg-[var(--amber-soft)]/45 px-5 py-2 text-center text-xs text-[#84552d]">
-          Demo data is pinned to 10–16 August. Return to <button type="button" onClick={() => setWeekOffset(0)} className="font-bold underline">today</button> to see allocations.
+          {calendar.isDemo ? "Demo data is pinned to its sample week." : "Live allocations are loaded for the selected server-side window."} Return to <button type="button" onClick={() => setWeekOffset(0)} className="font-bold underline">today</button> to see allocations.
         </div>
       ) : null}
 
@@ -110,7 +116,7 @@ export function MasterCalendar({ compact = false }: { compact?: boolean }) {
             <div className="flex items-center gap-2 border-r border-black/7 px-4 py-3 text-[10px] font-bold tracking-[0.12em] text-[var(--muted)] uppercase">
               <Layers3 aria-hidden="true" className="size-3.5" /> Resource
             </div>
-            {calendarDays.map((day) => (
+            {calendar.days.map((day) => (
               <div key={day.key} className={cn("border-r border-black/7 px-3 py-2.5 text-center last:border-r-0", day.today && "bg-[var(--forest-soft)]/65")}>
                 <span className="block text-[10px] font-semibold text-[var(--muted)] uppercase">{day.weekday}</span>
                 <span className={cn("mx-auto mt-1 grid size-7 place-items-center rounded-full text-xs font-bold", day.today && "bg-[var(--forest)] text-white")}>{day.day}</span>
@@ -134,7 +140,7 @@ export function MasterCalendar({ compact = false }: { compact?: boolean }) {
                     </div>
                     <span className="text-[9px] font-semibold text-[var(--muted)]">{lane.utilization}%</span>
                   </div>
-                  {calendarDays.map((day) => <div key={day.key} className={cn("border-r border-black/6 last:border-r-0", day.today && "bg-[var(--forest-soft)]/22")} />)}
+                  {calendar.days.map((day) => <div key={day.key} className={cn("border-r border-black/6 last:border-r-0", day.today && "bg-[var(--forest-soft)]/22")} />)}
                   {weekOffset === 0 ? lane.events.map((event) => (
                     <button
                       key={event.id}
@@ -166,16 +172,21 @@ export function MasterCalendar({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/7 bg-[#faf8f2] px-4 py-3 text-[10px] text-[var(--muted)] sm:px-5">
-        {[
+        {(calendar.isDemo ? [
           ["bg-[#f3d8d2]", "Red Stag"],
           ["bg-[#d9e9e8]", "Patagonian Double"],
           ["bg-[#e4ece3]", "Lodge stay"],
           ["bg-[#f7e1c6]", "Activity"],
           ["bg-[#e7e6e1]", "Unavailable"],
-        ].map(([classes, label]) => (
+        ] : [
+          ["bg-[#e4ece3]", "Reservation"],
+          ["bg-[#d9e9e8]", "In house"],
+          ["bg-[#f7e1c6]", "Activity or task"],
+          ["bg-[#e7e6e1]", "Unavailable"],
+        ]).map(([classes, label]) => (
           <span key={label} className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-sm border border-black/8", classes)} />{label}</span>
         ))}
-        <span className="ml-auto hidden font-medium sm:block">All times shown in property timezone</span>
+        <span className="ml-auto hidden font-medium sm:block">All times shown in {calendar.timezone}</span>
       </div>
     </section>
   );

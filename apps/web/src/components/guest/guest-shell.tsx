@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LockKeyhole, MessageCircleMore } from "lucide-react";
-import { guestNavigation, guestReservation } from "@/data/guest-demo";
+import { guestNavigation } from "@/data/guest-demo";
 import { useGuestPortal } from "@/components/guest/guest-state";
 import styles from "@/components/guest/guest-portal.module.css";
 
-export function GuestShell({ token, children }: { token: string; children: React.ReactNode }) {
+export function GuestShell({ basePath, children }: { basePath: string; children: React.ReactNode }) {
   const pathname = usePathname();
-  const { completion } = useGuestPortal();
-  const basePath = `/guest/${token}`;
+  const { completion, reservation } = useGuestPortal();
 
   return (
     <div className={styles.portal}>
@@ -20,8 +19,8 @@ export function GuestShell({ token, children }: { token: string; children: React
             <Link href={basePath} className={styles.brand} aria-label="Estancia Viento Sur guest portal">
               <span className={styles.brandMark} aria-hidden="true">V</span>
               <span>
-                <span className={styles.brandName}>{guestReservation.property}</span>
-                <span className={styles.brandPlace}>{guestReservation.location}</span>
+                <span className={styles.brandName}>{reservation.property}</span>
+                <span className={styles.brandPlace}>{reservation.location}</span>
               </span>
             </Link>
             <span className={styles.secureBadge} aria-label="Private reservation link">
@@ -32,8 +31,8 @@ export function GuestShell({ token, children }: { token: string; children: React
 
           <div className={styles.welcomeGrid}>
             <div>
-              <p className={styles.eyebrow}>Your stay · {guestReservation.reservationCode}</p>
-              <p className={styles.welcomeTitle}>Patagonia is waiting, {guestReservation.guestName.split(" ")[0]}.</p>
+              <p className={styles.eyebrow}>Your stay · {reservation.reservationCode}</p>
+              <p className={styles.welcomeTitle}>Patagonia is waiting, {reservation.guestName.split(" ")[0]}.</p>
               <p className={styles.welcomeCopy}>
                 Everything for your stay lives here—from arrival details to your daily itinerary.
                 Your host keeps this plan current as the adventure takes shape.
@@ -42,15 +41,15 @@ export function GuestShell({ token, children }: { token: string; children: React
             <div className={styles.tripSummary} aria-label="Stay summary">
               <span className={styles.tripSummaryItem}>
                 <span className={styles.tripSummaryLabel}>Dates</span>
-                <span className={styles.tripSummaryValue}>{guestReservation.stay}</span>
+                <span className={styles.tripSummaryValue}>{reservation.stay}</span>
               </span>
               <span className={styles.tripSummaryItem}>
                 <span className={styles.tripSummaryLabel}>Stay</span>
-                <span className={styles.tripSummaryValue}>{guestReservation.nights} nights</span>
+                <span className={styles.tripSummaryValue}>{reservation.nights} nights</span>
               </span>
               <span className={styles.tripSummaryItem}>
                 <span className={styles.tripSummaryLabel}>Party</span>
-                <span className={styles.tripSummaryValue}>{guestReservation.guests} guests</span>
+                <span className={styles.tripSummaryValue}>{reservation.guests} guests</span>
               </span>
             </div>
           </div>
@@ -88,8 +87,8 @@ export function GuestShell({ token, children }: { token: string; children: React
           <span>
             This portal opens only through your private magic link. We never ask you to look up a booking by surname.
           </span>
-          <a className={styles.footerLink} href={`tel:${guestReservation.hostPhone.replace(/\s/g, "")}`}>
-            <MessageCircleMore aria-hidden="true" size={15} /> Contact {guestReservation.host}
+          <a className={styles.footerLink} href={reservation.hostPhone ? `tel:${reservation.hostPhone.replace(/\s/g, "")}` : "mailto:stay@vientosur.example"}>
+            <MessageCircleMore aria-hidden="true" size={15} /> Contact {reservation.host}
           </a>
         </div>
       </footer>

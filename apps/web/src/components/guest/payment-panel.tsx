@@ -2,40 +2,37 @@
 
 import { useRef, useState } from "react";
 import { CheckCircle2, Clock3, Copy, Landmark, ShieldCheck, UploadCloud } from "lucide-react";
-import { formatMoney, guestReservation } from "@/data/guest-demo";
+import { formatMoney } from "@/data/guest-demo";
 import { useGuestPortal } from "@/components/guest/guest-state";
 import styles from "@/components/guest/guest-portal.module.css";
 
-const bankDetails = [
-  ["Beneficiary", "Estancia Viento Sur SA"],
-  ["Bank", "Banco Patagonia"],
-  ["SWIFT / BIC", "BAPGARBA"],
-  ["Account", "USD · •••• 4428"],
-  ["Reference", guestReservation.reservationCode],
-];
-
 export function PaymentPanel() {
-  const { state, updateState } = useGuestPortal();
+  const { state, reservation, submitPaymentEvidence } = useGuestPortal();
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const copyReference = async () => {
     try {
-      await navigator.clipboard.writeText(guestReservation.reservationCode);
+      await navigator.clipboard.writeText(reservation.reservationCode);
       setMessage("Payment reference copied.");
     } catch {
-      setMessage(`Use reference ${guestReservation.reservationCode}.`);
+      setMessage(`Use reference ${reservation.reservationCode}.`);
     }
   };
 
-  const fileSelected = () => {
+  const fileSelected = async () => {
     const file = fileInput.current?.files?.[0];
     if (!file) return;
-    updateState((current) => ({
-      ...current,
-      paymentEvidence: { fileName: file.name, status: "review-pending" },
-    }));
-    setMessage(`${file.name} attached for secure review.`);
+    setSaving(true);
+    try {
+      await submitPaymentEvidence(file);
+      setMessage(`${file.name} attached for secure review.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to attach evidence right now.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -43,12 +40,12 @@ export function PaymentPanel() {
       <section className={`${styles.card} ${styles.cardPadding}`} aria-labelledby="payment-heading">
         <span className={styles.statusPill}><Clock3 aria-hidden="true" size={13} /> Due 10 August</span>
         <h2 id="payment-heading" className={styles.paymentAmount} style={{ marginTop: "0.75rem" }}>
-          {formatMoney(guestReservation.balanceMinor)}
+          {formatMoney(reservation.balanceMinor, reservation.currency)}
         </h2>
         <p className={styles.paymentMeta}>Remaining balance · bank transfer</p>
 
         <div className={styles.bankDetails} aria-label="Bank transfer instructions">
-          {bankDetails.map(([label, value]) => (
+          {(reservation.paymentInstructions.length ? reservation.paymentInstructions : [["Payment reference", reservation.reservationCode], ["Next step", "Contact your lodge host for verified transfer instructions"]]).map(([label, value]) => (
             <div className={styles.bankRow} key={label}>
               <span className={styles.bankLabel}>{label}</span>
               <span className={styles.bankValue}>{value}</span>
@@ -94,6 +91,7 @@ export function PaymentPanel() {
               aria-label="Choose transfer evidence"
               accept="application/pdf,image/jpeg,image/png"
               onChange={fileSelected}
+              disabled={saving}
             />
           </div>
         )}

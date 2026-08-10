@@ -2,28 +2,35 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CircleCheck, Clock3, MapPin, Plane, UsersRound } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { DataNotice, DataState } from "@/components/data-state";
 import { MasterCalendar } from "@/components/master-calendar";
 import { MetricCard } from "@/components/metric-card";
 import { StatusPill } from "@/components/status-pill";
-import { arrivals, dashboardStats, operationalTasks, readiness } from "@/lib/demo-data";
+import { loadDashboardProjection } from "@/data/staff-projections";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Overview" };
 
-export default function OverviewPage() {
+export default async function OverviewPage() {
+  const state = await loadDashboardProjection();
+  const dashboard = state.data;
+
   return (
     <AppShell
-      eyebrow="Monday · 10 August"
-      title="Good morning, Nico"
-      description="The lodge is calm today. Three arrivals are expected and four details need your attention before service begins."
+      eyebrow={dashboard?.dateLabel ?? "Live operations"}
+      title={state.mode === "demo" ? "Good morning, Nico" : "Operations overview"}
+      description={dashboard?.description ?? "A tenant-scoped view of arrivals, readiness, assignments, and today’s operating pulse."}
       action={{ label: "New reservation", shortLabel: "Reservation" }}
     >
+      {!dashboard ? <DataState kind="error" title="Overview unavailable" description={state.error ?? "Live operations could not be loaded."} /> : null}
+      {dashboard && state.notice ? <DataNotice>{state.notice}</DataNotice> : null}
+      {dashboard ? <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        {dashboardStats.map((stat) => <MetricCard key={stat.label} {...stat} />)}
+        {dashboard.stats.map((stat) => <MetricCard key={stat.label} {...stat} />)}
       </div>
 
       <div className="mt-5 animate-enter">
-        <MasterCalendar compact />
+        <MasterCalendar calendar={dashboard.calendar} compact />
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.8fr)]">
@@ -31,15 +38,15 @@ export default function OverviewPage() {
           <div className="flex items-center justify-between border-b border-black/7 px-5 py-4">
             <div>
               <h2 id="arrivals-heading" className="text-sm font-bold">Today&apos;s arrivals</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">7 guests across 3 parties</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">{dashboard.arrivals.reduce((total, arrival) => total + arrival.guests, 0)} guests across {dashboard.arrivals.length} parties</p>
             </div>
             <Link href="/reservations" className="inline-flex items-center gap-1 text-xs font-bold text-[var(--forest)] hover:underline">
               All reservations <ArrowRight aria-hidden="true" className="size-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-black/6">
-            {arrivals.map((arrival) => (
-              <article key={arrival.party} className="grid gap-4 px-5 py-4 sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center">
+            {dashboard.arrivals.map((arrival) => (
+              <article key={arrival.id} className="grid gap-4 px-5 py-4 sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center">
                 <div>
                   <p className="font-mono text-sm font-bold">{arrival.time}</p>
                   <p className="mt-1 text-[9px] font-bold tracking-[0.1em] text-[var(--muted)] uppercase">Arrival</p>
@@ -58,6 +65,7 @@ export default function OverviewPage() {
                 <StatusPill tone={arrival.readiness} compact />
               </article>
             ))}
+            {!dashboard.arrivals.length ? <div className="px-5 py-10 text-center"><p className="text-sm font-semibold">No arrivals today</p><p className="mt-1 text-xs text-[var(--muted)]">The live tenant has no arrival parties in today’s property-time window.</p></div> : null}
           </div>
         </section>
 
@@ -65,13 +73,13 @@ export default function OverviewPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 id="readiness-heading" className="text-sm font-bold">Arrival readiness</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">Next 7 days · 24 guests</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Next 7 days · {dashboard.readiness.totalGuests} arriving guests</p>
             </div>
-            <div className="grid size-11 place-items-center rounded-full border-[5px] border-[var(--forest)] border-r-[var(--amber-soft)] font-mono text-[10px] font-bold">87%</div>
+            <div className="grid size-11 place-items-center rounded-full border-[5px] border-[var(--forest)] border-r-[var(--amber-soft)] font-mono text-[10px] font-bold">{dashboard.readiness.percent}%</div>
           </div>
           <div className="mt-5 space-y-4">
-            {readiness.map((item) => {
-              const percent = Math.round((item.complete / item.total) * 100);
+            {dashboard.readiness.items.map((item) => {
+              const percent = item.total ? Math.round((item.complete / item.total) * 100) : 100;
               return (
                 <div key={item.label}>
                   <div className="mb-1.5 flex justify-between text-[11px]">
@@ -101,8 +109,8 @@ export default function OverviewPage() {
         </div>
         <div className="grid divide-y divide-black/6 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="divide-y divide-black/6">
-            {operationalTasks.map((task) => (
-              <div key={task.title} className="flex items-center gap-3 px-5 py-3.5">
+            {dashboard.tasks.map((task) => (
+              <div key={task.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className={cn("grid size-7 place-items-center rounded-full border", task.done ? "border-[var(--forest)] bg-[var(--forest)] text-white" : "border-black/12 bg-white text-black/25")}>
                   <CircleCheck aria-hidden="true" className="size-4" />
                 </span>
@@ -113,14 +121,16 @@ export default function OverviewPage() {
                 <span className="grid size-7 place-items-center rounded-lg bg-black/5 text-[9px] font-bold">{task.owner}</span>
               </div>
             ))}
+            {!dashboard.tasks.length ? <div className="px-5 py-10 text-center text-xs text-[var(--muted)]">No open tasks in the current tenant.</div> : null}
           </div>
           <div className="subtle-grid flex min-h-48 flex-col items-center justify-center p-8 text-center">
             <span className="grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><MapPin aria-hidden="true" className="size-5" /></span>
             <p className="mt-4 font-display text-2xl font-semibold">No capacity conflicts</p>
-            <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--muted)]">All confirmed rooms and shared resources fit. One guide requirement is still unassigned.</p>
+            <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--muted)]">{dashboard.calendar.summary.unassignedReservations ? `${dashboard.calendar.summary.unassignedReservations} reservation assignment${dashboard.calendar.summary.unassignedReservations === 1 ? " is" : "s are"} still open.` : "All visible reservation assignments are covered."}</p>
           </div>
         </div>
       </section>
+      </> : null}
     </AppShell>
   );
 }

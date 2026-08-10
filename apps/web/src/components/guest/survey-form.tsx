@@ -39,24 +39,29 @@ function RatingField({
 }
 
 export function SurveyForm() {
-  const { state, updateState } = useGuestPortal();
+  const { state, submitSurvey } = useGuestPortal();
   const [stayRating, setStayRating] = useState(state.survey.stayRating);
   const [guideRating, setGuideRating] = useState(state.survey.guideRating);
   const [comment, setComment] = useState(state.survey.comment);
   const [shareWithTeam, setShareWithTeam] = useState(true);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!stayRating || !guideRating) {
       setError("Choose a rating for both your stay and guiding experience.");
       return;
     }
-    updateState((current) => ({
-      ...current,
-      survey: { submitted: true, stayRating, guideRating, comment },
-    }));
-    setError("");
+    setSaving(true);
+    try {
+      await submitSurvey({ stayRating, guideRating, comment, shareWithTeam });
+      setError("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to submit feedback right now.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (state.survey.submitted) {
@@ -104,8 +109,8 @@ export function SurveyForm() {
 
         {error ? <p className={styles.fieldError} role="alert" style={{ marginTop: "1rem" }}>{error}</p> : null}
         <div className={styles.formActions}>
-          <button className={styles.primaryButton} type="submit">
-            <Send aria-hidden="true" size={15} /> Send private feedback
+          <button className={styles.primaryButton} type="submit" disabled={saving}>
+            <Send aria-hidden="true" size={15} /> {saving ? "Sending…" : "Send private feedback"}
           </button>
         </div>
       </form>

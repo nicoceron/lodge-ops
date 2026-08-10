@@ -4,6 +4,7 @@ const guestPortal = "/guest/g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA";
 
 test("guest prepares for a stay through a private reservation link", async ({ page }) => {
   await page.goto(guestPortal);
+  await page.getByRole("button", { name: "Open my stay" }).click();
 
   await expect(page.getByRole("heading", { name: "A clear view of your stay" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Guest portal navigation" })).toBeVisible();
@@ -31,7 +32,7 @@ test("guest prepares for a stay through a private reservation link", async ({ pa
 
 test("guest portal remains usable on mobile", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "mobile project only");
-  await page.goto(`${guestPortal}/payments`);
+  await page.goto("/guest/stay/payments");
 
   await expect(page.getByRole("heading", { name: "Unambiguous payment details" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Guest portal navigation" })).toBeVisible();
@@ -41,6 +42,7 @@ test("guest portal remains usable on mobile", async ({ page }, testInfo) => {
 
 test("invalid private links reveal no reservation lookup", async ({ page }) => {
   await page.goto("/guest/g_expired-or-invalid-token");
+  await page.getByRole("button", { name: "Open my stay" }).click();
 
   await expect(page.getByRole("heading", { name: "This private link is unavailable" })).toBeVisible();
   await expect(page.getByText(/cannot be recovered by surname/)).toBeVisible();

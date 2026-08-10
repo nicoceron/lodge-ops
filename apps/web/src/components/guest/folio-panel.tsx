@@ -1,12 +1,14 @@
 "use client";
 
 import { Download, FileText, Info, LockKeyhole } from "lucide-react";
-import { formatMoney, guestReservation } from "@/data/guest-demo";
+import { formatMoney } from "@/data/guest-demo";
+import { useGuestPortal } from "@/components/guest/guest-state";
 import styles from "@/components/guest/guest-portal.module.css";
 
 export function FolioPanel() {
-  const charges = guestReservation.folio.filter((item) => item.amountMinor > 0).reduce((sum, item) => sum + item.amountMinor, 0);
-  const payments = guestReservation.folio.filter((item) => item.amountMinor < 0).reduce((sum, item) => sum + Math.abs(item.amountMinor), 0);
+  const { reservation, state } = useGuestPortal();
+  const charges = reservation.folio.filter((item) => item.amountMinor > 0).reduce((sum, item) => sum + item.amountMinor, 0);
+  const payments = reservation.folio.filter((item) => item.amountMinor < 0).reduce((sum, item) => sum + Math.abs(item.amountMinor), 0);
   const currentBalance = charges - payments;
 
   return (
@@ -16,7 +18,7 @@ export function FolioPanel() {
           <div>
             <span className={styles.statusPill}><FileText aria-hidden="true" size={13} /> Live statement</span>
             <h2 id="folio-heading" className={styles.formSectionTitle} style={{ marginTop: "0.7rem" }}>Guest folio</h2>
-            <p className={styles.formSectionDescription}>Reservation {guestReservation.reservationCode} · amounts in USD</p>
+            <p className={styles.formSectionDescription}>Reservation {reservation.reservationCode} · amounts in {reservation.currency}</p>
           </div>
           <button className={styles.secondaryButton} type="button" onClick={() => window.print()}>
             <Download aria-hidden="true" size={15} /> Print
@@ -29,11 +31,11 @@ export function FolioPanel() {
               <tr><th>Date</th><th>Description</th><th>Amount</th></tr>
             </thead>
             <tbody>
-              {guestReservation.folio.map((line) => (
+              {reservation.folio.map((line) => (
                 <tr key={`${line.date}-${line.description}`}>
                   <td>{line.date}</td>
                   <td>{line.description}</td>
-                  <td>{formatMoney(line.amountMinor)}</td>
+                  <td>{formatMoney(line.amountMinor, reservation.currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -41,15 +43,15 @@ export function FolioPanel() {
         </div>
 
         <div className={styles.folioTotals}>
-          <div className={styles.folioTotalRow}><span>Charges</span><strong>{formatMoney(charges)}</strong></div>
-          <div className={styles.folioTotalRow}><span>Payments received</span><strong>−{formatMoney(payments)}</strong></div>
-          <div className={`${styles.folioTotalRow} ${styles.folioTotalRowStrong}`}><span>Balance</span><span>{formatMoney(currentBalance)}</span></div>
+          <div className={styles.folioTotalRow}><span>Charges</span><strong>{formatMoney(charges, reservation.currency)}</strong></div>
+          <div className={styles.folioTotalRow}><span>Payments received</span><strong>−{formatMoney(payments, reservation.currency)}</strong></div>
+          <div className={`${styles.folioTotalRow} ${styles.folioTotalRowStrong}`}><span>Balance</span><span>{formatMoney(currentBalance, reservation.currency)}</span></div>
         </div>
       </section>
 
       <aside className={`${styles.card} ${styles.cardPadding}`} aria-labelledby="final-folio-heading">
         <span className={styles.iconBox}><LockKeyhole aria-hidden="true" size={18} /></span>
-        <h2 id="final-folio-heading" className={styles.cardTitle} style={{ marginTop: "0.85rem" }}>Final after check-out</h2>
+        <h2 id="final-folio-heading" className={styles.cardTitle} style={{ marginTop: "0.85rem" }}>{state.folioFinal ? "Final folio" : "Final after check-out"}</h2>
         <p className={styles.cardDescription}>This live statement includes confirmed reservation charges and payments. Your tax-valid final folio is locked after departure and remains available here.</p>
         <div className={styles.notice} style={{ marginTop: "1rem" }}>
           <Info aria-hidden="true" size={18} />

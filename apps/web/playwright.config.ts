@@ -17,6 +17,7 @@ export default defineConfig({
   webServer: {
     command: "npm run start",
     url: "http://127.0.0.1:3000",
+    env: { GUEST_PORTAL_DEMO_MODE: "true" },
     reuseExistingServer: !process.env.CI,
   },
 });

@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentsPanel } from "@/components/guest/documents-panel";
 import { GuestPortalProvider } from "@/components/guest/guest-state";
+import { PaymentPanel } from "@/components/guest/payment-panel";
 import { PreArrivalForm } from "@/components/guest/pre-arrival-form";
 import { SurveyForm } from "@/components/guest/survey-form";
+import { initialGuestPortalState } from "@/data/guest-demo";
 
 let testPortal = 0;
 
@@ -63,5 +65,54 @@ describe("guest self-service forms", () => {
     await user.click(screen.getByRole("button", { name: "Send private feedback" }));
 
     expect(screen.getByRole("heading", { name: "Thank you, Alex." })).toBeInTheDocument();
+  });
+
+  it("persists live pre-arrival data through the same-origin server boundary", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status: 200 }));
+    vi.stubGlobal("fetch", request);
+    const initialState = {
+      ...initialGuestPortalState,
+      profile: { ...initialGuestPortalState.profile, emergencyName: "Jamie Morgan", emergencyPhone: "+14155550120" },
+      travel: { ...initialGuestPortalState.travel, departureReference: "LA 897", departureTime: "2026-08-17T13:20" },
+      preferences: { ...initialGuestPortalState.preferences, medicalConsent: true },
+    };
+
+    render(
+      <GuestPortalProvider token="live-boundary-test" mode="live" initialState={initialState}>
+        <PreArrivalForm />
+      </GuestPortalProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Save pre-arrival details" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/guest/api/pre-arrival",
+      expect.objectContaining({ method: "PUT" }),
+    ));
+    expect(screen.getByRole("status")).toHaveTextContent("Pre-arrival details saved");
+    vi.unstubAllGlobals();
+  });
+
+  it("forwards the actual evidence file to the same-origin upload boundary", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: "review_pending" } }), { status: 201 }));
+    vi.stubGlobal("fetch", request);
+    render(
+      <GuestPortalProvider token="live-upload-test" mode="live">
+        <PaymentPanel />
+      </GuestPortalProvider>,
+    );
+
+    const evidence = new File(["real binary body"], "transfer.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText("Choose transfer evidence"), evidence);
+
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    const [url, options] = request.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/guest/api/payment-evidence");
+    expect(options.method).toBe("POST");
+    expect(options.body).toBeInstanceOf(FormData);
+    expect((options.body as FormData).get("evidence")).toBe(evidence);
+    expect(screen.getByRole("status")).toHaveTextContent("attached for secure review");
+    vi.unstubAllGlobals();
   });
 });

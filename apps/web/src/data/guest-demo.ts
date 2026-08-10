@@ -31,6 +31,7 @@ export type GuestPortalState = {
     fileName: string | null;
     status: "not-needed" | "ready" | "review-pending" | "accepted";
   };
+  folioFinal: boolean;
   survey: {
     submitted: boolean;
     stayRating: number;
@@ -70,6 +71,7 @@ export const initialGuestPortalState: GuestPortalState = {
     fileName: null,
     status: "ready",
   },
+  folioFinal: false,
   survey: {
     submitted: false,
     stayRating: 0,
@@ -78,7 +80,51 @@ export const initialGuestPortalState: GuestPortalState = {
   },
 };
 
-export const guestReservation = {
+export type GuestItineraryItem = {
+  day: string;
+  title: string;
+  time: string;
+  detail: string;
+  type: string;
+};
+
+export type GuestFolioLine = {
+  date: string;
+  description: string;
+  amountMinor: number;
+};
+
+export type GuestReservationData = {
+  property: string;
+  location: string;
+  guestName: string;
+  partyName: string;
+  reservationCode: string;
+  stay: string;
+  nights: number;
+  guests: number;
+  room: string;
+  program: string;
+  host: string;
+  hostPhone: string;
+  arrival: string;
+  departure: string;
+  balanceMinor: number;
+  currency: string;
+  itinerary: GuestItineraryItem[];
+  folio: GuestFolioLine[];
+  paymentInstructions: Array<[string, string]>;
+};
+
+export type GuestDocumentData = {
+  slug: string;
+  title: string;
+  version: string;
+  body: string;
+  bodyHash: string;
+};
+
+export const guestReservation: GuestReservationData = {
   property: "Estancia Viento Sur",
   location: "El Chaltén, Patagonia",
   guestName: "Alex Morgan",
@@ -145,7 +191,22 @@ export const guestReservation = {
     { date: "03 Jun", description: "Booking deposit", amountMinor: -252000 },
     { date: "08 Aug", description: "Card payment", amountMinor: -252000 },
   ],
-} as const;
+  paymentInstructions: [
+    ["Beneficiary", "Estancia Viento Sur SA"],
+    ["Bank", "Banco Patagonia"],
+    ["SWIFT / BIC", "BAPGARBA"],
+    ["Account", "USD · •••• 4428"],
+    ["Reference", "VS-260812-04"],
+  ],
+};
+
+export const guestDocument: GuestDocumentData = {
+  slug: "outdoor-waiver",
+  title: "Outdoor activity waiver",
+  version: "3.2",
+  body: "I understand that hiking, riding and travel in a remote mountain environment involve changing weather, uneven terrain and other inherent risks.\n\nI agree to follow the reasonable safety directions of Estancia Viento Sur’s qualified guides, disclose information material to safe participation, and choose an alternative activity if conditions require it.\n\nI authorize the lodge to coordinate emergency care when I cannot reasonably provide instructions. This document does not waive rights that cannot lawfully be waived.",
+  bodyHash: "6e2e82890e883c042c5b414263c406d5516bb74fb49bf30c50ab34d2ae986746",
+};
 
 export const guestNavigation = [
   { label: "Your trip", shortLabel: "Trip", segment: "", step: "trip" },
@@ -156,10 +217,10 @@ export const guestNavigation = [
   { label: "Your feedback", shortLabel: "Feedback", segment: "survey", step: "survey" },
 ] as const;
 
-export function formatMoney(minor: number) {
+export function formatMoney(minor: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: guestReservation.currency,
+    currency,
     maximumFractionDigits: 0,
   }).format(minor / 100);
 }

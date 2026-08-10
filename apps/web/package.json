@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "e2e": "npm run build && playwright test"
+    "e2e": "NEXT_PUBLIC_DEMO_MODE=true GUEST_PORTAL_DEMO_MODE=true npm run build && playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

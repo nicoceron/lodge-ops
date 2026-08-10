@@ -8,12 +8,13 @@ import styles from "@/components/guest/guest-portal.module.css";
 type Errors = Partial<Record<"emergencyName" | "emergencyPhone" | "departureReference" | "departureTime" | "medicalConsent", string>>;
 
 export function PreArrivalForm() {
-  const { state, updateState } = useGuestPortal();
+  const { state, savePreArrival } = useGuestPortal();
   const [draft, setDraft] = useState(state);
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors: Errors = {};
     if (!draft.profile.emergencyName.trim()) nextErrors.emergencyName = "Add an emergency contact name.";
@@ -28,9 +29,16 @@ export function PreArrivalForm() {
       return;
     }
 
-    updateState(() => ({ ...draft, preArrivalComplete: true }));
-    setDraft((current) => ({ ...current, preArrivalComplete: true }));
-    setMessage("Pre-arrival details saved. Your host has the latest information.");
+    setSaving(true);
+    try {
+      await savePreArrival(draft);
+      setDraft((current) => ({ ...current, preArrivalComplete: true }));
+      setMessage("Pre-arrival details saved. Your host has the latest information.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save right now.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -228,8 +236,8 @@ export function PreArrivalForm() {
       </section>
 
       <div className={styles.formActions}>
-        <button className={styles.primaryButton} type="submit">
-          <CheckCircle2 aria-hidden="true" size={16} /> Save pre-arrival details
+        <button className={styles.primaryButton} type="submit" disabled={saving}>
+          <CheckCircle2 aria-hidden="true" size={16} /> {saving ? "Saving…" : "Save pre-arrival details"}
         </button>
         <span className={styles.liveMessage} role="status" aria-live="polite">{message}</span>
       </div>

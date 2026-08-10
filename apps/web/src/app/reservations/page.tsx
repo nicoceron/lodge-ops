@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ArrowRight, CalendarClock, Filter, Search, UserRoundCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatusPill, type StatusTone } from "@/components/status-pill";
-import { listReservations, liveApiEnabled, type ReservationDto } from "@/data/api-client";
+import { demoModeEnabled, listReservations, type ReservationDto } from "@/data/api-client";
 import { reservations } from "@/lib/demo-data";
 import { formatMoney } from "@/lib/utils";
 
@@ -31,13 +31,22 @@ function shortDate(value: string) {
 
 export default async function ReservationsPage() {
   let liveReservations: ReservationDto[] | null = null;
-  if (liveApiEnabled) {
+  let liveError = false;
+  if (!demoModeEnabled) {
     try {
       liveReservations = (await listReservations()).data;
     } catch {
-      liveReservations = null;
+      liveReservations = [];
+      liveError = true;
     }
   }
+  const displayedReservations = demoModeEnabled ? reservations : liveReservations ?? [];
+  const pipelineCards = demoModeEnabled ? pipeline : [
+    { label: "Draft", value: liveReservations?.filter((item) => item.status === "draft").length ?? 0, note: "Live tenant", tone: "bg-[var(--blue-soft)] text-[var(--blue)]" },
+    { label: "On hold", value: liveReservations?.filter((item) => item.status === "hold").length ?? 0, note: "Awaiting confirmation", tone: "bg-[var(--amber-soft)] text-[var(--amber)]" },
+    { label: "Confirmed", value: liveReservations?.filter((item) => item.status === "confirmed").length ?? 0, note: "Upcoming stays", tone: "bg-[var(--forest-soft)] text-[var(--forest)]" },
+    { label: "In house", value: liveReservations?.filter((item) => item.status === "checked_in").length ?? 0, note: "Current guests", tone: "bg-[var(--red-soft)] text-[var(--red)]" },
+  ];
 
   return (
     <AppShell
@@ -47,7 +56,7 @@ export default async function ReservationsPage() {
       action={{ label: "Create reservation", shortLabel: "Create" }}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {pipeline.map((item) => (
+        {pipelineCards.map((item) => (
           <article key={item.label} className="surface-card rounded-2xl p-4">
             <div className="flex items-start justify-between">
               <div><p className="text-xs font-semibold text-[var(--muted)]">{item.label}</p><p className="mt-2 font-display text-3xl font-semibold">{item.value}</p></div>
@@ -88,7 +97,7 @@ export default async function ReservationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black/6">
-              {(liveReservations ?? reservations).map((reservation) => {
+              {displayedReservations.map((reservation) => {
                 const live = "confirmation_number" in reservation;
                 const presentation = live ? statusPresentation[reservation.status] : { tone: reservation.status, label: undefined };
                 const code = live ? reservation.confirmation_number : reservation.code;
@@ -109,11 +118,12 @@ export default async function ReservationsPage() {
                   <td className="pr-4"><button type="button" aria-label={`Open ${code}`} className="grid size-8 place-items-center rounded-lg text-black/30 group-hover:bg-white group-hover:text-[var(--forest)]"><ArrowRight aria-hidden="true" className="size-4" /></button></td>
                 </tr>
               );})}
+              {!displayedReservations.length ? <tr><td colSpan={8} className="px-5 py-12 text-center"><p className="text-sm font-semibold">{liveError ? "Live reservations unavailable" : "No reservations found"}</p><p className="mt-1 text-xs text-[var(--muted)]">{liveError ? "No demo reservations have been substituted. Try again after checking your session and API connection." : "Create the first reservation for this tenant to begin planning."}</p></td></tr> : null}
             </tbody>
           </table>
         </div>
         <div className="flex items-center justify-between border-t border-black/7 bg-[#faf8f2] px-5 py-3 text-[10px] text-[var(--muted)]">
-          <span>Showing 5 of 31 confirmed reservations</span>
+          <span>Showing {displayedReservations.length} reservation{displayedReservations.length === 1 ? "" : "s"}</span>
           <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--forest)]"><UserRoundCheck aria-hidden="true" className="size-3.5" />All tenant boundaries verified</span>
         </div>
       </section>

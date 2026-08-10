@@ -15,6 +15,11 @@ type AppShellProps = {
 };
 
 export function AppShell({ children, eyebrow, title, description, action }: AppShellProps) {
+  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const workspace = isDemo
+    ? tenant
+    : { initials: "LO", shortName: "Active lodge", location: "Tenant workspace" };
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <aside className="hidden min-h-screen flex-col bg-[var(--forest)] lg:sticky lg:top-0 lg:flex lg:h-screen">
@@ -35,11 +40,11 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
         <div className="m-3 rounded-2xl border border-white/10 bg-black/10 p-3">
           <button className="flex w-full items-center gap-3 text-left" type="button">
             <span className="grid size-9 place-items-center rounded-lg bg-[#dbe6da] text-xs font-bold text-[var(--forest)]">
-              {tenant.initials}
+              {workspace.initials}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold text-white">{tenant.shortName}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-white/45">{tenant.location}</span>
+              <span className="block truncate text-xs font-semibold text-white">{workspace.shortName}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-white/45">{workspace.location}</span>
             </span>
             <ChevronDown aria-hidden="true" className="size-4 text-white/40" />
           </button>
@@ -65,17 +70,17 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
             </button>
             <button
               type="button"
-              aria-label="Notifications, 3 unread"
+              aria-label={isDemo ? "Notifications, 3 unread" : "Notifications"}
               className="relative grid size-10 place-items-center rounded-xl border border-black/8 bg-white/70 text-[var(--muted)] shadow-sm"
             >
               <Bell aria-hidden="true" className="size-[18px]" />
-              <span className="absolute right-2 top-2 size-2 rounded-full border-2 border-white bg-[var(--red)]" />
+              {isDemo ? <span className="absolute right-2 top-2 size-2 rounded-full border-2 border-white bg-[var(--red)]" /> : null}
             </button>
             <button type="button" className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-black/4">
-              <span className="grid size-8 place-items-center rounded-lg bg-[var(--amber-soft)] text-xs font-bold text-[var(--amber)]">NC</span>
+              <span className="grid size-8 place-items-center rounded-lg bg-[var(--amber-soft)] text-xs font-bold text-[var(--amber)]">{isDemo ? "NC" : "ST"}</span>
               <span className="hidden text-left sm:block">
-                <span className="block text-xs font-semibold">Nico Ceron</span>
-                <span className="block text-[10px] text-[var(--muted)]">Administrator</span>
+                <span className="block text-xs font-semibold">{isDemo ? "Nico Ceron" : "Staff member"}</span>
+                <span className="block text-[10px] text-[var(--muted)]">{isDemo ? "Administrator" : "Tenant role"}</span>
               </span>
               <ChevronDown aria-hidden="true" className="size-4 text-black/35" />
             </button>
