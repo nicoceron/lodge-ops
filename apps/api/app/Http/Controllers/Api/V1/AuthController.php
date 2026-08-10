@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Membership;
 use App\Models\User;
 use App\Services\MultiFactorAuthenticationService;
 use Illuminate\Auth\Events\PasswordReset;
@@ -108,12 +109,31 @@ class AuthController extends Controller
     private function userPayload(Request $request): JsonResponse
     {
         $user = $request->user() ?? Auth::guard('web')->user();
+        $memberships = Membership::withoutGlobalScopes()
+            ->with('tenant:id,name,slug,is_active')
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->whereHas('tenant', fn ($query) => $query->where('is_active', true))
+            ->get();
+        $requestedTenantId = $request->header('X-Tenant-ID');
+        $activeMembership = $memberships->firstWhere('tenant_id', $requestedTenantId) ?? $memberships->first();
 
         return response()->json(['data' => [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'tenants' => $user->tenants()->where('tenants.is_active', true)->get(['tenants.id', 'tenants.name', 'tenants.slug']),
+            'membership' => $activeMembership ? [
+                'tenant_id' => $activeMembership->tenant_id,
+                'property_id' => $activeMembership->property_id,
+                'role' => $activeMembership->role->value,
+            ] : null,
+            'tenants' => $memberships->map(fn (Membership $membership): array => [
+                'id' => $membership->tenant->id,
+                'name' => $membership->tenant->name,
+                'slug' => $membership->tenant->slug,
+                'role' => $membership->role->value,
+                'property_id' => $membership->property_id,
+            ])->values(),
         ]]);
     }
 }

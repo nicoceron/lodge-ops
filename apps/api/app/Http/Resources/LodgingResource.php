@@ -16,6 +16,8 @@ class LodgingResource extends JsonResource
             'code' => $this->code,
             'type' => $this->type->value,
             'capacity' => $this->capacity,
+            'user_id' => $this->user_id,
+            'is_buyout' => $this->isBuyout(),
             'attributes' => $this->attributes,
             'is_active' => $this->is_active,
             'property' => $this->whenLoaded('property', fn () => ['id' => $this->property->id, 'name' => $this->property->name]),

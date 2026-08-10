@@ -6,6 +6,7 @@ use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
 use App\Exceptions\InvalidStatusTransitionException;
 use App\Models\Reservation;
+use App\Models\ReservationStatusHistory;
 use App\Models\Tenant;
 use App\Services\Automation\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
@@ -16,6 +17,8 @@ class ReservationService
     public function __construct(
         private AvailabilityService $availability,
         private OutboxRecorder $outbox,
+        private ProgramRequirementService $programRequirements,
+        private ReservationConfirmationProvisioner $provisioner,
     ) {}
 
     public function confirm(Reservation $reservation): Reservation
@@ -24,7 +27,9 @@ class ReservationService
             $locked = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
 
             if ($locked->status === ReservationStatus::Confirmed) {
-                return $locked->load(['allocations.resource', 'primaryGuest']);
+                $this->provisioner->provision($locked);
+
+                return $locked->load(['allocations.resource', 'primaryGuest', 'program']);
             }
 
             if (! $locked->status->canTransitionTo(ReservationStatus::Confirmed)) {
@@ -36,6 +41,8 @@ class ReservationService
 
             $allocations = $locked->allocations()->lockForUpdate()->get();
 
+            $this->programRequirements->assertSatisfied($locked);
+
             foreach ($allocations as $allocation) {
                 $this->availability->assertAvailable($allocation);
             }
@@ -44,12 +51,16 @@ class ReservationService
                 $allocation->update(['status' => AllocationStatus::Confirmed]);
             }
 
+            $previousStatus = $locked->status;
             $locked->update([
                 'status' => ReservationStatus::Confirmed,
                 'confirmed_at' => now(),
                 'hold_expires_at' => null,
                 'revision' => $locked->revision + 1,
             ]);
+
+            $this->recordStatus($locked, $previousStatus, ReservationStatus::Confirmed);
+            $this->provisioner->provision($locked);
 
             $this->outbox->record(
                 'reservation',
@@ -58,7 +69,7 @@ class ReservationService
                 ['reservation_id' => $locked->id, 'confirmation_number' => $locked->confirmation_number],
             );
 
-            return $locked->fresh(['allocations.resource', 'primaryGuest']);
+            return $locked->fresh(['allocations.resource', 'primaryGuest', 'program']);
         }, 3);
     }
 
@@ -82,6 +93,7 @@ class ReservationService
             $holdAllocations = collect();
             if ($next === ReservationStatus::Hold) {
                 $holdAllocations = $locked->allocations()->lockForUpdate()->get();
+                $this->programRequirements->assertSatisfied($locked);
                 foreach ($holdAllocations as $allocation) {
                     $allocation->status = AllocationStatus::Tentative;
                     $this->availability->assertAvailable($allocation);
@@ -98,7 +110,9 @@ class ReservationService
             } elseif ($locked->status === ReservationStatus::Hold) {
                 $changes['hold_expires_at'] = null;
             }
+            $previousStatus = $locked->status;
             $locked->update($changes);
+            $this->recordStatus($locked, $previousStatus, $next);
             foreach ($holdAllocations as $allocation) {
                 $allocation->save();
             }
@@ -114,7 +128,7 @@ class ReservationService
                 ['reservation_id' => $locked->id, 'status' => $next->value],
             );
 
-            return $locked->fresh(['allocations.resource', 'primaryGuest']);
+            return $locked->fresh(['allocations.resource', 'primaryGuest', 'program']);
         }, 3);
     }
 
@@ -150,6 +164,7 @@ class ReservationService
                         'hold_expires_at' => null,
                         'revision' => $held->revision + 1,
                     ]);
+                    $this->recordStatus($held, ReservationStatus::Hold, ReservationStatus::Draft, ['reason' => 'hold_expired']);
                     $this->outbox->record(
                         'reservation',
                         $held->id,
@@ -167,5 +182,21 @@ class ReservationService
         }
 
         return $expired;
+    }
+
+    private function recordStatus(
+        Reservation $reservation,
+        ReservationStatus|string|null $from,
+        ReservationStatus $to,
+        array $metadata = [],
+    ): void {
+        ReservationStatusHistory::query()->create([
+            'reservation_id' => $reservation->id,
+            'actor_id' => auth()->id(),
+            'from_status' => $from instanceof ReservationStatus ? $from : ($from ? ReservationStatus::from($from) : null),
+            'to_status' => $to,
+            'changed_at' => now(),
+            'metadata' => $metadata ?: null,
+        ]);
     }
 }

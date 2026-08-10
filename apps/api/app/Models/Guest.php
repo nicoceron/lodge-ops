@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Guest extends TenantModel
@@ -15,6 +16,14 @@ class Guest extends TenantModel
     public function reservations(): HasMany
     {
         return $this->hasMany(Reservation::class, 'primary_guest_id');
+    }
+
+    public function companionReservations(): BelongsToMany
+    {
+        return $this->belongsToMany(Reservation::class, 'reservation_guests')
+            ->using(ReservationGuest::class)
+            ->withPivot(['id', 'tenant_id', 'role'])
+            ->withTimestamps();
     }
 
     public function communications(): HasMany

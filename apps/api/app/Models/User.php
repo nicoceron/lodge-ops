@@ -32,10 +32,15 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         return $this->hasMany(Membership::class);
     }
 
+    public function guideResources()
+    {
+        return $this->hasMany(Resource::class);
+    }
+
     public function tenants()
     {
         return $this->belongsToMany(Tenant::class, 'memberships')
-            ->withPivot(['role', 'is_active'])
+            ->withPivot(['property_id', 'role', 'is_active'])
             ->wherePivot('is_active', true)
             ->withTimestamps();
     }

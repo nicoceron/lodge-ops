@@ -9,12 +9,12 @@ class PaymentPolicy extends TenantPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canViewGuestMoney($user);
     }
 
     public function view(User $user, Payment $payment): bool
     {
-        return $this->canManageMoney($user, $payment);
+        return $this->canViewGuestMoney($user, $payment);
     }
 
     public function viewFinance(User $user): bool
@@ -24,16 +24,16 @@ class PaymentPolicy extends TenantPolicy
 
     public function create(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canManageGuestMoney($user);
     }
 
     public function reconcile(User $user, Payment $payment): bool
     {
-        return $this->canManageMoney($user, $payment);
+        return $this->canManageGuestMoney($user, $payment);
     }
 
     public function reverse(User $user, Payment $payment): bool
     {
-        return $this->canManageMoney($user, $payment);
+        return $this->canManageGuestMoney($user, $payment);
     }
 }

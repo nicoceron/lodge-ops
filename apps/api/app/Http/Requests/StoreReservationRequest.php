@@ -10,6 +10,7 @@ class StoreReservationRequest extends TenantRequest
     {
         return [
             'property_id' => ['required', 'uuid', $this->tenantExists('properties')],
+            'program_id' => ['nullable', 'uuid', $this->tenantExists('programs')],
             'primary_guest_id' => ['nullable', 'uuid', $this->tenantExists('guests')],
             'guest_ids' => ['nullable', 'array', 'max:50'],
             'guest_ids.*' => ['uuid', 'distinct', $this->tenantExists('guests')],

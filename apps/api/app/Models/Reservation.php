@@ -6,9 +6,22 @@ use App\Enums\ReservationStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use LogicException;
 
 class Reservation extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(function (Reservation $reservation): void {
+            if ($reservation->program_id !== null && ! Program::query()
+                ->whereKey($reservation->program_id)
+                ->where('property_id', $reservation->property_id)
+                ->exists()) {
+                throw new LogicException('The reservation program must belong to its property and tenant.');
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -29,6 +42,11 @@ class Reservation extends TenantModel
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function program(): BelongsTo
+    {
+        return $this->belongsTo(Program::class);
     }
 
     public function primaryGuest(): BelongsTo
@@ -67,6 +85,16 @@ class Reservation extends TenantModel
     public function deposits(): HasMany
     {
         return $this->hasMany(Deposit::class);
+    }
+
+    public function operationalTasks(): HasMany
+    {
+        return $this->hasMany(OperationalTask::class);
+    }
+
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(ReservationStatusHistory::class)->orderByDesc('changed_at');
     }
 
     public function guestPortalAccessTokens(): HasMany

@@ -27,9 +27,12 @@ use App\Filament\Resources\Proposals\ProposalResource;
 use App\Filament\Resources\ReportExports\ReportExportResource;
 use App\Filament\Resources\Reservations\Pages\CreateReservation;
 use App\Filament\Resources\Reservations\ReservationResource;
+use App\Filament\Resources\ResourceBlocks\ResourceBlockResource;
 use App\Filament\Resources\Resources\ResourceResource;
 use App\Filament\Resources\RetailSales\RetailSaleResource;
+use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
 use App\Filament\Resources\StockLocations\StockLocationResource;
+use App\Filament\Resources\TeamMembers\TeamMemberResource;
 use App\Models\Guest;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
@@ -94,7 +97,10 @@ class FilamentResourcesTest extends TestCase
 
         $this->assertTrue(OperationalTaskResource::canCreate());
         $this->assertTrue(ReservationResource::canCreate());
+        $this->assertTrue(ResourceBlockResource::canCreate());
+        $this->assertTrue(ServiceOccurrenceResource::canCreate());
         $this->assertFalse(PropertyResource::canCreate());
+        $this->assertFalse(TeamMemberResource::canViewAny());
         $this->assertFalse(PaymentResource::canViewAny());
     }
 
@@ -189,6 +195,8 @@ class FilamentResourcesTest extends TestCase
             ProgramResource::class,
             GuestResource::class,
             ReservationResource::class,
+            ResourceBlockResource::class,
+            ServiceOccurrenceResource::class,
             OperationalTaskResource::class,
             PaymentResource::class,
             ProposalResource::class,
@@ -209,6 +217,7 @@ class FilamentResourcesTest extends TestCase
             CommunicationSuppressionResource::class,
             IntegrationConnectionResource::class,
             ReportExportResource::class,
+            TeamMemberResource::class,
         ];
     }
 }

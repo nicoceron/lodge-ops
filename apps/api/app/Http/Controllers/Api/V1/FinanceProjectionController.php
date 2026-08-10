@@ -7,6 +7,8 @@ use App\Enums\FolioLineType;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Http\Controllers\Controller;
+use App\Models\CommissionAccrual;
+use App\Models\CostRecord;
 use App\Models\Deposit;
 use App\Models\FolioLine;
 use App\Models\Payment;
@@ -25,34 +27,58 @@ class FinanceProjectionController extends Controller
         $now = CarbonImmutable::now($context->tenant()->timezone);
         $start = $now->startOfMonth()->utc();
         $end = $now->addMonth()->startOfMonth()->utc();
+        $currency = strtoupper($context->tenant()->currency);
         $bookableStatuses = [
             ReservationStatus::Confirmed,
             ReservationStatus::CheckedIn,
             ReservationStatus::CheckedOut,
         ];
         $reservations = Reservation::query()
-            ->with('payments:id,reservation_id,status,amount_minor,processed_at')
+            ->with([
+                'program:id,name',
+                'payments:id,reservation_id,status,currency,amount_minor,processed_at',
+            ])
+            ->where('currency', $currency)
             ->whereIn('status', $bookableStatuses)
             ->where('starts_at', '>=', $start)
             ->where('starts_at', '<', $end)
             ->orderByDesc('starts_at')
             ->get();
+        $reservationIds = $reservations->pluck('id');
+        $costs = CostRecord::query()
+            ->with(['program:id,name', 'reservation:id,program_id', 'reservation.program:id,name'])
+            ->where('currency', $currency)
+            ->where('occurred_at', '>=', $start)
+            ->where('occurred_at', '<', $end)
+            ->get();
+        $commissions = CommissionAccrual::query()
+            ->with('reservation.program:id,name')
+            ->where('currency', $currency)
+            ->whereIn('reservation_id', $reservationIds)
+            ->get();
         $bookedRevenue = (int) $reservations->sum('total_minor');
         $cashCollected = (int) Payment::query()
+            ->where('currency', $currency)
             ->where('status', PaymentStatus::Succeeded)
             ->where('processed_at', '>=', $start)
             ->where('processed_at', '<', $end)
             ->sum('amount_minor');
-        $receivables = (int) $reservations->sum(fn (Reservation $reservation) => $this->balance($reservation));
-        $deposits = Deposit::query()->get();
+        $receivables = (int) $reservations->sum(fn (Reservation $reservation) => $this->balance($reservation, $currency));
+        $loadedCosts = (int) $costs->sum('amount_minor');
+        $commissionAccruals = (int) $commissions->sum('amount_minor');
+        $margin = $bookedRevenue - $loadedCosts - $commissionAccruals;
+        $programs = $this->programs($reservations, $costs, $commissions);
+        $programMargin = (int) collect($programs)->sum('margin_minor');
+        $deposits = Deposit::query()->where('currency', $currency)->get();
         $folioLines = FolioLine::query()
+            ->where('currency', $currency)
             ->where('posted_at', '>=', $start)
             ->where('posted_at', '<', $end)
             ->get();
 
         return response()->json([
             'data' => [
-                'currency' => $context->tenant()->currency,
+                'currency' => $currency,
                 'timezone' => $context->tenant()->timezone,
                 'period' => [
                     'start' => $start->toIso8601String(),
@@ -63,6 +89,10 @@ class FinanceProjectionController extends Controller
                     'booked_revenue_minor' => $bookedRevenue,
                     'cash_collected_minor' => $cashCollected,
                     'receivables_minor' => $receivables,
+                    'loaded_costs_minor' => $loadedCosts,
+                    'commission_accruals_minor' => $commissionAccruals,
+                    'margin_minor' => $margin,
+                    'margin_percent' => $bookedRevenue > 0 ? round(($margin / $bookedRevenue) * 100, 1) : 0.0,
                     'overdue_deposits_minor' => (int) $deposits
                         ->filter(fn (Deposit $deposit) => $deposit->status === DepositStatus::Due && $deposit->due_at?->isPast())
                         ->sum('amount_minor'),
@@ -81,15 +111,24 @@ class FinanceProjectionController extends Controller
                     'refunds_minor' => abs($this->folioAmount($folioLines, FolioLineType::Refund)),
                     'adjustments_minor' => $this->folioAmount($folioLines, FolioLineType::Adjustment),
                 ],
-                'revenue_series' => $this->revenueSeries($now, $bookableStatuses),
-                'channels' => $this->channels($reservations),
+                'revenue_series' => $this->revenueSeries($now, $bookableStatuses, $currency),
+                'programs' => $programs,
+                'channels' => $this->channels($reservations, $commissions, $currency),
+                'reconciliation' => [
+                    'currency' => $currency,
+                    'currency_policy' => 'native_currency_only',
+                    'formula' => 'booked_revenue_minor - loaded_costs_minor - commission_accruals_minor',
+                    'difference_minor' => $margin - ($bookedRevenue - $loadedCosts - $commissionAccruals),
+                    'program_difference_minor' => $margin - $programMargin,
+                    'is_balanced' => $margin === $programMargin,
+                ],
                 'recent_folios' => $reservations->take(10)->map(fn (Reservation $reservation): array => [
                     'reservation_id' => $reservation->id,
                     'confirmation_number' => $reservation->confirmation_number,
                     'status' => $reservation->status->value,
                     'total_minor' => $reservation->total_minor,
-                    'paid_minor' => $this->paid($reservation),
-                    'balance_minor' => $this->balance($reservation),
+                    'paid_minor' => $this->paid($reservation, $currency),
+                    'balance_minor' => $this->balance($reservation, $currency),
                 ])->values(),
             ],
         ]);
@@ -102,10 +141,10 @@ class FinanceProjectionController extends Controller
     }
 
     /** @param list<ReservationStatus> $statuses @return list<array{label: string, value_minor: int}> */
-    private function revenueSeries(CarbonImmutable $now, array $statuses): array
+    private function revenueSeries(CarbonImmutable $now, array $statuses, string $currency): array
     {
         return collect(range(6, 0))
-            ->map(function (int $monthsAgo) use ($now, $statuses): array {
+            ->map(function (int $monthsAgo) use ($now, $statuses, $currency): array {
                 $month = $now->subMonths($monthsAgo);
                 $start = $month->startOfMonth()->utc();
                 $end = $month->addMonth()->startOfMonth()->utc();
@@ -113,6 +152,7 @@ class FinanceProjectionController extends Controller
                 return [
                     'label' => $month->format('M'),
                     'value_minor' => (int) Reservation::query()
+                        ->where('currency', $currency)
                         ->whereIn('status', $statuses)
                         ->where('starts_at', '>=', $start)
                         ->where('starts_at', '<', $end)
@@ -123,19 +163,28 @@ class FinanceProjectionController extends Controller
     }
 
     /** @param Collection<int, Reservation> $reservations @return list<array<string, mixed>> */
-    private function channels(Collection $reservations): array
+    private function channels(Collection $reservations, Collection $commissions, string $currency): array
     {
+        $commissionByReservation = $commissions
+            ->groupBy('reservation_id')
+            ->map(fn (Collection $items): int => (int) $items->sum('amount_minor'));
+
         return $reservations
             ->groupBy(fn (Reservation $reservation) => $reservation->source ?: 'Direct')
-            ->map(function (Collection $channelReservations, string $channel): array {
+            ->map(function (Collection $channelReservations, string $channel) use ($commissionByReservation, $currency): array {
                 $revenue = (int) $channelReservations->sum('total_minor');
-                $collected = (int) $channelReservations->sum(fn (Reservation $reservation) => $this->paid($reservation));
+                $collected = (int) $channelReservations->sum(fn (Reservation $reservation) => $this->paid($reservation, $currency));
+                $commission = (int) $channelReservations->sum(
+                    fn (Reservation $reservation) => $commissionByReservation->get($reservation->id, 0),
+                );
 
                 return [
                     'channel' => $channel,
                     'bookings' => $channelReservations->count(),
                     'revenue_minor' => $revenue,
                     'collected_minor' => $collected,
+                    'commission_accruals_minor' => $commission,
+                    'net_revenue_minor' => $revenue - $commission,
                     'collection_percent' => $revenue > 0 ? round(($collected / $revenue) * 100, 1) : 0.0,
                 ];
             })
@@ -144,15 +193,72 @@ class FinanceProjectionController extends Controller
             ->all();
     }
 
-    private function paid(Reservation $reservation): int
+    /**
+     * @param  Collection<int, Reservation>  $reservations
+     * @param  Collection<int, CostRecord>  $costs
+     * @param  Collection<int, CommissionAccrual>  $commissions
+     * @return list<array<string, int|string|null>>
+     */
+    private function programs(Collection $reservations, Collection $costs, Collection $commissions): array
+    {
+        $groups = [];
+        $ensure = static function (?string $programId, ?string $programName) use (&$groups): string {
+            $key = $programId ?? '__unallocated__';
+            $groups[$key] ??= [
+                'program_id' => $programId,
+                'program' => $programName ?? 'Unallocated',
+                'reservation_ids' => [],
+                'revenue_minor' => 0,
+                'loaded_costs_minor' => 0,
+                'commission_accruals_minor' => 0,
+            ];
+
+            return $key;
+        };
+
+        foreach ($reservations as $reservation) {
+            $key = $ensure($reservation->program_id, $reservation->program?->name);
+            $groups[$key]['reservation_ids'][$reservation->id] = true;
+            $groups[$key]['revenue_minor'] += $reservation->total_minor;
+        }
+
+        foreach ($costs as $cost) {
+            $programId = $cost->program_id ?? $cost->reservation?->program_id;
+            $programName = $cost->program?->name ?? $cost->reservation?->program?->name;
+            $key = $ensure($programId, $programName);
+            $groups[$key]['loaded_costs_minor'] += $cost->amount_minor;
+        }
+
+        foreach ($commissions as $commission) {
+            $key = $ensure($commission->reservation?->program_id, $commission->reservation?->program?->name);
+            $groups[$key]['commission_accruals_minor'] += $commission->amount_minor;
+        }
+
+        return collect($groups)
+            ->map(static function (array $group): array {
+                $group['bookings'] = count($group['reservation_ids']);
+                unset($group['reservation_ids']);
+                $group['margin_minor'] = $group['revenue_minor']
+                    - $group['loaded_costs_minor']
+                    - $group['commission_accruals_minor'];
+
+                return $group;
+            })
+            ->sortByDesc('revenue_minor')
+            ->values()
+            ->all();
+    }
+
+    private function paid(Reservation $reservation, string $currency): int
     {
         return (int) $reservation->payments
             ->where('status', PaymentStatus::Succeeded)
+            ->where('currency', $currency)
             ->sum('amount_minor');
     }
 
-    private function balance(Reservation $reservation): int
+    private function balance(Reservation $reservation, string $currency): int
     {
-        return max(0, $reservation->total_minor - $this->paid($reservation));
+        return max(0, $reservation->total_minor - $this->paid($reservation, $currency));
     }
 }

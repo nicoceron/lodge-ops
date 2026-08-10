@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AllocationController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CalendarController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -11,10 +12,14 @@ use App\Http\Controllers\Api\V1\GuestController;
 use App\Http\Controllers\Api\V1\GuestPortalController;
 use App\Http\Controllers\Api\V1\OperationsProjectionController;
 use App\Http\Controllers\Api\V1\PaymentController;
+use App\Http\Controllers\Api\V1\ProgramController;
+use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\ProposalController;
 use App\Http\Controllers\Api\V1\ReservationController;
+use App\Http\Controllers\Api\V1\ResourceBlockController;
 use App\Http\Controllers\Api\V1\ResourceController;
 use App\Http\Controllers\Api\V1\ResourceSuggestionController;
+use App\Http\Controllers\Api\V1\ServiceOccurrenceController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +49,9 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::get('operations', OperationsProjectionController::class);
     Route::get('finance', FinanceProjectionController::class);
 
+    Route::get('properties', [PropertyController::class, 'index']);
+    Route::apiResource('programs', ProgramController::class)->only(['index', 'show']);
+    Route::get('guests/{guest}/history', [GuestController::class, 'history']);
     Route::apiResource('guests', GuestController::class);
     Route::get('resources/suggestions', ResourceSuggestionController::class);
     Route::apiResource('resources', ResourceController::class);
@@ -51,6 +59,13 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('reservations', [ReservationController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->middleware('idempotent');
     Route::post('reservations/{reservation}/transition', [ReservationController::class, 'transition']);
+    Route::post('reservations/{reservation}/allocations', [AllocationController::class, 'store'])->middleware('idempotent');
+    Route::put('reservations/{reservation}/allocations/{allocation}', [AllocationController::class, 'update']);
+    Route::delete('reservations/{reservation}/allocations/{allocation}', [AllocationController::class, 'destroy']);
+    Route::apiResource('service-occurrences', ServiceOccurrenceController::class)->except(['store']);
+    Route::post('service-occurrences', [ServiceOccurrenceController::class, 'store'])->middleware('idempotent');
+    Route::apiResource('resource-blocks', ResourceBlockController::class)->except(['store']);
+    Route::post('resource-blocks', [ResourceBlockController::class, 'store'])->middleware('idempotent');
     Route::get('reservations/{reservation}/folio', [FolioController::class, 'index']);
     Route::post('reservations/{reservation}/folio-lines', [FolioController::class, 'store'])->middleware('idempotent');
     Route::post('folio-lines/{folioLine}/reverse', [FolioController::class, 'reverse'])->middleware('idempotent');

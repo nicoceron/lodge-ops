@@ -37,6 +37,25 @@ class ReservationForm
                                 $guest->id => trim("{$guest->first_name} {$guest->last_name}").($guest->email ? " · {$guest->email}" : ''),
                             ])->all())
                         ->searchable(),
+                    Select::make('program_id')
+                        ->label('Primary package')
+                        ->relationship('program', 'name')
+                        ->helperText('Additional activities are assigned separately below the reservation.')
+                        ->searchable()
+                        ->preload(),
+                    Select::make('companion_guest_ids')
+                        ->label('Companions')
+                        ->options(fn (): array => Guest::query()
+                            ->orderBy('last_name')
+                            ->orderBy('first_name')
+                            ->get()
+                            ->mapWithKeys(fn (Guest $guest): array => [
+                                $guest->id => trim("{$guest->first_name} {$guest->last_name}").($guest->email ? " · {$guest->email}" : ''),
+                            ])->all())
+                        ->multiple()
+                        ->searchable()
+                        ->preload()
+                        ->dehydrated(false),
                     TextInput::make('confirmation_number')
                         ->required()
                         ->default(fn (): string => 'RSV-'.Str::upper((string) Str::ulid()))

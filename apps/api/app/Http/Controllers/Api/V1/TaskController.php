@@ -22,6 +22,7 @@ class TaskController extends Controller
             ->with('assignee')
             ->when($request->query('status'), fn ($query, $value) => $query->where('status', $value))
             ->when($request->query('property_id'), fn ($query, $value) => $query->where('property_id', $value))
+            ->when($request->query('reservation_id'), fn ($query, $value) => $query->where('reservation_id', $value))
             ->when($request->query('assignee_id'), fn ($query, $value) => $query->where('assignee_id', $value))
             ->orderByRaw("case priority when 'urgent' then 1 when 'high' then 2 when 'normal' then 3 else 4 end")
             ->orderBy('due_at')

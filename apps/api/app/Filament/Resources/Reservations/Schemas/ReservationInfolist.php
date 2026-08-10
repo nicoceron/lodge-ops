@@ -20,6 +20,7 @@ class ReservationInfolist
                     ->formatStateUsing(LodgeOpsPresentation::label(...))
                     ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
                 TextEntry::make('property.name')->label('Property'),
+                TextEntry::make('program.name')->label('Primary package')->placeholder('Simple stay'),
                 TextEntry::make('primary_guest')
                     ->label('Primary guest')
                     ->state(fn (Reservation $record): string => $record->primaryGuest
@@ -28,6 +29,13 @@ class ReservationInfolist
                 TextEntry::make('starts_at')->label('Arrival')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
                 TextEntry::make('ends_at')->label('Departure')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
                 TextEntry::make('party')->state(fn (Reservation $record): string => "{$record->adults} adults · {$record->children} children"),
+                TextEntry::make('guests')
+                    ->label('Guests')
+                    ->state(fn (Reservation $record): string => $record->guests
+                        ->map(fn ($guest): string => trim("{$guest->first_name} {$guest->last_name}"))
+                        ->join(', '))
+                    ->placeholder('No guests assigned')
+                    ->columnSpanFull(),
                 TextEntry::make('source')->placeholder('Direct'),
                 TextEntry::make('notes')->placeholder('No stay notes')->columnSpanFull(),
             ]),

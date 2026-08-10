@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\AllocationStatus;
+use App\Enums\MembershipRole;
+use App\Enums\ResourceType;
 use App\Http\Controllers\Controller;
 use App\Models\Allocation;
 use App\Models\OperationalTask;
@@ -26,6 +28,15 @@ class CalendarController extends Controller
         StaffProjectionVisibility $visibility,
     ): JsonResponse {
         $this->authorize('viewAny', Reservation::class);
+        $role = $context->membership()?->role;
+        abort_unless(in_array($role, [
+            MembershipRole::Owner,
+            MembershipRole::Manager,
+            MembershipRole::Sales,
+            MembershipRole::Operations,
+            MembershipRole::Guide,
+            MembershipRole::Viewer,
+        ], true), 403);
         $validated = $request->validate([
             'start' => ['required', 'date'],
             'end' => ['required', 'date', 'after:start'],
@@ -38,25 +49,43 @@ class CalendarController extends Controller
             throw ValidationException::withMessages(['end' => 'Calendar windows may not exceed 92 days.']);
         }
 
-        $propertyId = $validated['property_id'] ?? null;
+        $membershipPropertyId = $context->membership()?->property_id;
+        if ($membershipPropertyId !== null && isset($validated['property_id']) && $validated['property_id'] !== $membershipPropertyId) {
+            throw ValidationException::withMessages(['property_id' => 'The property is outside your active membership scope.']);
+        }
+        $propertyId = $membershipPropertyId ?? ($validated['property_id'] ?? null);
+        $isGuide = $role === MembershipRole::Guide;
+        $guideResourceIds = $isGuide
+            ? Resource::query()
+                ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+                ->where('type', ResourceType::Guide)
+                ->where('user_id', $request->user()->id)
+                ->where('is_active', true)
+                ->pluck('id')
+            : collect();
         $resources = Resource::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($isGuide, fn ($query) => $query->whereIn('id', $guideResourceIds))
             ->where('is_active', true)
             ->orderBy('type')
             ->orderBy('name')
             ->get();
         $allocations = Allocation::query()
-            ->with(['resource:id,name,type', 'reservation:id,confirmation_number'])
+            ->with(['resource:id,property_id,user_id,name,type,capacity,is_buyout,attributes', 'reservation:id,confirmation_number'])
             ->where('status', '!=', AllocationStatus::Released)
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
             ->when($propertyId, fn ($query) => $query->whereHas('reservation', fn ($query) => $query->where('property_id', $propertyId)))
+            ->when($isGuide, fn ($query) => $query->whereIn('resource_id', $guideResourceIds))
             ->get();
         $events = collect();
 
         Reservation::query()
-            ->with('primaryGuest:id,first_name,last_name')
+            ->with(['primaryGuest:id,first_name,last_name', 'program:id,name,display_color'])
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($isGuide, fn ($query) => $query->whereHas('allocations', fn ($query) => $query
+                ->whereIn('resource_id', $guideResourceIds)
+                ->where('status', '!=', AllocationStatus::Released)))
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
             ->get()
@@ -75,6 +104,16 @@ class CalendarController extends Controller
                     'end' => $reservation->ends_at->toIso8601String(),
                     'status' => $reservation->status->value,
                     'property_id' => $reservation->property_id,
+                    'program_id' => $reservation->program_id,
+                    'program' => $reservation->program ? [
+                        'id' => $reservation->program->id,
+                        'name' => $reservation->program->name,
+                        'display_color' => $reservation->program->display_color,
+                    ] : null,
+                    'display_color' => $reservation->program?->display_color,
+                    'is_buyout' => $allocations
+                        ->where('reservation_id', $reservation->id)
+                        ->contains(fn (Allocation $allocation): bool => $allocation->resource?->isBuyout() === true),
                     'resource_ids' => $allocations
                         ->where('reservation_id', $reservation->id)
                         ->pluck('resource_id')
@@ -84,26 +123,35 @@ class CalendarController extends Controller
                 ]);
             });
 
-        ResourceBlock::query()
-            ->with('resource:id,property_id')
+        $blocks = ResourceBlock::query()
+            ->with('resource:id,property_id,is_buyout,attributes')
             ->whereHas('resource', fn ($query) => $query->when($propertyId, fn ($query) => $query->where('property_id', $propertyId)))
+            ->when($isGuide, fn ($query) => $query->whereIn('resource_id', $guideResourceIds))
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
-            ->get()
-            ->each(fn (ResourceBlock $block) => $events->push([
-                'id' => $block->id,
-                'type' => 'resource_block',
-                'title' => $block->reason,
-                'start' => $block->starts_at->toIso8601String(),
-                'end' => $block->ends_at->toIso8601String(),
-                'status' => 'blocked',
-                'resource_ids' => [$block->resource_id],
-                'property_id' => $block->resource->property_id,
-            ]));
+            ->get();
+        $blocks->each(fn (ResourceBlock $block) => $events->push([
+            'id' => $block->id,
+            'type' => 'resource_block',
+            'title' => $block->reason,
+            'start' => $block->starts_at->toIso8601String(),
+            'end' => $block->ends_at->toIso8601String(),
+            'status' => 'blocked',
+            'resource_ids' => [$block->resource_id],
+            'property_id' => $block->resource->property_id,
+        ]));
 
         ServiceOccurrence::query()
-            ->with(['program:id,name', 'allocations:id,service_occurrence_id,resource_id'])
+            ->with([
+                'program:id,name,display_color',
+                'allocations' => fn ($query) => $query
+                    ->select(['id', 'service_occurrence_id', 'resource_id'])
+                    ->when($isGuide, fn ($query) => $query->whereIn('resource_id', $guideResourceIds)),
+            ])
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($isGuide, fn ($query) => $query->whereHas('allocations', fn ($query) => $query
+                ->whereIn('resource_id', $guideResourceIds)
+                ->where('status', '!=', AllocationStatus::Released)))
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
             ->get()
@@ -115,11 +163,14 @@ class CalendarController extends Controller
                 'end' => $occurrence->ends_at->toIso8601String(),
                 'status' => $occurrence->is_cancelled ? 'cancelled' : 'scheduled',
                 'property_id' => $occurrence->property_id,
+                'program_id' => $occurrence->program_id,
+                'display_color' => $occurrence->program->display_color,
                 'resource_ids' => $occurrence->allocations->pluck('resource_id')->filter()->unique()->values(),
             ]));
 
         OperationalTask::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($isGuide, fn ($query) => $query->where('assignee_id', $request->user()->id))
             ->whereNotNull('due_at')
             ->where('due_at', '>=', $start)
             ->where('due_at', '<', $end)
@@ -154,6 +205,8 @@ class CalendarController extends Controller
                 'code' => $resource->code,
                 'type' => $resource->type->value,
                 'capacity' => $resource->capacity,
+                'user_id' => $resource->user_id,
+                'is_buyout' => $resource->isBuyout(),
                 'utilization_percent' => $this->utilization($resource, $allocations, $start, $end),
             ]),
             'allocations' => $allocations->map(fn (Allocation $allocation): array => [
@@ -167,7 +220,7 @@ class CalendarController extends Controller
                 'quantity' => $allocation->quantity,
             ]),
             'summary' => [
-                'hard_conflicts' => $this->hardConflicts($allocations),
+                'hard_conflicts' => $this->hardConflicts($allocations, $blocks),
                 'unassigned_reservations' => $unassignedReservations,
                 'suggestions' => $unassignedReservations,
             ],
@@ -184,30 +237,51 @@ class CalendarController extends Controller
                 $allocationStart = $allocation->starts_at->greaterThan($start) ? $allocation->starts_at : $start;
                 $allocationEnd = $allocation->ends_at->lessThan($end) ? $allocation->ends_at : $end;
 
-                return max(0, $allocationStart->diffInSeconds($allocationEnd));
+                return max(0, $allocationStart->diffInSeconds($allocationEnd)) * $allocation->quantity;
             });
 
-        return (int) min(100, round(($usedSeconds / $rangeSeconds) * 100));
+        return (int) min(100, round(($usedSeconds / ($rangeSeconds * max(1, $resource->capacity))) * 100));
     }
 
-    /** @param Collection<int, Allocation> $allocations */
-    private function hardConflicts(Collection $allocations): int
+    /**
+     * @param  Collection<int, Allocation>  $allocations
+     * @param  Collection<int, ResourceBlock>  $blocks
+     */
+    private function hardConflicts(Collection $allocations, Collection $blocks): int
     {
         $conflicts = 0;
 
         foreach ($allocations->whereNotNull('resource_id')->groupBy('resource_id') as $resourceAllocations) {
             $ordered = $resourceAllocations->sortBy('starts_at')->values();
-
-            for ($left = 0; $left < $ordered->count(); $left++) {
-                for ($right = $left + 1; $right < $ordered->count(); $right++) {
-                    if ($ordered[$right]->starts_at->greaterThanOrEqualTo($ordered[$left]->ends_at)) {
-                        break;
-                    }
-
-                    if ($ordered[$right]->reservation_id !== $ordered[$left]->reservation_id) {
-                        $conflicts++;
-                    }
+            $active = collect();
+            foreach ($ordered as $allocation) {
+                $active = $active->filter(fn (Allocation $candidate): bool => $candidate->ends_at > $allocation->starts_at);
+                $capacity = max(1, $allocation->resource?->capacity ?? 1);
+                if ($active->sum('quantity') + $allocation->quantity > $capacity) {
+                    $conflicts++;
                 }
+                $active->push($allocation);
+            }
+        }
+
+        $buyouts = $allocations->filter(fn (Allocation $allocation): bool => $allocation->resource?->isBuyout() === true);
+        foreach ($buyouts as $buyout) {
+            if ($allocations->contains(fn (Allocation $candidate): bool => $candidate->id !== $buyout->id
+                && $candidate->reservation_id !== $buyout->reservation_id
+                && $candidate->resource?->property_id === $buyout->resource?->property_id
+                && $candidate->starts_at < $buyout->ends_at
+                && $candidate->ends_at > $buyout->starts_at)) {
+                $conflicts++;
+            }
+        }
+
+        foreach ($blocks as $block) {
+            if ($allocations->contains(fn (Allocation $allocation): bool => ($allocation->resource_id === $block->resource_id
+                || ($block->resource?->isBuyout() === true && $allocation->resource?->property_id === $block->resource?->property_id)
+                || ($allocation->resource?->isBuyout() === true && $allocation->resource?->property_id === $block->resource?->property_id))
+                && $allocation->starts_at < $block->ends_at
+                && $allocation->ends_at > $block->starts_at)) {
+                $conflicts++;
             }
         }
 

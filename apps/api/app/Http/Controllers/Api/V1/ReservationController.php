@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReservationRequest;
 use App\Http\Requests\UpdateReservationRequest;
 use App\Http\Resources\ReservationResource;
+use App\Models\Program;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
+use App\Services\AllocationWorkflowService;
 use App\Services\ReservationService;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Arr;
@@ -24,10 +26,12 @@ class ReservationController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $this->authorize('viewAny', Reservation::class);
+        $this->authorize('viewDirectory', Reservation::class);
+        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
 
         $reservations = Reservation::query()
-            ->with(['primaryGuest', 'allocations.resource'])
+            ->with(['primaryGuest', 'program', 'allocations.resource', 'allocations.serviceOccurrence'])
+            ->when($membershipPropertyId, fn ($query) => $query->where('property_id', $membershipPropertyId))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('property_id'), fn ($query, $propertyId) => $query->where('property_id', $propertyId))
             ->when($request->query('from'), fn ($query, $from) => $query->where('ends_at', '>', $from))
@@ -38,14 +42,16 @@ class ReservationController extends Controller
         return ReservationResource::collection($reservations);
     }
 
-    public function store(StoreReservationRequest $request): ReservationResource
+    public function store(StoreReservationRequest $request, AllocationWorkflowService $allocationsService): ReservationResource
     {
         $this->authorize('create', Reservation::class);
         $data = $request->validated();
+        $this->assertMembershipProperty($data['property_id']);
 
-        $reservation = DB::transaction(function () use ($data): Reservation {
+        $reservation = DB::transaction(function () use ($data, $allocationsService): Reservation {
             $allocations = Arr::pull($data, 'allocations', []);
             $guestIds = Arr::pull($data, 'guest_ids', []);
+            $this->assertProgramProperty($data['program_id'] ?? null, $data['property_id']);
             $data['confirmation_number'] = 'RSV-'.Str::upper((string) Str::ulid());
             $data['status'] = ReservationStatus::Draft;
             $data['total_minor'] = ($data['subtotal_minor'] ?? 0) + ($data['tax_minor'] ?? 0);
@@ -62,9 +68,8 @@ class ReservationController extends Controller
             }
 
             foreach ($allocations as $allocation) {
-                $reservation->allocations()->create([
+                $allocationsService->create($reservation, [
                     ...$allocation,
-                    'status' => AllocationStatus::Tentative,
                     'starts_at' => $allocation['starts_at'] ?? $reservation->starts_at,
                     'ends_at' => $allocation['ends_at'] ?? $reservation->ends_at,
                 ]);
@@ -73,14 +78,14 @@ class ReservationController extends Controller
             return $reservation;
         });
 
-        return new ReservationResource($reservation->load(['primaryGuest', 'guests', 'allocations.resource']));
+        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence']));
     }
 
     public function show(Reservation $reservation): ReservationResource
     {
         $this->authorize('view', $reservation);
 
-        return new ReservationResource($reservation->load(['primaryGuest', 'guests', 'allocations.resource']));
+        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor']));
     }
 
     public function update(UpdateReservationRequest $request, Reservation $reservation): ReservationResource
@@ -104,6 +109,11 @@ class ReservationController extends Controller
 
             $data = $request->validated();
             $guestIds = Arr::pull($data, 'guest_ids', null);
+            $this->assertMembershipProperty($data['property_id'] ?? $locked->property_id);
+            $this->assertProgramProperty(
+                $data['program_id'] ?? $locked->program_id,
+                $data['property_id'] ?? $locked->property_id,
+            );
             if (array_key_exists('subtotal_minor', $data) || array_key_exists('tax_minor', $data)) {
                 $data['total_minor'] = ($data['subtotal_minor'] ?? $locked->subtotal_minor) + ($data['tax_minor'] ?? $locked->tax_minor);
             }
@@ -124,7 +134,7 @@ class ReservationController extends Controller
             return $locked;
         });
 
-        return new ReservationResource($reservation->fresh()->load(['primaryGuest', 'guests', 'allocations.resource']));
+        return new ReservationResource($reservation->fresh()->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence']));
     }
 
     public function confirm(Reservation $reservation, ReservationService $service): ReservationResource
@@ -147,5 +157,20 @@ class ReservationController extends Controller
             ReservationStatus::from($validated['status']),
             $validated['hold_minutes'] ?? null,
         ));
+    }
+
+    private function assertProgramProperty(?string $programId, string $propertyId): void
+    {
+        if ($programId !== null && ! Program::query()->whereKey($programId)->where('property_id', $propertyId)->where('is_active', true)->exists()) {
+            throw ValidationException::withMessages(['program_id' => 'The program must be active and belong to the reservation property.']);
+        }
+    }
+
+    private function assertMembershipProperty(string $propertyId): void
+    {
+        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
+        if ($membershipPropertyId !== null && $membershipPropertyId !== $propertyId) {
+            throw ValidationException::withMessages(['property_id' => 'The property is outside your active membership scope.']);
+        }
     }
 }

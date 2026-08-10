@@ -6,6 +6,7 @@ use App\Filament\Resources\Resources\Pages\CreateResource;
 use App\Filament\Resources\Resources\Pages\EditResource;
 use App\Filament\Resources\Resources\Pages\ListResources;
 use App\Filament\Resources\Resources\Pages\ViewResource;
+use App\Filament\Resources\Resources\RelationManagers\BlocksRelationManager;
 use App\Filament\Resources\Resources\Schemas\ResourceForm;
 use App\Filament\Resources\Resources\Schemas\ResourceInfolist;
 use App\Filament\Resources\Resources\Tables\ResourcesTable;
@@ -50,7 +51,7 @@ class ResourceResource extends TenantResource
     public static function getRelations(): array
     {
         return [
-            //
+            BlocksRelationManager::class,
         ];
     }
 
