@@ -1,8 +1,8 @@
 <x-filament-widgets::widget>
     <div class="space-y-6">
         <x-filament::section
-            heading="Lodge command center"
-            description="{{ $dashboard['date'] }} · {{ $timezone }} · the next actions that can affect a guest stay."
+            heading="Quick actions"
+            description="{{ $dashboard['date'] }} · {{ $timezone }} · open the workflow you need without hunting through navigation."
         >
             <div class="flex flex-wrap gap-3">
                 <x-filament::button :href="$urls['reservations']" tag="a" icon="heroicon-m-plus">
@@ -11,9 +11,11 @@
                 <x-filament::button :href="$urls['calendar']" tag="a" color="gray" icon="heroicon-m-calendar-days">
                     Master calendar
                 </x-filament::button>
-                <x-filament::button :href="$urls['operations']" tag="a" color="gray" icon="heroicon-m-rectangle-group">
-                    Operations board
-                </x-filament::button>
+                @if ($canAccessOperationsBoard)
+                    <x-filament::button :href="$urls['operations']" tag="a" color="gray" icon="heroicon-m-rectangle-group">
+                        Operations board
+                    </x-filament::button>
+                @endif
                 <x-filament::button :href="$urls['tasks']" tag="a" color="gray" icon="heroicon-m-clipboard-document-check">
                     All tasks
                 </x-filament::button>
@@ -22,30 +24,33 @@
 
         <div class="grid gap-6 xl:grid-cols-3">
             <x-filament::section
-                heading="Next 7 days readiness"
-                description="Guest, room, guide, payment and kitchen preparation across confirmed arrivals."
+                heading="Stays needing attention"
+                description="Specific upcoming reservations blocked by missing guest, room or payment details."
             >
-                <div class="mb-5 flex items-end justify-between gap-4">
-                    <div>
-                        <div class="text-3xl font-bold">{{ $dashboard['readiness']['percent'] }}%</div>
-                        <div class="text-sm text-gray-500">{{ $dashboard['readiness']['complete'] }} of {{ $dashboard['readiness']['total'] }} checks complete</div>
-                    </div>
-                    <x-filament::badge :color="$dashboard['needs_attention'] > 0 ? 'warning' : 'success'">
-                        {{ $dashboard['needs_attention'] }} need attention
-                    </x-filament::badge>
-                </div>
-                <progress class="mb-5 h-2 w-full accent-primary-500" max="100" value="{{ $dashboard['readiness']['percent'] }}">
-                    {{ $dashboard['readiness']['percent'] }}%
-                </progress>
                 <div class="space-y-3">
-                    @foreach ($dashboard['readiness']['items'] as $item)
-                        <div class="flex items-center justify-between gap-3">
-                            <span class="text-sm font-medium">{{ $item['label'] }}</span>
-                            <x-filament::badge :color="$item['complete'] === $item['total'] ? 'success' : 'warning'">
-                                {{ $item['complete'] }}/{{ $item['total'] }}
-                            </x-filament::badge>
+                    @forelse ($dashboard['attention_stays'] as $stay)
+                        <a href="{{ $urls['reservations'] }}" wire:navigate class="block rounded-xl border border-gray-200 p-3 transition hover:border-warning-500 dark:border-white/10">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold">{{ $stay['guest_name'] ?? $stay['confirmation_number'] }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">
+                                        Arrives {{ \Carbon\CarbonImmutable::parse($stay['starts_at'])->timezone($timezone)->format('M j · H:i') }}
+                                    </div>
+                                </div>
+                                <x-filament::badge color="warning">Review</x-filament::badge>
+                            </div>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                @foreach ($stay['reasons'] as $reason)
+                                    <x-filament::badge color="warning">{{ $reason }}</x-filament::badge>
+                                @endforeach
+                            </div>
+                        </a>
+                    @empty
+                        <div class="py-8 text-center">
+                            <div class="font-medium">Upcoming stays are ready</div>
+                            <div class="mt-1 text-sm text-gray-500">No guest, room or payment blockers in the next seven days.</div>
                         </div>
-                    @endforeach
+                    @endforelse
                 </div>
             </x-filament::section>
 

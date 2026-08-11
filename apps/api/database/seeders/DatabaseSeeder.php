@@ -111,6 +111,7 @@ class DatabaseSeeder extends Seeder
                 ['property_id' => $property->id, 'status' => TaskStatus::Todo, 'priority' => 'high', 'due_at' => $reservation->starts_at->subHours(2)],
             );
             $this->seedDemoOperations($property, $programs, $resources, $staff, $today);
+            $this->seedDemoTrends($property, $programs, $resources, $staff, $today);
             GuestPortalDocument::query()->firstOrCreate(
                 ['property_id' => $property->id, 'slug' => 'outdoor-waiver', 'version' => '1.0'],
                 [
@@ -524,6 +525,116 @@ class DatabaseSeeder extends Seeder
                     'metadata' => ['role' => $task['role']],
                 ],
             );
+        }
+    }
+
+    /**
+     * @param  array<string, Program>  $programs
+     * @param  array<string, \App\Models\Resource>  $resources
+     * @param  array<string, User>  $staff
+     */
+    private function seedDemoTrends(
+        Property $property,
+        array $programs,
+        array $resources,
+        array $staff,
+        CarbonImmutable $today,
+    ): void {
+        $programKeys = ['stay', 'stag', 'double'];
+        $roomCodes = ['101', '102', 'CABIN'];
+        $sources = ['Direct', 'Virtuoso', 'Summit Travel'];
+        $dayOffsets = [2, 11, 20];
+
+        foreach (range(6, 0) as $monthsAgo) {
+            $month = $today->subMonths($monthsAgo)->startOfMonth();
+
+            foreach ($dayOffsets as $index => $dayOffset) {
+                $sequence = ((6 - $monthsAgo) * count($dayOffsets)) + $index + 1;
+                $startsAt = $month->addDays($dayOffset)->addHours(15);
+                $endsAt = $startsAt->addDays(2 + ($index % 2))->subHours(4);
+                $program = $programs[$programKeys[$index]];
+                $total = 320_000 + (($monthsAgo + 1) * 45_000) + ($index * 90_000);
+                $guest = Guest::query()->updateOrCreate(
+                    ['email' => sprintf('trend-%02d@example.com', $sequence)],
+                    [
+                        'first_name' => ['Elena', 'James', 'Camila'][$index],
+                        'last_name' => 'Demo '.$sequence,
+                        'language' => $index === 0 ? 'es' : 'en',
+                        'preferences' => ['dietary' => [$index === 1 ? 'Vegetarian' : 'No restrictions']],
+                    ],
+                );
+                $reservation = Reservation::query()->updateOrCreate(
+                    ['confirmation_number' => sprintf('RSV-TREND-%02d', $sequence)],
+                    [
+                        'property_id' => $property->id,
+                        'program_id' => $program->id,
+                        'primary_guest_id' => $guest->id,
+                        'status' => $endsAt->isPast() ? ReservationStatus::CheckedOut : ReservationStatus::Confirmed,
+                        'starts_at' => $startsAt,
+                        'ends_at' => $endsAt,
+                        'adults' => 2 + ($index % 2),
+                        'children' => $index === 2 ? 1 : 0,
+                        'currency' => 'USD',
+                        'subtotal_minor' => $total,
+                        'tax_minor' => (int) round($total * 0.19),
+                        'total_minor' => (int) round($total * 1.19),
+                        'source' => $sources[$index],
+                        'confirmed_at' => $startsAt->subDays(30),
+                    ],
+                );
+                $reservation->allocations()->updateOrCreate(
+                    ['resource_id' => $resources[$roomCodes[$index]]->id],
+                    [
+                        'status' => AllocationStatus::Confirmed,
+                        'starts_at' => $startsAt,
+                        'ends_at' => $endsAt,
+                        'quantity' => 1,
+                    ],
+                );
+
+                $paymentRatio = [1.0, 0.6, 0.0][$index];
+                if ($paymentRatio > 0) {
+                    Payment::query()->updateOrCreate(
+                        ['provider' => 'manual_seed', 'provider_reference' => sprintf('TREND-PAYMENT-%02d', $sequence)],
+                        [
+                            'reservation_id' => $reservation->id,
+                            'status' => PaymentStatus::Succeeded,
+                            'method' => $index === 0 ? 'card' : 'bank_transfer',
+                            'currency' => 'USD',
+                            'amount_minor' => (int) round($reservation->total_minor * $paymentRatio),
+                            'processed_at' => $month->addDays(1 + ($index * 7))->addHours(10),
+                            'metadata' => ['scenario' => 'dashboard_trend'],
+                        ],
+                    );
+                }
+
+                CostRecord::query()->updateOrCreate(
+                    ['reservation_id' => $reservation->id, 'description' => 'Trend demo operating cost'],
+                    [
+                        'program_id' => $program->id,
+                        'staff_user_id' => $staff['guide']->id,
+                        'kind' => 'actual',
+                        'category' => 'operations',
+                        'currency' => 'USD',
+                        'amount_minor' => (int) round($reservation->total_minor * (0.22 + ($index * 0.03))),
+                        'occurred_at' => $startsAt,
+                    ],
+                );
+
+                if ($index > 0) {
+                    CommissionAccrual::query()->updateOrCreate(
+                        ['reservation_id' => $reservation->id, 'payee_name' => $sources[$index]],
+                        [
+                            'payee_type' => 'channel',
+                            'rate_basis_points' => 1_000,
+                            'base_amount_minor' => $reservation->total_minor,
+                            'amount_minor' => (int) round($reservation->total_minor * 0.10),
+                            'currency' => 'USD',
+                            'status' => 'accrued',
+                        ],
+                    );
+                }
+            }
         }
     }
 

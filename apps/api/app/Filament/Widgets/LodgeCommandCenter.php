@@ -17,7 +17,7 @@ class LodgeCommandCenter extends Widget
 
     protected static bool $isLazy = false;
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 4;
 
     protected int|string|array $columnSpan = 'full';
 
@@ -46,6 +46,7 @@ class LodgeCommandCenter extends Widget
                 'reservations' => ReservationResource::getUrl(),
                 'tasks' => OperationalTaskResource::getUrl(),
             ],
+            'canAccessOperationsBoard' => OperationsBoard::canAccess(),
         ];
     }
 }

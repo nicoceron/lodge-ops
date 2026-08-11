@@ -12,17 +12,41 @@ use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Reservations\ReservationResource;
 use App\Filament\Resources\ServiceOccurrences\Pages\ManageServiceOccurrences;
 use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
+use App\Filament\Resources\TenantResource;
 use App\Filament\Widgets\LodgeCommandCenter;
 use App\Filament\Widgets\LodgeReadinessOverview;
+use App\Models\AutomationRule;
+use App\Models\CatalogItem;
 use App\Models\CommissionAccrual;
+use App\Models\CommunicationSuppression;
+use App\Models\CostRecord;
 use App\Models\CrmActivity;
+use App\Models\Deposit;
+use App\Models\DocumentTemplate;
+use App\Models\ExchangeRate;
+use App\Models\FolioLine;
+use App\Models\GeneratedDocument;
+use App\Models\Guest;
+use App\Models\IntegrationConnection;
+use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\MessageTemplateVersion;
 use App\Models\OperationalTask;
 use App\Models\Opportunity;
+use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Program;
+use App\Models\Property;
+use App\Models\Proposal;
+use App\Models\ReportExport;
+use App\Models\Reservation;
+use App\Models\ResourceBlock;
+use App\Models\RetailSale;
 use App\Models\ServiceOccurrence;
+use App\Models\StockLocation;
+use App\Models\Survey;
+use App\Models\TenantModel;
+use App\Services\MessageTemplateService;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,6 +175,75 @@ class RoleSemanticsTest extends TestCase
         $this->assertFalse(ServiceOccurrenceResource::canViewAny());
     }
 
+    public function test_filament_resources_fail_closed_when_a_policy_or_ability_is_missing(): void
+    {
+        [, , $user] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->actingAs($user);
+
+        $this->assertFalse(PolicylessTenantRecordResource::canViewAny());
+
+        Gate::policy(ServiceOccurrence::class, ViewOnlyServiceOccurrencePolicy::class);
+        $this->assertTrue(ServiceOccurrenceResource::canViewAny());
+        $this->assertFalse(ServiceOccurrenceResource::canCreate());
+    }
+
+    public function test_every_tenant_resource_model_has_explicit_view_policy_coverage(): void
+    {
+        foreach ([
+            AutomationRule::class,
+            CatalogItem::class,
+            CommissionAccrual::class,
+            CommunicationSuppression::class,
+            CostRecord::class,
+            Deposit::class,
+            DocumentTemplate::class,
+            ExchangeRate::class,
+            FolioLine::class,
+            GeneratedDocument::class,
+            Guest::class,
+            IntegrationConnection::class,
+            Membership::class,
+            MessageTemplate::class,
+            Opportunity::class,
+            OperationalTask::class,
+            Organization::class,
+            Payment::class,
+            Program::class,
+            Property::class,
+            Proposal::class,
+            ReportExport::class,
+            Reservation::class,
+            \App\Models\Resource::class,
+            ResourceBlock::class,
+            RetailSale::class,
+            ServiceOccurrence::class,
+            StockLocation::class,
+            Survey::class,
+        ] as $model) {
+            $policy = Gate::getPolicyFor($model);
+            $this->assertNotNull($policy, "Missing policy for {$model}");
+
+            foreach (['viewAny', 'view'] as $ability) {
+                $this->assertTrue(method_exists($policy, $ability), "Missing {$ability} policy ability for {$model}");
+            }
+        }
+    }
+
+    public function test_message_template_versions_can_be_viewed_by_authorized_configuration_managers(): void
+    {
+        [, , $user] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->actingAs($user);
+        $template = MessageTemplate::query()->create([
+            'name' => 'Arrival',
+            'key' => 'arrival-review',
+            'channel' => 'email',
+            'is_active' => true,
+        ]);
+        $version = app(MessageTemplateService::class)->createVersion($template, 'en', 'Welcome', 'Hello traveler');
+
+        $this->assertTrue($user->can('view', $version));
+    }
+
     public function test_custom_workflow_models_have_laravel_mutation_policies(): void
     {
         [, , $user] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
@@ -174,4 +267,19 @@ class DenyServiceOccurrencePolicy
     {
         return false;
     }
+}
+
+class ViewOnlyServiceOccurrencePolicy
+{
+    public function viewAny(): bool
+    {
+        return true;
+    }
+}
+
+class PolicylessTenantRecord extends TenantModel {}
+
+class PolicylessTenantRecordResource extends TenantResource
+{
+    protected static ?string $model = PolicylessTenantRecord::class;
 }

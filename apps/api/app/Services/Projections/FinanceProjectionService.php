@@ -29,8 +29,7 @@ class FinanceProjectionService
     public function build(CarbonImmutable $start, CarbonImmutable $end, string $displayCurrency): array
     {
         $timezone = $this->context->tenant()->timezone;
-        $now = CarbonImmutable::now($timezone);
-        if ($end->lessThanOrEqualTo($start)) {
+        if ($end->lessThanOrEqualTo($start) || $start->diffInDays($end) > 366) {
             $end = $start->addMonth();
         }
         $currency = strtoupper($this->context->tenant()->currency);
@@ -133,7 +132,13 @@ class FinanceProjectionService
                 'refunds_minor' => abs($this->folioAmount($folioLines, FolioLineType::Refund)),
                 'adjustments_minor' => $this->folioAmount($folioLines, FolioLineType::Adjustment),
             ],
-            'revenue_series' => $this->revenueSeries($now, $bookableStatuses, $currency, $propertyId),
+            'revenue_series' => $this->revenueSeries(
+                $end->subSecond()->setTimezone($timezone),
+                $end,
+                $bookableStatuses,
+                $currency,
+                $propertyId,
+            ),
             'programs' => $programs,
             'channels' => $this->channels($reservations, $commissions, $currency),
             'reconciliation' => [
@@ -164,24 +169,36 @@ class FinanceProjectionService
         return (int) $lines->where('type', $type)->sum('amount_minor');
     }
 
-    /** @param list<ReservationStatus> $statuses @return list<array{label: string, value_minor: int}> */
-    private function revenueSeries(CarbonImmutable $now, array $statuses, string $currency, ?string $propertyId): array
+    /** @param list<ReservationStatus> $statuses @return list<array{label: string, value_minor: int, booked_minor: int, collected_minor: int}> */
+    private function revenueSeries(CarbonImmutable $anchor, CarbonImmutable $reportEnd, array $statuses, string $currency, ?string $propertyId): array
     {
         return collect(range(6, 0))
-            ->map(function (int $monthsAgo) use ($now, $statuses, $currency, $propertyId): array {
-                $month = $now->subMonths($monthsAgo);
+            ->map(function (int $monthsAgo) use ($anchor, $reportEnd, $statuses, $currency, $propertyId): array {
+                $month = $anchor->startOfMonth()->subMonths($monthsAgo);
                 $start = $month->startOfMonth()->utc();
-                $end = $month->addMonth()->startOfMonth()->utc();
+                $monthEnd = $month->addMonth()->startOfMonth()->utc();
+                $end = $monthEnd->lessThan($reportEnd) ? $monthEnd : $reportEnd;
+
+                $booked = (int) Reservation::query()
+                    ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
+                    ->where('currency', $currency)
+                    ->whereIn('status', $statuses)
+                    ->where('starts_at', '>=', $start)
+                    ->where('starts_at', '<', $end)
+                    ->sum('total_minor');
+                $collected = (int) Payment::query()
+                    ->when($propertyId, fn (Builder $query) => $query->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId)))
+                    ->where('currency', $currency)
+                    ->where('status', PaymentStatus::Succeeded)
+                    ->where('processed_at', '>=', $start)
+                    ->where('processed_at', '<', $end)
+                    ->sum('amount_minor');
 
                 return [
                     'label' => $month->format('M'),
-                    'value_minor' => (int) Reservation::query()
-                        ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
-                        ->where('currency', $currency)
-                        ->whereIn('status', $statuses)
-                        ->where('starts_at', '>=', $start)
-                        ->where('starts_at', '<', $end)
-                        ->sum('total_minor'),
+                    'value_minor' => $booked,
+                    'booked_minor' => $booked,
+                    'collected_minor' => $collected,
                 ];
             })
             ->all();

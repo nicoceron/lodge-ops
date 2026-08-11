@@ -30,4 +30,14 @@ class ApiTokenAuthenticationTest extends TestCase
             ->getJson('/api/v1/properties')
             ->assertUnauthorized();
     }
+
+    public function test_staff_api_rejects_a_browser_session_without_a_bearer_token(): void
+    {
+        [$tenant, , $user] = $this->tenantEnvironment(authenticate: false);
+        $this->actingAs($user);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->getJson('/api/v1/properties')
+            ->assertUnauthorized();
+    }
 }

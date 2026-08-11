@@ -134,7 +134,7 @@ abstract class TenantResource extends Resource
         $policy = Gate::getPolicyFor(static::getModel());
 
         if ($policy === null || ! method_exists($policy, $ability)) {
-            return true;
+            return false;
         }
 
         return Gate::allows($ability, $record ?? static::getModel());

@@ -3,12 +3,12 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\MembershipRole;
-use App\Enums\ReservationStatus;
-use App\Enums\TaskStatus;
-use App\Models\OperationalTask;
-use App\Models\Reservation;
+use App\Filament\Pages\MasterCalendar;
+use App\Filament\Pages\OperationsBoard;
+use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
+use App\Filament\Resources\Reservations\ReservationResource;
+use App\Services\Projections\DashboardProjectionService;
 use App\Support\Tenancy\TenantContext;
-use Carbon\CarbonImmutable;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
@@ -18,7 +18,9 @@ class LodgeReadinessOverview extends StatsOverviewWidget
 
     protected ?string $heading = "Today's lodge pulse";
 
-    protected ?string $description = 'Live arrivals, occupancy and work-queue readiness in the property timezone.';
+    protected ?string $description = 'Current state with a 14-day operating trend. Open a card to reach the underlying workflow.';
+
+    protected static ?int $sort = 1;
 
     public static function canView(): bool
     {
@@ -32,44 +34,37 @@ class LodgeReadinessOverview extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $timezone = app(TenantContext::class)->tenant()->timezone;
-        $start = CarbonImmutable::now($timezone)->startOfDay()->utc();
-        $end = $start->addDay();
-
-        $arrivals = Reservation::query()
-            ->where('starts_at', '>=', $start)
-            ->where('starts_at', '<', $end)
-            ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
-            ->count();
-        $departures = Reservation::query()
-            ->where('ends_at', '>=', $start)
-            ->where('ends_at', '<', $end)
-            ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn, ReservationStatus::CheckedOut])
-            ->count();
-        $inHouse = Reservation::query()
-            ->where('status', ReservationStatus::CheckedIn)
-            ->count();
-        $openTasks = OperationalTask::query()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
-            ->count();
-        $overdueTasks = OperationalTask::query()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
-            ->where('due_at', '<', now())
-            ->count();
+        $dashboard = app(DashboardProjectionService::class)->build();
+        $trend = $dashboard['trend'];
+        $arrivalReadinessUrl = OperationsBoard::canAccess()
+            ? OperationsBoard::getUrl()
+            : (ReservationResource::canViewAny() ? ReservationResource::getUrl() : null);
 
         return [
-            Stat::make('Arrivals today', $arrivals)
-                ->description("{$departures} departures")
+            Stat::make('Occupancy now', "{$dashboard['occupied_rooms']} of {$dashboard['active_rooms']} rooms")
+                ->description("{$dashboard['occupancy_percent']}% occupied")
+                ->descriptionIcon('heroicon-m-home-modern')
+                ->chart(array_map('floatval', $trend['occupancy_percent']))
+                ->color($dashboard['occupancy_percent'] > 0 ? 'info' : 'gray')
+                ->url(MasterCalendar::getUrl()),
+            Stat::make('Arrival readiness', "{$dashboard['readiness']['percent']}%")
+                ->description("{$dashboard['readiness']['complete']} of {$dashboard['readiness']['total']} checks · {$dashboard['needs_attention']} stays need attention")
+                ->descriptionIcon($dashboard['needs_attention'] > 0 ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-check-circle')
+                ->chart(array_map('floatval', $trend['attention']))
+                ->color($dashboard['needs_attention'] > 0 ? 'warning' : 'success')
+                ->url($arrivalReadinessUrl),
+            Stat::make('Arrivals today', $dashboard['arrivals'])
+                ->description("{$dashboard['departures']} departures today")
                 ->descriptionIcon('heroicon-m-arrow-right-start-on-rectangle')
-                ->color($arrivals > 0 ? 'success' : 'gray'),
-            Stat::make('Guests in house', $inHouse)
-                ->description('Checked-in reservations')
-                ->descriptionIcon('heroicon-m-key')
-                ->color($inHouse > 0 ? 'info' : 'gray'),
-            Stat::make('Open work', $openTasks)
-                ->description($overdueTasks > 0 ? "{$overdueTasks} overdue" : 'Nothing overdue')
-                ->descriptionIcon($overdueTasks > 0 ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-check-circle')
-                ->color($overdueTasks > 0 ? 'danger' : 'success'),
+                ->chart(array_map('floatval', $trend['arrivals']))
+                ->color($dashboard['arrivals'] > 0 ? 'info' : 'gray')
+                ->url(ReservationResource::getUrl()),
+            Stat::make('Work at risk', $dashboard['overdue_tasks'])
+                ->description("{$dashboard['open_tasks']} open tasks")
+                ->descriptionIcon($dashboard['overdue_tasks'] > 0 ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-check-circle')
+                ->chart(array_map('floatval', $trend['work_due']))
+                ->color($dashboard['overdue_tasks'] > 0 ? 'danger' : 'success')
+                ->url(OperationalTaskResource::getUrl()),
         ];
     }
 }

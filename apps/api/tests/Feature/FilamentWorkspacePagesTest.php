@@ -70,7 +70,7 @@ class FilamentWorkspacePagesTest extends TestCase
         $response = $this->get(Dashboard::getUrl(['tenant' => $tenant]));
         $response
             ->assertOk()
-            ->assertSee('Next 7 days readiness')
+            ->assertSee('Stays needing attention')
             ->assertSee("Today's arrivals")
             ->assertSee('Dashboard Guest')
             ->assertSee('Action queue')
@@ -236,7 +236,8 @@ class FilamentWorkspacePagesTest extends TestCase
             ->assertSee('RSV-FILAMENT-FINANCE')
             ->assertSee('1,000.00')
             ->assertSee('400.00')
-            ->assertSee('Revenue trend')
+            ->assertSee('Financial pulse')
+            ->assertSee('Revenue vs cash collected')
             ->assertSee('Program performance')
             ->assertSee('Channel performance')
             ->assertSee('Direct')

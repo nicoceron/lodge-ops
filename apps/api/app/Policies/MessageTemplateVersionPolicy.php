@@ -7,6 +7,16 @@ use App\Models\User;
 
 class MessageTemplateVersionPolicy extends TenantPolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return $this->canManageConfiguration($user);
+    }
+
+    public function view(User $user, MessageTemplateVersion $version): bool
+    {
+        return $this->canManageConfiguration($user, $version);
+    }
+
     public function create(User $user): bool
     {
         return $this->canManageConfiguration($user);

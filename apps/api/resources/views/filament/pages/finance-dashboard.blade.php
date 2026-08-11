@@ -23,23 +23,17 @@
             <p class="mt-4 text-sm text-gray-500">{{ $range['start'] }} through {{ $range['end'] }} · {{ $timezone }}</p>
         </x-filament::section>
 
-        <x-filament::section heading="{{ $period }} · native {{ $currency }}" description="Tenant-native figures remain separate from other currencies and are never silently converted.">
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                @foreach ([
-                    'Booked revenue' => $summary['booked'],
-                    'Cash collected' => $summary['collected'],
-                    'Receivables' => $summary['receivables'],
-                    'Loaded costs' => $summary['costs'],
-                    'Commission accruals' => $summary['commissions'],
-                    'Gross margin' => $summary['margin'],
-                ] as $label => $amount)
-                    <div class="rounded-xl border border-gray-200 p-4 dark:border-white/10">
-                        <div class="text-sm text-gray-500">{{ $label }}</div>
-                        <div class="mt-1 text-2xl font-bold">{{ $money->formatMinor($amount, $currency, $locale) }}</div>
-                    </div>
-                @endforeach
-            </div>
-        </x-filament::section>
+        @livewire(\App\Filament\Widgets\FinanceOverview::class, [
+            'start' => $range['start'],
+            'end' => $range['end'],
+            'displayCurrency' => $displayCurrency,
+        ], key('finance-overview-'.$range['start'].'-'.$range['end'].'-'.$displayCurrency))
+
+        @livewire(\App\Filament\Widgets\FinanceRevenueTrend::class, [
+            'start' => $range['start'],
+            'end' => $range['end'],
+            'displayCurrency' => $displayCurrency,
+        ], key('finance-revenue-trend-'.$range['start'].'-'.$range['end'].'-'.$displayCurrency))
 
         <div class="grid gap-6 xl:grid-cols-2">
             <x-filament::section heading="Native currency totals" description="Auditable source totals before any FX policy is applied.">
@@ -79,33 +73,6 @@
                 @endif
             </x-filament::section>
         </div>
-
-        <div class="grid gap-6 lg:grid-cols-2">
-            <x-filament::section heading="Deposits">
-                <div class="grid grid-cols-2 gap-4">
-                    <div><div class="text-sm text-gray-500">Due</div><div class="text-3xl font-bold">{{ $deposits['due'] }}</div></div>
-                    <div><div class="text-sm text-gray-500">Overdue</div><div class="text-3xl font-bold {{ $deposits['overdue'] ? 'text-danger-600' : '' }}">{{ $deposits['overdue'] }}</div></div>
-                </div>
-            </x-filament::section>
-            <x-filament::section heading="Collection rate">
-                @php($collection = $summary['booked'] > 0 ? round(($summary['collected'] / $summary['booked']) * 100, 1) : 0)
-                <div class="text-3xl font-bold">{{ $collection }}%</div>
-                <div class="mt-2 text-sm text-gray-500">Cash processed this month versus booked arrivals this month.</div>
-            </x-filament::section>
-        </div>
-
-        <x-filament::section heading="Revenue trend" description="Booked native-currency revenue for arrivals across the trailing seven months.">
-            @php($peakRevenue = max(1, collect($finance['revenue_series'])->max('value_minor')))
-            <div class="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-                @foreach ($finance['revenue_series'] as $month)
-                    <div class="rounded-lg border border-gray-200 p-3 dark:border-white/10">
-                        <div class="text-xs text-gray-500">{{ $month['label'] }}</div>
-                        <div class="mt-1 font-semibold">{{ number_format($month['value_minor'] / 100, 0) }}</div>
-                        <progress class="mt-2 h-2 w-full accent-primary-500" max="{{ $peakRevenue }}" value="{{ $month['value_minor'] }}">{{ $month['value_minor'] }}</progress>
-                    </div>
-                @endforeach
-            </div>
-        </x-filament::section>
 
         <div class="grid gap-6 xl:grid-cols-2">
             <x-filament::section heading="Program performance" description="Revenue less loaded costs and commission accruals.">
@@ -161,7 +128,7 @@
                             <tr>
                                 <td class="px-3 py-3 font-semibold">
                                     @if (\App\Filament\Resources\Reservations\ReservationResource::canView($reservation))
-                                        <a class="text-primary-600 hover:underline dark:text-primary-400" href="{{ \App\Filament\Resources\Reservations\ReservationResource::getUrl('view', ['record' => $reservation]) }}" wire:navigate>{{ $reservation->confirmation_number }}</a>
+                                        <a class="text-primary-700 hover:underline dark:text-primary-300" href="{{ \App\Filament\Resources\Reservations\ReservationResource::getUrl('view', ['record' => $reservation]) }}" wire:navigate>{{ $reservation->confirmation_number }}</a>
                                     @else
                                         {{ $reservation->confirmation_number }}
                                     @endif

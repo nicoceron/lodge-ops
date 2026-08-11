@@ -228,6 +228,103 @@ class FinanceReportingTest extends TestCase
             ->assertJsonValidationErrors('end');
     }
 
+    public function test_finance_revenue_series_compares_property_scoped_bookings_and_collections_by_month(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-11 15:00:00 UTC');
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $tenant->update(['timezone' => 'UTC', 'currency' => 'USD']);
+        $otherProperty = Property::factory()->for($tenant)->create();
+
+        foreach ([
+            ['property' => $property, 'confirmation' => 'TREND-JUL', 'starts_at' => '2026-07-03 15:00:00', 'total' => 200_000, 'collected' => 120_000],
+            ['property' => $property, 'confirmation' => 'TREND-AUG', 'starts_at' => '2026-08-03 15:00:00', 'total' => 100_000, 'collected' => 40_000],
+            ['property' => $otherProperty, 'confirmation' => 'TREND-HIDDEN', 'starts_at' => '2026-08-04 15:00:00', 'total' => 900_000, 'collected' => 900_000],
+        ] as $row) {
+            $reservation = Reservation::factory()->create([
+                'property_id' => $row['property']->id,
+                'confirmation_number' => $row['confirmation'],
+                'status' => ReservationStatus::CheckedOut,
+                'currency' => 'USD',
+                'total_minor' => $row['total'],
+                'starts_at' => $row['starts_at'],
+                'ends_at' => CarbonImmutable::parse($row['starts_at'])->addDays(2),
+            ]);
+            Payment::query()->create([
+                'reservation_id' => $reservation->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'bank_transfer',
+                'currency' => 'USD',
+                'amount_minor' => $row['collected'],
+                'processed_at' => CarbonImmutable::parse($row['starts_at'])->addDay(),
+            ]);
+        }
+
+        $projection = app(FinanceProjectionService::class)->build(
+            CarbonImmutable::parse('2026-08-01 00:00:00 UTC'),
+            CarbonImmutable::parse('2026-09-01 00:00:00 UTC'),
+            'USD',
+        );
+        $series = collect($projection['revenue_series'])->keyBy('label');
+
+        $this->assertSame(200_000, $series['Jul']['booked_minor']);
+        $this->assertSame(120_000, $series['Jul']['collected_minor']);
+        $this->assertSame(100_000, $series['Aug']['booked_minor']);
+        $this->assertSame(40_000, $series['Aug']['collected_minor']);
+
+        CarbonImmutable::setTestNow();
+    }
+
+    public function test_finance_projection_bounds_excessive_reporting_ranges(): void
+    {
+        $this->tenantEnvironment(MembershipRole::Finance);
+
+        $projection = app(FinanceProjectionService::class)->build(
+            CarbonImmutable::parse('2020-01-01 00:00:00 UTC'),
+            CarbonImmutable::parse('2030-01-01 00:00:00 UTC'),
+            'USD',
+        );
+
+        $this->assertSame('2020-02-01T00:00:00+00:00', $projection['period']['end']);
+    }
+
+    public function test_finance_revenue_series_ends_at_the_selected_reporting_period(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $tenant->update(['currency' => 'USD', 'timezone' => 'UTC']);
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-11 15:00:00 UTC'));
+
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'USD',
+            'total_minor' => 100_000,
+            'starts_at' => CarbonImmutable::parse('2025-01-05 15:00:00 UTC'),
+            'ends_at' => CarbonImmutable::parse('2025-01-08 11:00:00 UTC'),
+        ]);
+        foreach ([['2025-01-10', 40_000], ['2025-01-25', 60_000]] as [$processedAt, $amount]) {
+            Payment::query()->create([
+                'reservation_id' => $reservation->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'bank_transfer',
+                'currency' => 'USD',
+                'amount_minor' => $amount,
+                'processed_at' => CarbonImmutable::parse($processedAt.' 12:00:00 UTC'),
+            ]);
+        }
+
+        $projection = app(FinanceProjectionService::class)->build(
+            CarbonImmutable::parse('2025-01-01 00:00:00 UTC'),
+            CarbonImmutable::parse('2025-01-20 00:00:00 UTC'),
+            'USD',
+        );
+
+        $this->assertSame(['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'], array_column($projection['revenue_series'], 'label'));
+        $this->assertSame(100_000, $projection['revenue_series'][6]['booked_minor']);
+        $this->assertSame(40_000, $projection['revenue_series'][6]['collected_minor']);
+
+        CarbonImmutable::setTestNow();
+    }
+
     public function test_finance_dashboard_exposes_selectable_range_and_reporting_currency_controls(): void
     {
         [$tenant, , $user] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);

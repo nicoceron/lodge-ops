@@ -1165,7 +1165,21 @@ paths:
               properties:
                 token: { type: string, minLength: 32, maxLength: 256 }
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Guest portal session issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [access_token, token_type, expires_at]
+                    properties:
+                      access_token: { type: string, minLength: 1 }
+                      token_type: { type: string, enum: [Bearer] }
+                      expires_at: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Unauthenticated' }
   /guest-portal/reservation:
     get:

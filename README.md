@@ -39,6 +39,8 @@ make doctor
 
 The deterministic development seed creates `admin@example.com` / `password` for tenant `11111111-1111-4111-8111-111111111111` and a resettable, one-time guest preview link. Filament never pre-fills credentials; normal local Compose runs use persisted PostgreSQL data.
 
+The seed also includes a bounded seven-month history of bookings, collections, unpaid balances, programs, and channels so the operational and finance dashboard trends are meaningful instead of empty demo charts.
+
 Run the complete formatter, contract, HTTP, Filament, domain, public build, and browser suite with:
 
 ```bash
