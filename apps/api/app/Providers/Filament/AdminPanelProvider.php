@@ -9,6 +9,7 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationGroup;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -32,6 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->passwordReset()
+            ->emailVerification()
             ->profile()
             ->databaseNotifications()
             ->databaseNotificationsPolling('30s')
@@ -41,6 +43,16 @@ class AdminPanelProvider extends PanelProvider
             ->tenantMiddleware([ResolveFilamentTenant::class], isPersistent: true)
             ->colors([
                 'primary' => Color::Amber,
+            ])
+            ->navigationGroups([
+                NavigationGroup::make()->label('Commercial'),
+                NavigationGroup::make()->label('Operations'),
+                NavigationGroup::make()->label('Sales & CRM'),
+                NavigationGroup::make()->label('Finance'),
+                NavigationGroup::make()->label('Guest experience'),
+                NavigationGroup::make()->label('Retail & Stock'),
+                NavigationGroup::make()->label('Setup')->collapsed(),
+                NavigationGroup::make()->label('Templates & Integrations')->collapsed(),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

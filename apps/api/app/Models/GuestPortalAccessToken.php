@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/** @property string $tenant_id */
 class GuestPortalAccessToken extends TenantModel
 {
     protected $hidden = ['token_hash', 'session_hash'];

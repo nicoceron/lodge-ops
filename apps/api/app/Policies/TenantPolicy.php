@@ -86,6 +86,12 @@ abstract class TenantPolicy
             && app(TenantContext::class)->membership()?->role->canScheduleOperations() === true;
     }
 
+    protected function canManageSales(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageSales() === true;
+    }
+
     private function belongsToMembershipProperty(TenantModel $model, ?string $propertyId): bool
     {
         if ($propertyId === null) {
@@ -98,7 +104,7 @@ abstract class TenantPolicy
             return $recordPropertyId === null || $recordPropertyId === $propertyId;
         }
 
-        foreach (['reservation', 'resource', 'stockLocation', 'program'] as $relationship) {
+        foreach (['reservation', 'resource', 'stockLocation', 'program', 'opportunity'] as $relationship) {
             if (! method_exists($model, $relationship)) {
                 continue;
             }

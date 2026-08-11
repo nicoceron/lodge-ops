@@ -67,6 +67,7 @@ final class ReservationWorkflowActions
             ->label($label)
             ->icon($icon)
             ->color($color)
+            ->authorize('transition')
             ->visible(fn (Reservation $record): bool => ReservationResource::canTransition($record, $status))
             ->action(function (Reservation $record) use ($status, $label): void {
                 app(ReservationService::class)->transition($record, $status);

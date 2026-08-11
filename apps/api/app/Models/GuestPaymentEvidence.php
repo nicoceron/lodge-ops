@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/** @property CarbonImmutable|null $submitted_at */
 class GuestPaymentEvidence extends TenantModel
 {
     protected $table = 'guest_payment_evidence';

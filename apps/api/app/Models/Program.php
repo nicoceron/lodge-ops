@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property string $property_id
  * @property string $name
+ * @property string|null $display_color
  * @property bool $is_active
  * @property bool $requires_accommodation
  * @property-read Collection<int, ProgramResourceRequirement> $requirements

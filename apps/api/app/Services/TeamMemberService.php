@@ -9,6 +9,8 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
+use Filament\Auth\Notifications\VerifyEmail;
+use Filament\Facades\Filament;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
@@ -40,6 +42,9 @@ class TeamMemberService
 
         if ($existing === null) {
             Password::sendResetLink(['email' => $membership->user->email]);
+            $verification = app(VerifyEmail::class);
+            $verification->url = Filament::getPanel('admin')->getVerifyEmailUrl($membership->user);
+            $membership->user->notify($verification);
         }
 
         return $membership;

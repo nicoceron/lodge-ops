@@ -3,9 +3,16 @@
 namespace App\Models;
 
 use App\Enums\AllocationStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
+/**
+ * @property AllocationStatus $status
+ * @property CarbonImmutable $starts_at
+ * @property CarbonImmutable $ends_at
+ * @property-read \App\Models\Resource|null $resource
+ */
 class Allocation extends TenantModel
 {
     protected static function booted(): void

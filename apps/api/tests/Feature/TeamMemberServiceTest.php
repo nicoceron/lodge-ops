@@ -9,7 +9,10 @@ use App\Models\Tenant;
 use App\Services\TeamMemberService;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
+use Filament\Auth\Notifications\VerifyEmail;
+use Filament\Facades\Filament;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
@@ -46,6 +49,29 @@ class TeamMemberServiceTest extends TestCase
         $this->assertSame('ana.guide@example.test', $membership->user->email);
         $this->assertNull($membership->user->email_verified_at);
         $this->assertDatabaseHas('password_reset_tokens', ['email' => 'ana.guide@example.test']);
+        $this->assertTrue($membership->user->canAccessPanel(Filament::getPanel('admin')));
+        Notification::assertSentTo(
+            $membership->user,
+            ResetPasswordNotification::class,
+            function (ResetPasswordNotification $notification, array $channels, $notifiable): bool {
+                $url = $notification->toMail($notifiable)->actionUrl;
+
+                $this->assertIsString($url);
+                $this->assertStringContainsString('/manage/password-reset/reset?', $url);
+                $this->assertStringNotContainsString('/reset-password?', $url);
+
+                return true;
+            },
+        );
+        Notification::assertSentTo(
+            $membership->user,
+            VerifyEmail::class,
+            function (VerifyEmail $notification): bool {
+                $this->assertStringContainsString('/manage/email-verification/verify/', $notification->url);
+
+                return true;
+            },
+        );
     }
 
     public function test_manager_cannot_manage_team_access(): void

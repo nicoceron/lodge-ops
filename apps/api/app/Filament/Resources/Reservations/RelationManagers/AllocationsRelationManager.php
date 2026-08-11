@@ -23,6 +23,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Gate;
 
 class AllocationsRelationManager extends RelationManager
 {
@@ -74,6 +75,7 @@ class AllocationsRelationManager extends RelationManager
                 Action::make('suggestResource')
                     ->label('Suggest resource')
                     ->icon('heroicon-o-sparkles')
+                    ->authorize(fn (): bool => Gate::allows('viewAny', Resource::class))
                     ->schema([
                         Select::make('type')
                             ->options(LodgeOpsPresentation::enumOptions(ResourceType::cases()))
@@ -124,6 +126,7 @@ class AllocationsRelationManager extends RelationManager
                 Action::make('release')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
+                    ->authorize('update')
                     ->requiresConfirmation()
                     ->visible(fn (Allocation $record): bool => $record->status !== AllocationStatus::Released)
                     ->action(fn (Allocation $record) => app(AllocationWorkflowService::class)

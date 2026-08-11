@@ -65,7 +65,7 @@ class VersionsRelationManager extends RelationManager
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()->visible(fn (MessageTemplateVersion $record): bool => $record->published_at === null),
-                Action::make('publish')->icon('heroicon-o-paper-airplane')->color('success')->requiresConfirmation()->visible(fn (MessageTemplateVersion $record): bool => $record->published_at === null)->action(function (MessageTemplateVersion $record): void {
+                Action::make('publish')->icon('heroicon-o-paper-airplane')->color('success')->authorize('publish')->requiresConfirmation()->visible(fn (MessageTemplateVersion $record): bool => $record->published_at === null)->action(function (MessageTemplateVersion $record): void {
                     app(MessageTemplateService::class)->publish($record);
                     Notification::make()->success()->title('Message version published and locked')->send();
                 }),

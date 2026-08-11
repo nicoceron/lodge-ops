@@ -65,12 +65,15 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
 
     public function canAccessTenant(Model $tenant): bool
     {
-        return $tenant instanceof Tenant && $this->tenants()->whereKey($tenant->getKey())->exists();
+        return $tenant instanceof Tenant
+            && $tenant->is_active
+            && $this->tenants()->whereKey($tenant->getKey())->exists();
     }
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->email_verified_at !== null && $this->tenants()->exists();
+        return $panel->getId() === 'admin'
+            && $this->tenants()->where('tenants.is_active', true)->exists();
     }
 
     /**

@@ -47,7 +47,7 @@ class ActivitiesRelationManager extends RelationManager
                 CreateAction::make()->mutateDataUsing(fn (array $data): array => [...$data, 'actor_id' => auth()->id()]),
             ])
             ->recordActions([
-                Action::make('complete')->icon('heroicon-o-check')->color('success')->visible(fn (CrmActivity $record): bool => $record->completed_at === null)->action(fn (CrmActivity $record) => $record->update(['completed_at' => now()])),
+                Action::make('complete')->icon('heroicon-o-check')->color('success')->authorize('update')->visible(fn (CrmActivity $record): bool => $record->completed_at === null)->action(fn (CrmActivity $record) => $record->update(['completed_at' => now()])),
                 EditAction::make(),
             ])
             ->defaultSort('due_at');

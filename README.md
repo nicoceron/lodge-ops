@@ -58,7 +58,7 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - A responsive Filament staff workspace for the unified calendar, reservations, CRM, operations, kitchen, finance, and configuration.
 - A public-only Next.js website that links directly to Filament for sign-in and contains no tenant session, API proxy, or protected staff routes.
 - A Laravel-rendered mobile-first guest reservation center with itinerary, pre-arrival data, consent, waivers, payment evidence, final folio, and post-stay survey flows.
-- Stateful Sanctum authentication, verified-email enforcement, password recovery, shared TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and a centralized audit history.
+- Native Filament authentication with verified-email enforcement, password recovery, TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and Sanctum bearer tokens for explicit API integrations.
 - Transaction-safe reservation confirmation, half-open allocation checks, service capacity, holds/status transitions, optimistic revisions, minor-unit money, payments, folio credits, and retry-safe commands.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.

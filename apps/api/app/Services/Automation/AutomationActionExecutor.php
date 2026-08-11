@@ -197,7 +197,7 @@ class AutomationActionExecutor
         }
 
         $access = $this->guestPortalTokens->issue($reservation, $reservation->primaryGuest);
-        $url = rtrim((string) config('app.frontend_url'), '/')
+        $url = rtrim((string) config('app.url'), '/')
             .'/guest/access/'.rawurlencode($access['token']);
         $invitationContext = [...$context, 'guest_portal' => ['url' => $url]];
         $communication = Communication::query()->create([

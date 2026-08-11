@@ -17,6 +17,7 @@ use LogicException;
  * @property int $total_minor
  * @property ReservationStatus $status
  * @property-read Program|null $program
+ * @property-read Guest|null $primaryGuest
  */
 class Reservation extends TenantModel
 {

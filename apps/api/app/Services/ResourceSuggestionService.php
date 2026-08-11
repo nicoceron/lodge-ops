@@ -79,16 +79,21 @@ class ResourceSuggestionService
             })
             ->sortBy(fn (Resource $resource): array => [$resource->recent_assignments, $resource->capacity, mb_strtolower($resource->name)])
             ->values()
-            ->map(fn (Resource $resource): array => [
-                'id' => $resource->id,
-                'name' => $resource->name,
-                'capacity' => $resource->capacity,
-                'reasons' => array_values(array_filter([
+            ->map(function (Resource $resource) use ($capabilities, $languages): array {
+                /** @var list<string> $reasons */
+                $reasons = array_values(array_filter([
                     $capabilities === [] ? null : 'Matches '.implode(', ', $capabilities),
                     $languages === [] ? null : 'Speaks '.implode(', ', $languages),
                     "{$resource->recent_assignments} assignments in the last 30 days",
-                ])),
-                'recent_assignments' => $resource->recent_assignments,
-            ]);
+                ]));
+
+                return [
+                    'id' => $resource->id,
+                    'name' => $resource->name,
+                    'capacity' => $resource->capacity,
+                    'reasons' => $reasons,
+                    'recent_assignments' => $resource->recent_assignments,
+                ];
+            });
     }
 }

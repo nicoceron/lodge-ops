@@ -16,6 +16,7 @@ final class DepositWorkflowActions
             ->label('Waive deposit')
             ->icon('heroicon-o-hand-raised')
             ->color('warning')
+            ->authorize('waive')
             ->schema([
                 Textarea::make('reason')->required()->maxLength(5000)->rows(3),
             ])

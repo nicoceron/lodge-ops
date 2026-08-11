@@ -25,7 +25,7 @@ class OperationalBookingCoreTest extends TestCase
 {
     use CreatesTenant, RefreshDatabase;
 
-    public function test_staff_bootstrap_exposes_membership_properties_program_requirements_and_reservation_program(): void
+    public function test_staff_api_exposes_properties_program_requirements_and_reservation_program(): void
     {
         [$tenant, $property, $user] = $this->tenantEnvironment();
         $program = $this->program($property->id, ['display_color' => '#0F766E', 'requires_accommodation' => true]);
@@ -37,12 +37,6 @@ class OperationalBookingCoreTest extends TestCase
             'languages' => ['spanish'],
         ]);
         $guest = Guest::factory()->create();
-
-        $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/auth/me')
-            ->assertOk()
-            ->assertJsonPath('data.membership.tenant_id', $tenant->id)
-            ->assertJsonPath('data.membership.property_id', $property->id)
-            ->assertJsonPath('data.membership.role', 'administrator');
 
         $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/properties?per_page=100')
             ->assertOk()

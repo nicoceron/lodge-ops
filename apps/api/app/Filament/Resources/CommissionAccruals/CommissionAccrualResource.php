@@ -90,7 +90,7 @@ class CommissionAccrualResource extends TenantResource
 
     public static function markPaidAction(): Action
     {
-        return Action::make('mark_paid')->label('Mark paid')->icon('heroicon-o-banknotes')->color('success')->requiresConfirmation()->visible(fn (CommissionAccrual $record): bool => $record->status !== 'paid' && self::canManageWorkflow($record))->action(function (CommissionAccrual $record): void {
+        return Action::make('mark_paid')->label('Mark paid')->icon('heroicon-o-banknotes')->color('success')->authorize('markPaid')->requiresConfirmation()->visible(fn (CommissionAccrual $record): bool => $record->status !== 'paid' && self::canManageWorkflow($record))->action(function (CommissionAccrual $record): void {
             $record->update(['status' => 'paid', 'paid_at' => now()]);
             Notification::make()->success()->title('Commission marked paid')->send();
         });

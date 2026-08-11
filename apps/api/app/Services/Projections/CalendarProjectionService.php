@@ -244,7 +244,8 @@ class CalendarProjectionService
             $active = collect();
             foreach ($ordered as $allocation) {
                 $active = $active->filter(fn (Allocation $candidate): bool => $candidate->ends_at > $allocation->starts_at);
-                $capacity = max(1, $allocation->resource?->capacity ?? 1);
+                $resource = $allocation->getRelation('resource');
+                $capacity = max(1, $resource instanceof Resource ? $resource->capacity : 1);
                 if ($active->sum('quantity') + $allocation->quantity > $capacity) {
                     $conflicts++;
                 }
@@ -264,11 +265,16 @@ class CalendarProjectionService
         }
 
         foreach ($blocks as $block) {
-            if ($allocations->contains(fn (Allocation $allocation): bool => ($allocation->resource_id === $block->resource_id
-                || ($block->resource?->isBuyout() === true && $allocation->resource?->property_id === $block->resource?->property_id)
-                || ($allocation->resource?->isBuyout() === true && $allocation->resource?->property_id === $block->resource?->property_id))
-                && $allocation->starts_at < $block->ends_at
-                && $allocation->ends_at > $block->starts_at)) {
+            if ($allocations->contains(function (Allocation $allocation) use ($block): bool {
+                $resource = $allocation->getRelation('resource');
+                $samePropertyBuyout = $resource instanceof Resource
+                    && $resource->property_id === $block->resource->property_id
+                    && ($block->resource->isBuyout() || $resource->isBuyout());
+
+                return ($allocation->resource_id === $block->resource_id || $samePropertyBuyout)
+                    && $allocation->starts_at < $block->ends_at
+                    && $allocation->ends_at > $block->starts_at;
+            })) {
                 $conflicts++;
             }
         }

@@ -18,6 +18,7 @@ final class ProposalWorkflowActions
                 ->label('Send proposal')
                 ->icon('heroicon-o-paper-airplane')
                 ->color('info')
+                ->authorize('send')
                 ->requiresConfirmation()
                 ->modalDescription('Sending freezes this version and its guest-facing pricing snapshot. Future changes require a new revision.')
                 ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record) && $record->status === ProposalStatus::Draft)
@@ -28,6 +29,7 @@ final class ProposalWorkflowActions
             Action::make('revise')
                 ->label('Create revision')
                 ->icon('heroicon-o-document-duplicate')
+                ->authorize('update')
                 ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record)
                     && ! in_array($record->status, [ProposalStatus::Draft, ProposalStatus::Accepted], true))
                 ->action(function (Proposal $record): void {
@@ -38,6 +40,7 @@ final class ProposalWorkflowActions
                 ->label('Convert to reservation')
                 ->icon('heroicon-o-calendar-days')
                 ->color('success')
+                ->authorize('convert')
                 ->requiresConfirmation()
                 ->modalDescription('This accepts the immutable proposal and creates a draft reservation. Inventory remains uncommitted until reservation confirmation.')
                 ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record) && $record->status === ProposalStatus::Sent)

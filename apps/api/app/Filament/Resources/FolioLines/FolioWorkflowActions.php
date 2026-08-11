@@ -20,6 +20,7 @@ final class FolioWorkflowActions
         return Action::make('post_folio_entry')
             ->label('Post folio entry')
             ->icon('heroicon-o-plus')
+            ->authorize('create', FolioLine::class)
             ->visible(FolioLineResource::canAppend(...))
             ->schema([
                 Select::make('reservation_id')
@@ -58,6 +59,7 @@ final class FolioWorkflowActions
             ->label('Reverse entry')
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('danger')
+            ->authorize('reverse')
             ->schema([
                 Textarea::make('reason')->required()->maxLength(5000)->rows(3),
             ])

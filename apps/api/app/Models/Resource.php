@@ -9,6 +9,9 @@ use LogicException;
 
 /**
  * @property ResourceType $type
+ * @property int $capacity
+ * @property int $recent_assignments
+ * @property string $property_id
  * @property bool $is_active
  * @property array<string, mixed>|null $attributes
  */

@@ -2,19 +2,23 @@
 
 namespace App\Http\Controllers\Web;
 
-use App\Http\Controllers\Api\V1\GuestPortalController as GuestPortalApiController;
+use App\Exceptions\GuestPortalStorageException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GuestPortal\AcknowledgeDocumentRequest;
 use App\Http\Requests\GuestPortal\StoreGuestSurveyRequest;
 use App\Http\Requests\GuestPortal\StorePaymentEvidenceRequest;
 use App\Http\Requests\GuestPortal\UpdatePreArrivalRequest;
+use App\Http\Resources\GuestPortalFolioResource;
+use App\Http\Resources\GuestPortalReservationResource;
 use App\Models\GuestPortalAccessToken;
+use App\Services\GuestPortalService;
 use App\Services\GuestPortalTokenService;
+use DomainException;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 
 class GuestPortalController extends Controller
 {
@@ -37,71 +41,87 @@ class GuestPortalController extends Controller
             ]);
     }
 
-    public function home(Request $request, GuestPortalApiController $portal): Response
+    public function home(Request $request, GuestPortalService $portal): Response
     {
         return $this->page('guest.home', $this->portalData($request, $portal));
     }
 
-    public function preArrival(Request $request, GuestPortalApiController $portal): Response
+    public function preArrival(Request $request, GuestPortalService $portal): Response
     {
         return $this->page('guest.pre-arrival', $this->portalData($request, $portal));
     }
 
-    public function updatePreArrival(UpdatePreArrivalRequest $request, GuestPortalApiController $portal): RedirectResponse
+    public function updatePreArrival(UpdatePreArrivalRequest $request, GuestPortalService $portal): RedirectResponse
     {
-        $portal->updatePreArrival($request);
+        $portal->updatePreArrival($this->accessToken($request), $request->validated());
 
         return redirect()->route('guest.portal.pre-arrival')->with('success', 'Pre-arrival details saved.');
     }
 
-    public function documents(Request $request, GuestPortalApiController $portal): Response
+    public function documents(Request $request, GuestPortalService $portal): Response
     {
         return $this->page('guest.documents', $this->portalData($request, $portal));
     }
 
-    public function acknowledge(AcknowledgeDocumentRequest $request, GuestPortalApiController $portal): RedirectResponse
+    public function acknowledge(AcknowledgeDocumentRequest $request, GuestPortalService $portal): RedirectResponse
     {
-        return $this->mutationRedirect(
-            $portal->acknowledge($request),
-            'guest.portal.documents',
-            'Document acknowledged.',
-        );
+        try {
+            $portal->acknowledge(
+                $this->accessToken($request),
+                $request->validated(),
+                $request->ip(),
+                $request->userAgent(),
+            );
+        } catch (DomainException $exception) {
+            return redirect()->route('guest.portal.documents')->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('guest.portal.documents')->with('success', 'Document acknowledged.');
     }
 
-    public function payments(Request $request, GuestPortalApiController $portal): Response
+    public function payments(Request $request, GuestPortalService $portal): Response
     {
         return $this->page('guest.payments', $this->portalData($request, $portal));
     }
 
-    public function storePaymentEvidence(StorePaymentEvidenceRequest $request, GuestPortalApiController $portal): RedirectResponse
-    {
-        return $this->mutationRedirect(
-            $portal->storePaymentEvidence($request),
-            'guest.portal.payments',
-            'Payment evidence submitted for review.',
-        );
+    public function storePaymentEvidence(
+        StorePaymentEvidenceRequest $request,
+        GuestPortalService $portal,
+    ): RedirectResponse {
+        $upload = $request->file('evidence');
+        abort_unless($upload instanceof UploadedFile, 422, 'Invalid evidence file.');
+
+        try {
+            $portal->storePaymentEvidence($this->accessToken($request), $upload);
+        } catch (GuestPortalStorageException $exception) {
+            return redirect()->route('guest.portal.payments')->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('guest.portal.payments')->with('success', 'Payment evidence submitted for review.');
     }
 
-    public function folio(Request $request, GuestPortalApiController $portal): Response
+    public function folio(Request $request, GuestPortalService $portal): Response
     {
         $data = $this->portalData($request, $portal);
-        $data['folio'] = $portal->folio($request)->resolve($request);
+        $data['folio'] = (new GuestPortalFolioResource($portal->folio($this->accessToken($request))))->resolve($request);
 
         return $this->page('guest.folio', $data);
     }
 
-    public function survey(Request $request, GuestPortalApiController $portal): Response
+    public function survey(Request $request, GuestPortalService $portal): Response
     {
         return $this->page('guest.survey', $this->portalData($request, $portal));
     }
 
-    public function storeSurvey(StoreGuestSurveyRequest $request, GuestPortalApiController $portal): RedirectResponse
+    public function storeSurvey(StoreGuestSurveyRequest $request, GuestPortalService $portal): RedirectResponse
     {
-        return $this->mutationRedirect(
-            $portal->storeSurvey($request),
-            'guest.portal.survey',
-            'Thank you. Your feedback was submitted.',
-        );
+        try {
+            $portal->storeSurvey($this->accessToken($request), $request->validated());
+        } catch (DomainException $exception) {
+            return redirect()->route('guest.portal.survey')->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('guest.portal.survey')->with('success', 'Thank you. Your feedback was submitted.');
     }
 
     public function logout(Request $request, GuestPortalTokenService $tokens): RedirectResponse
@@ -127,9 +147,18 @@ class GuestPortalController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function portalData(Request $request, GuestPortalApiController $portal): array
+    private function portalData(Request $request, GuestPortalService $portal): array
     {
-        return $portal->show($request)->resolve($request);
+        return (new GuestPortalReservationResource($portal->reservation($this->accessToken($request))))->resolve($request);
+    }
+
+    private function accessToken(Request $request): GuestPortalAccessToken
+    {
+        $access = $request->attributes->get('guest_portal_access');
+
+        abort_unless($access instanceof GuestPortalAccessToken, 401);
+
+        return $access;
     }
 
     /** @param array<string, mixed> $data */
@@ -140,19 +169,5 @@ class GuestPortalController extends Controller
             ->header('Cache-Control', 'no-store, private')
             ->header('Pragma', 'no-cache')
             ->header('Referrer-Policy', 'no-referrer');
-    }
-
-    private function mutationRedirect(JsonResponse $response, string $route, string $success): RedirectResponse
-    {
-        if ($response->isSuccessful()) {
-            return redirect()->route($route)->with('success', $success);
-        }
-
-        $payload = json_decode((string) $response->getContent(), true);
-        $message = is_array($payload) && is_string($payload['message'] ?? null)
-            ? $payload['message']
-            : 'Unable to complete this request.';
-
-        return redirect()->route($route)->with('error', $message);
     }
 }

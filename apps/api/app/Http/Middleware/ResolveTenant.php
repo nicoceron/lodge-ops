@@ -33,6 +33,7 @@ class ResolveTenant
 
         try {
             $membership = Membership::query()
+                ->where('tenant_id', $tenant->getKey())
                 ->where('user_id', $request->user()->getAuthIdentifier())
                 ->where('is_active', true)
                 ->first();

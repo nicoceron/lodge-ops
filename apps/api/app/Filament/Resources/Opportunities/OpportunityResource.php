@@ -117,17 +117,17 @@ class OpportunityResource extends TenantResource
     public static function workflowActions(): array
     {
         return [
-            Action::make('qualify')->icon('heroicon-o-check-badge')->color('info')->visible(fn (Opportunity $record): bool => $record->stage === 'inquiry' && self::canEdit($record))->action(fn (Opportunity $record) => self::transition($record, 'qualified')),
+            Action::make('qualify')->icon('heroicon-o-check-badge')->color('info')->authorize('update')->visible(fn (Opportunity $record): bool => $record->stage === 'inquiry' && self::canEdit($record))->action(fn (Opportunity $record) => self::transition($record, 'qualified')),
             Action::make('attach_proposal')->label('Attach proposal')->icon('heroicon-o-document-text')->schema([
                 Select::make('proposal_id')->label('Proposal')->options(fn (): array => Proposal::query()->orderByDesc('created_at')->get()->mapWithKeys(fn (Proposal $proposal): array => [$proposal->id => "{$proposal->reference} · v{$proposal->version}"])->all())->required()->searchable(),
-            ])->visible(fn (Opportunity $record): bool => in_array($record->stage, ['inquiry', 'qualified', 'proposal'], true) && self::canEdit($record))->action(function (Opportunity $record, array $data): void {
+            ])->authorize('update')->visible(fn (Opportunity $record): bool => in_array($record->stage, ['inquiry', 'qualified', 'proposal'], true) && self::canEdit($record))->action(function (Opportunity $record, array $data): void {
                 app(OpportunityService::class)->attachProposal($record, Proposal::query()->findOrFail($data['proposal_id']));
                 Notification::make()->success()->title('Proposal attached')->send();
             }),
-            Action::make('mark_won')->label('Mark won')->icon('heroicon-o-trophy')->color('success')->requiresConfirmation()->visible(fn (Opportunity $record): bool => $record->stage === 'proposal' && self::canEdit($record))->action(fn (Opportunity $record) => self::transition($record, 'won')),
+            Action::make('mark_won')->label('Mark won')->icon('heroicon-o-trophy')->color('success')->authorize('update')->requiresConfirmation()->visible(fn (Opportunity $record): bool => $record->stage === 'proposal' && self::canEdit($record))->action(fn (Opportunity $record) => self::transition($record, 'won')),
             Action::make('mark_lost')->label('Mark lost')->icon('heroicon-o-x-circle')->color('danger')->schema([
                 Textarea::make('lost_reason')->label('Reason')->required()->maxLength(2000),
-            ])->visible(fn (Opportunity $record): bool => in_array($record->stage, ['inquiry', 'qualified', 'proposal'], true) && self::canEdit($record))->action(fn (Opportunity $record, array $data) => self::transition($record, 'lost', $data['lost_reason'])),
+            ])->authorize('update')->visible(fn (Opportunity $record): bool => in_array($record->stage, ['inquiry', 'qualified', 'proposal'], true) && self::canEdit($record))->action(fn (Opportunity $record, array $data) => self::transition($record, 'lost', $data['lost_reason'])),
         ];
     }
 

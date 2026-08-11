@@ -24,6 +24,7 @@ final class PaymentWorkflowActions
                 ->label('Reconcile')
                 ->icon('heroicon-o-check-badge')
                 ->color('success')
+                ->authorize('reconcile')
                 ->schema([
                     Select::make('deposit_id')
                         ->label('Apply to deposit')
@@ -51,6 +52,7 @@ final class PaymentWorkflowActions
                 ->label('Reverse payment')
                 ->icon('heroicon-o-arrow-uturn-left')
                 ->color('danger')
+                ->authorize('reverse')
                 ->schema([
                     Textarea::make('reason')->required()->maxLength(5000)->rows(3),
                 ])
@@ -68,6 +70,7 @@ final class PaymentWorkflowActions
         return Action::make('record_manual_payment')
             ->label('Record manual payment')
             ->icon('heroicon-o-plus')
+            ->authorize('create', Payment::class)
             ->visible(PaymentResource::canRecordManual(...))
             ->schema([
                 Select::make('reservation_id')

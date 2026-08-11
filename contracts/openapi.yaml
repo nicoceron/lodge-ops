@@ -12,9 +12,8 @@ servers:
   - url: http://localhost:8000/api/v1
     description: Local development
 security:
-  - cookieAuth: []
+  - bearerAuth: []
 tags:
-  - name: Authentication
   - name: Dashboard
   - name: Calendar
   - name: Guests
@@ -33,114 +32,6 @@ tags:
   - name: Integrations
 
 paths:
-  /auth/login:
-    post:
-      tags: [Authentication]
-      operationId: login
-      security: []
-      description: Establishes the stateful browser session after the Sanctum CSRF-cookie handshake.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string, format: email }
-                password: { type: string }
-                remember: { type: boolean, default: false }
-                mfa_code:
-                  type: [string, 'null']
-                  description: Current TOTP code when multi-factor authentication is enabled.
-                recovery_code:
-                  type: [string, 'null']
-                  description: Single-use recovery code used instead of a TOTP code.
-      responses:
-        '200':
-          description: Authenticated user and active tenant memberships.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthSession' }
-        '422':
-          description: Invalid credentials, unverified email, validation failure, or an MFA challenge.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Error'
-                  - type: object
-                    properties:
-                      mfa_required: { type: boolean }
-                      errors:
-                        type: object
-                        additionalProperties:
-                          type: array
-                          items: { type: string }
-  /auth/me:
-    get:
-      tags: [Authentication]
-      operationId: getCurrentUser
-      responses:
-        '200':
-          description: Current authenticated user and active tenant memberships.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthSession' }
-  /auth/logout:
-    post:
-      tags: [Authentication]
-      operationId: logout
-      responses:
-        '200':
-          description: Session invalidated.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Message' }
-  /auth/forgot-password:
-    post:
-      tags: [Authentication]
-      operationId: requestPasswordReset
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email]
-              properties:
-                email: { type: string, format: email }
-      responses:
-        '200':
-          description: Always returns the same response to prevent account enumeration.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Message' }
-  /auth/reset-password:
-    post:
-      tags: [Authentication]
-      operationId: resetPassword
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token, email, password, password_confirmation]
-              properties:
-                token: { type: string }
-                email: { type: string, format: email }
-                password: { type: string, minLength: 12 }
-                password_confirmation: { type: string, minLength: 12 }
-      responses:
-        '200':
-          description: Password replaced and reset token consumed.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Message' }
-        '422': { $ref: '#/components/responses/ValidationError' }
   /dashboard:
     get:
       tags: [Dashboard]
@@ -1341,11 +1232,11 @@ paths:
 
 components:
   securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: laravel_session
-      description: First-party Sanctum stateful browser session with CSRF protection.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum personal access token
+      description: Revocable token provisioned for an explicit first- or third-party integration.
     guestPortalSession:
       type: http
       scheme: bearer
@@ -1457,33 +1348,7 @@ components:
       required: [message]
       properties:
         message: { type: string }
-    TenantSummary:
-      type: object
-      required: [id, name, slug, role]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        slug: { type: string }
-        role: { $ref: '#/components/schemas/MembershipRole' }
-        property_id: { type: [string, 'null'], format: uuid }
-    AuthSession:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [id, name, email, membership, tenants]
-          properties:
-            id: { type: integer }
-            name: { type: string }
-            email: { type: string, format: email }
-            membership:
-              oneOf:
-                - $ref: '#/components/schemas/ActiveMembership'
-                - type: 'null'
-            tenants:
-              type: array
-              items: { $ref: '#/components/schemas/TenantSummary' }
+
     Error:
       type: object
       required: [message]

@@ -79,6 +79,7 @@ class ServiceOccurrenceResource extends TenantResource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
+                    ->authorize('update')
                     ->visible(fn (ServiceOccurrence $record): bool => ! $record->is_cancelled)
                     ->action(fn (ServiceOccurrence $record) => $record->update(['is_cancelled' => true])),
             ])

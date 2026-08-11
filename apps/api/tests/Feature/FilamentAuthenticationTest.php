@@ -3,10 +3,14 @@
 namespace Tests\Feature;
 
 use Filament\Facades\Filament;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
 class FilamentAuthenticationTest extends TestCase
 {
+    use CreatesTenant, RefreshDatabase;
+
     public function test_filament_owns_staff_login_and_password_recovery(): void
     {
         $this->get('/')->assertRedirect('/manage');
@@ -34,5 +38,19 @@ class FilamentAuthenticationTest extends TestCase
 
         $this->assertTrue($panel->hasDatabaseNotifications());
         $this->assertSame('30s', $panel->getDatabaseNotificationsPollingInterval());
+    }
+
+    public function test_unverified_staff_use_filaments_native_email_verification_flow(): void
+    {
+        [$tenant, , $user] = $this->tenantEnvironment(authenticate: false);
+        $user->forceFill(['email_verified_at' => null])->save();
+        $panel = Filament::getPanel('admin');
+
+        $this->assertTrue($panel->hasEmailVerification());
+        $this->assertTrue($user->canAccessPanel($panel));
+
+        $this->actingAs($user)
+            ->get("/manage/workspace/{$tenant->slug}")
+            ->assertRedirect('/manage/email-verification/prompt');
     }
 }

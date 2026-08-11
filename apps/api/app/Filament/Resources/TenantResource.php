@@ -7,6 +7,7 @@ use App\Support\Tenancy\TenantContext;
 use Filament\Resources\Resource;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 
 abstract class TenantResource extends Resource
@@ -59,34 +60,43 @@ abstract class TenantResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return static::hasActiveMembership() && static::hasCapability(static::$viewCapability);
+        return static::hasActiveMembership()
+            && static::hasCapability(static::$viewCapability)
+            && static::policyAllows('viewAny');
     }
 
     public static function canView(Model $record): bool
     {
         return static::belongsToCurrentTenant($record)
             && static::hasActiveMembership()
-            && static::hasCapability(static::$viewCapability);
+            && static::hasCapability(static::$viewCapability)
+            && static::policyAllows('view', $record);
     }
 
     public static function canCreate(): bool
     {
-        return static::$canCreateRecords && static::canWrite();
+        return static::$canCreateRecords && static::canWrite() && static::policyAllows('create');
     }
 
     public static function canEdit(Model $record): bool
     {
-        return static::$canEditRecords && static::belongsToCurrentTenant($record) && static::canWrite();
+        return static::$canEditRecords
+            && static::belongsToCurrentTenant($record)
+            && static::canWrite()
+            && static::policyAllows('update', $record);
     }
 
     public static function canDelete(Model $record): bool
     {
-        return static::$canDeleteRecords && static::belongsToCurrentTenant($record) && static::canManage();
+        return static::$canDeleteRecords
+            && static::belongsToCurrentTenant($record)
+            && static::canManage()
+            && static::policyAllows('delete', $record);
     }
 
     public static function canDeleteAny(): bool
     {
-        return static::$canDeleteRecords && static::canManage();
+        return static::$canDeleteRecords && static::canManage() && static::policyAllows('deleteAny');
     }
 
     protected static function hasActiveMembership(): bool
@@ -117,6 +127,17 @@ abstract class TenantResource extends Resource
         $role = app(TenantContext::class)->membership()?->role;
 
         return $role !== null && method_exists($role, $capability) && $role->{$capability}();
+    }
+
+    protected static function policyAllows(string $ability, ?Model $record = null): bool
+    {
+        $policy = Gate::getPolicyFor(static::getModel());
+
+        if ($policy === null || ! method_exists($policy, $ability)) {
+            return true;
+        }
+
+        return Gate::allows($ability, $record ?? static::getModel());
     }
 
     protected static function belongsToCurrentTenant(Model $record): bool

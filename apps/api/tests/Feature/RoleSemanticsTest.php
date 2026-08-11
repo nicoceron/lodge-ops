@@ -10,14 +10,25 @@ use App\Filament\Resources\CostRecords\CostRecordResource;
 use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Reservations\ReservationResource;
+use App\Filament\Resources\ServiceOccurrences\Pages\ManageServiceOccurrences;
+use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
 use App\Filament\Widgets\LodgeCommandCenter;
 use App\Filament\Widgets\LodgeReadinessOverview;
+use App\Models\CommissionAccrual;
+use App\Models\CrmActivity;
+use App\Models\MessageTemplate;
+use App\Models\MessageTemplateVersion;
 use App\Models\OperationalTask;
+use App\Models\Opportunity;
 use App\Models\Payment;
+use App\Models\Program;
+use App\Models\ServiceOccurrence;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\Sanctum;
+use Livewire\Livewire;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -105,5 +116,62 @@ class RoleSemanticsTest extends TestCase
         $this->assertTrue(KitchenDashboard::canAccess());
         $this->assertFalse(OperationsBoard::canAccess());
         $this->assertFalse(ReservationResource::canViewAny());
+    }
+
+    public function test_guide_cannot_cancel_a_service_occurrence(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Guide, authenticate: false);
+        $program = Program::query()->create([
+            'property_id' => $property->id,
+            'name' => 'Morning drive',
+            'currency' => 'USD',
+        ]);
+        $occurrence = ServiceOccurrence::query()->create([
+            'program_id' => $program->id,
+            'property_id' => $property->id,
+            'starts_at' => now()->addDay(),
+            'ends_at' => now()->addDay()->addHours(2),
+        ]);
+        $this->actingAs($user);
+        Filament::setCurrentPanel(filament()->getPanel('admin'));
+        Filament::setTenant($tenant, isQuiet: true);
+
+        Livewire::test(ManageServiceOccurrences::class)
+            ->assertTableActionHidden('cancel', $occurrence);
+
+        $this->assertFalse($occurrence->refresh()->is_cancelled);
+    }
+
+    public function test_filament_resources_honor_laravel_policy_denials(): void
+    {
+        [, , $user] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->actingAs($user);
+        Gate::policy(ServiceOccurrence::class, DenyServiceOccurrencePolicy::class);
+
+        $this->assertFalse(ServiceOccurrenceResource::canViewAny());
+    }
+
+    public function test_custom_workflow_models_have_laravel_mutation_policies(): void
+    {
+        [, , $user] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->actingAs($user);
+
+        foreach ([
+            CommissionAccrual::class,
+            CrmActivity::class,
+            MessageTemplate::class,
+            MessageTemplateVersion::class,
+            Opportunity::class,
+        ] as $model) {
+            $this->assertTrue($user->can('create', $model), "Missing create policy for {$model}");
+        }
+    }
+}
+
+class DenyServiceOccurrencePolicy
+{
+    public function viewAny(): bool
+    {
+        return false;
     }
 }

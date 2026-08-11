@@ -38,6 +38,7 @@ use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Observers\TenantAuditObserver;
 use App\Support\Tenancy\TenantContext;
+use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\ServiceProvider;
 
@@ -56,7 +57,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        ResetPassword::createUrlUsing(fn ($user, string $token): string => rtrim((string) config('app.frontend_url', config('app.url')), '/').'/reset-password?token='.urlencode($token).'&email='.urlencode($user->getEmailForPasswordReset()));
+        ResetPassword::createUrlUsing(
+            fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
+        );
 
         foreach ([
             Allocation::class,

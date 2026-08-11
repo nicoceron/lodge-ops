@@ -60,7 +60,7 @@ PostgreSQL row-level security can be added as defense in depth after request and
 
 Filament owns the complete authenticated staff experience: calendar, reservation composer, CRM, operations board, task queues, guide/kitchen/housekeeping views, finance dashboard, configuration, integrations, reconciliation, users, imports, exports, and exception work.
 
-Laravel owns the public guest stay center: one-time magic-link exchange, itinerary, pre-arrival profile, document acknowledgement, payment evidence, folio, survey, and secure logout. These web controllers reuse the guest API's validated workflow methods rather than duplicating domain behavior.
+Laravel owns the public guest stay center: one-time magic-link exchange, itinerary, pre-arrival profile, document acknowledgement, payment evidence, folio, survey, and secure logout. The web and JSON controllers call the same application service rather than invoking one another or duplicating domain behavior.
 
 Next.js owns only public-facing marketing content: homepage, product features, pricing, and security information. Its sign-in and application calls to action are ordinary links to Laravel/Filament `/manage`; it never interprets Laravel authentication state.
 
@@ -73,7 +73,7 @@ PHPStan with Larastan runs at level 5 in the local and CI lint gates. The checke
 The version choices and architecture follow current official documentation:
 
 - Laravel 13 release and support policy: https://laravel.com/docs/13.x/releases
-- Laravel Sanctum SPA authentication: https://laravel.com/docs/13.x/sanctum
+- Laravel Sanctum API token authentication: https://laravel.com/docs/13.x/sanctum
 - Laravel queues and scheduler: https://laravel.com/docs/13.x/queues and https://laravel.com/docs/13.x/scheduling
 - Filament 5 resources, custom pages, tenancy, authentication, and security: https://filamentphp.com/docs/5.x/resources/overview, https://filamentphp.com/docs/5.x/navigation/custom-pages, https://filamentphp.com/docs/5.x/users/tenancy, https://filamentphp.com/docs/5.x/users/overview, https://filamentphp.com/docs/5.x/advanced/security
 - Next.js 16 App Router for public content: https://nextjs.org/docs/app
