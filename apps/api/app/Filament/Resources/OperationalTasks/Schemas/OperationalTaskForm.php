@@ -17,26 +17,32 @@ class OperationalTaskForm
 {
     public static function configure(Schema $schema): Schema
     {
+        $detailsAreReadOnly = fn (): bool => app(TenantContext::class)->membership()?->role?->canScheduleOperations() !== true;
+
         return $schema->components([
             Section::make('Work item')
                 ->description('A clear owner, deadline and context keep handoffs from falling through.')
                 ->columns(2)
                 ->schema([
                     TextInput::make('title')
+                        ->disabled($detailsAreReadOnly)
                         ->required()
                         ->maxLength(255)
                         ->columnSpanFull(),
                     Select::make('property_id')
-                        ->relationship('property', 'name')
+                        ->disabled($detailsAreReadOnly)
+                        ->options(LodgeOpsPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
                     Select::make('reservation_id')
+                        ->disabled($detailsAreReadOnly)
                         ->label('Reservation')
                         ->relationship('reservation', 'confirmation_number')
                         ->searchable()
                         ->preload(),
                     Select::make('assignee_id')
+                        ->disabled($detailsAreReadOnly)
                         ->label('Assignee')
                         ->relationship(
                             name: 'assignee',
@@ -56,6 +62,7 @@ class OperationalTaskForm
                         ->native(false)
                         ->required(),
                     Select::make('priority')
+                        ->disabled($detailsAreReadOnly)
                         ->options([
                             'low' => 'Low',
                             'normal' => 'Normal',
@@ -66,9 +73,11 @@ class OperationalTaskForm
                         ->native(false)
                         ->required(),
                     DateTimePicker::make('due_at')
+                        ->disabled($detailsAreReadOnly)
                         ->timezone(LodgeOpsPresentation::timezone())
                         ->seconds(false),
                     Textarea::make('description')
+                        ->disabled($detailsAreReadOnly)
                         ->rows(4)
                         ->columnSpanFull(),
                 ]),

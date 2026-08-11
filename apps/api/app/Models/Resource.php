@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
+/**
+ * @property ResourceType $type
+ * @property bool $is_active
+ * @property array<string, mixed>|null $attributes
+ */
 class Resource extends TenantModel
 {
     protected static function booted(): void

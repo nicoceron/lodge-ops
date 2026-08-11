@@ -36,6 +36,8 @@ class ProposalResource extends TenantResource
 
     protected static string $writeCapability = 'canManageReservations';
 
+    protected static ?string $propertyRelationship = 'reservation';
+
     public static function canEdit(Model $record): bool
     {
         return parent::canEdit($record)

@@ -3,11 +3,21 @@
 namespace App\Models;
 
 use App\Enums\ReservationStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
+/**
+ * @property CarbonImmutable $starts_at
+ * @property CarbonImmutable $ends_at
+ * @property string $property_id
+ * @property string $currency
+ * @property int $total_minor
+ * @property ReservationStatus $status
+ * @property-read Program|null $program
+ */
 class Reservation extends TenantModel
 {
     protected static function booted(): void

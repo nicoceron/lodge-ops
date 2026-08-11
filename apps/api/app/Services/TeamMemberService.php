@@ -56,17 +56,17 @@ class TeamMemberService
         return DB::transaction(function () use ($membership, $role, $propertyId, $isActive): Membership {
             Tenant::query()->whereKey($this->context->id())->lockForUpdate()->firstOrFail();
             $locked = Membership::query()->whereKey($membership->id)->lockForUpdate()->firstOrFail();
-            $removesOwner = $locked->is_active
-                && $locked->role === MembershipRole::Owner
-                && (! $isActive || $role !== MembershipRole::Owner);
-            if ($removesOwner) {
-                $otherOwners = Membership::query()
+            $removesAdministrator = $locked->is_active
+                && $locked->role === MembershipRole::Administrator
+                && (! $isActive || $role !== MembershipRole::Administrator);
+            if ($removesAdministrator) {
+                $otherAdministrators = Membership::query()
                     ->whereKeyNot($locked->id)
-                    ->where('role', MembershipRole::Owner)
+                    ->where('role', MembershipRole::Administrator)
                     ->where('is_active', true)
                     ->exists();
-                if (! $otherOwners) {
-                    throw new DomainException('Assign another active owner before changing the last owner.');
+                if (! $otherAdministrators) {
+                    throw new DomainException('The tenant must retain at least one active administrator.');
                 }
             }
 
@@ -78,8 +78,8 @@ class TeamMemberService
 
     private function authorizeOwner(): void
     {
-        if ($this->context->membership()?->role !== MembershipRole::Owner) {
-            throw new AuthorizationException('Only lodge owners may manage team access.');
+        if ($this->context->membership()?->role !== MembershipRole::Administrator) {
+            throw new AuthorizationException('Only administrators may manage team access.');
         }
     }
 

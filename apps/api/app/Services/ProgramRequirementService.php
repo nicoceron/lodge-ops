@@ -24,7 +24,8 @@ class ProgramRequirementService
             ->where('status', '!==', AllocationStatus::Released)
             ->filter(fn ($allocation): bool => $allocation->resource !== null);
 
-        $requiresAccommodation = $reservation->program_id === null || $reservation->program?->requires_accommodation;
+        $requiresAccommodation = $reservation->program_id === null
+            || data_get($reservation, 'program.requires_accommodation') === true;
         if ($requiresAccommodation && ! $allocations->contains(
             fn ($allocation): bool => $allocation->resource->type === ResourceType::Room
                 && $allocation->starts_at <= $reservation->starts_at

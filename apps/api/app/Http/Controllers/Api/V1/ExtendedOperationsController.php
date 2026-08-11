@@ -117,7 +117,7 @@ class ExtendedOperationsController extends Controller
 
     public function finance(Request $request, TenantContext $context, FinancialReportingService $service): JsonResponse
     {
-        abort_unless($context->membership()?->role->canManageMoney(), 403);
+        abort_unless($context->membership()?->role->canViewFinance(), 403);
         $data = $request->validate([
             'currency' => ['sometimes', 'string', 'size:3'],
             'starts_at' => ['sometimes', 'date'],

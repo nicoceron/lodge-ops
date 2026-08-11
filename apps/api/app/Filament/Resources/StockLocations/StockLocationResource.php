@@ -8,6 +8,7 @@ use App\Filament\Resources\StockLocations\Pages\ListStockLocations;
 use App\Filament\Resources\StockLocations\Pages\ViewStockLocation;
 use App\Filament\Resources\StockLocations\RelationManagers\MovementsRelationManager;
 use App\Filament\Resources\TenantResource;
+use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\StockLocation;
 use BackedEnum;
 use Filament\Actions\EditAction;
@@ -49,7 +50,7 @@ class StockLocationResource extends TenantResource
     {
         return $schema->components([
             Section::make('Stock location')->columns(2)->schema([
-                Select::make('property_id')->label('Property')->relationship('property', 'name')->required()->searchable()->preload(),
+                Select::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions(...))->required()->searchable()->preload(),
                 TextInput::make('name')->required()->maxLength(160),
                 TextInput::make('code')->required()->maxLength(40)->alphaDash()->dehydrateStateUsing(fn (string $state): string => strtoupper($state)),
             ]),
@@ -78,7 +79,7 @@ class StockLocationResource extends TenantResource
                 TextColumn::make('movements_sum_quantity')->label('Net units moved')->numeric(decimalPlaces: 3)->sortable(),
                 TextColumn::make('updated_at')->label('Updated')->since()->sortable(),
             ])
-            ->filters([SelectFilter::make('property_id')->label('Property')->relationship('property', 'name')])
+            ->filters([SelectFilter::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions())])
             ->recordActions([ViewAction::make(), EditAction::make()])
             ->defaultSort('name')
             ->emptyStateHeading('No stock locations');

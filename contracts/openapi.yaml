@@ -3,8 +3,8 @@ info:
   title: LodgeOps API
   version: 1.0.0
   description: >-
-    Tenant-scoped HTTP contract used by the LodgeOps Next.js experience and
-    explicit third-party integrations. Money is always represented in minor
+    Tenant-scoped HTTP contract used by LodgeOps automation and explicit
+    third-party integrations. Money is always represented in minor
     units and timestamps are UTC ISO-8601 instants.
 servers:
   - url: https://api.example.com/api/v1

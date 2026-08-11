@@ -23,7 +23,7 @@ class ResourceForm
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->relationship('property', 'name')
+                        ->options(LodgeOpsPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
@@ -39,7 +39,6 @@ class ResourceForm
                             ->where('role', MembershipRole::Guide)
                             ->where('is_active', true)
                             ->get()
-                            ->filter(fn (Membership $membership): bool => $membership->user !== null)
                             ->mapWithKeys(fn (Membership $membership): array => [
                                 $membership->user_id => "{$membership->user->name} · {$membership->user->email}",
                             ])->all())

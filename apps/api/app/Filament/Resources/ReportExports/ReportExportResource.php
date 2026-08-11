@@ -22,11 +22,11 @@ class ReportExportResource extends TenantResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-arrow-down-tray';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Finance & Reporting';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
     protected static ?int $navigationSort = 50;
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
 

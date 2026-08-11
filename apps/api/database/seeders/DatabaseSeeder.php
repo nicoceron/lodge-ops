@@ -3,26 +3,36 @@
 namespace Database\Seeders;
 
 use App\Enums\AllocationStatus;
+use App\Enums\DepositStatus;
+use App\Enums\FolioLineType;
 use App\Enums\MembershipRole;
+use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Models\AutomationRule;
+use App\Models\CommissionAccrual;
+use App\Models\CostRecord;
+use App\Models\Deposit;
+use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\GuestPortalAccessToken;
 use App\Models\GuestPortalDocument;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
+use App\Models\Payment;
 use App\Models\Program;
 use App\Models\ProgramResourceRequirement;
 use App\Models\ProgramTaskTemplate;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
+use App\Models\ServiceOccurrence;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -53,20 +63,21 @@ class DatabaseSeeder extends Seeder
 
             $context = app(TenantContext::class);
             $context->set($tenant);
+            $today = CarbonImmutable::now($tenant->timezone)->startOfDay()->utc();
 
             $property = Property::query()->firstOrCreate(
                 ['code' => 'MAIN'],
                 ['name' => 'Estancia Viento Sur', 'timezone' => 'America/Argentina/Rio_Gallegos', 'is_active' => true],
             );
-            $membership = Membership::query()->firstOrCreate(
+            $membership = Membership::query()->updateOrCreate(
                 ['user_id' => $user->id],
-                ['property_id' => $property->id, 'role' => MembershipRole::Owner, 'is_active' => true],
+                ['property_id' => $property->id, 'role' => MembershipRole::Administrator, 'is_active' => true],
             );
             $context->set($tenant, $membership);
 
             $staff = $this->seedTeam($tenant->id, $property->id);
             $programs = $this->seedPrograms($property->id);
-            $this->seedResources($property->id, $staff);
+            $resources = $this->seedResources($property->id, $staff);
             $this->seedAutomation();
 
             $guest = Guest::query()->firstOrCreate(
@@ -81,8 +92,8 @@ class DatabaseSeeder extends Seeder
                     'program_id' => $programs['stay']->id,
                     'primary_guest_id' => $guest->id,
                     'status' => ReservationStatus::Confirmed,
-                    'starts_at' => now()->addDay()->setTime(15, 0),
-                    'ends_at' => now()->addDays(3)->setTime(11, 0),
+                    'starts_at' => $today->addDay()->addHours(15),
+                    'ends_at' => $today->addDays(3)->addHours(11),
                     'adults' => 2,
                     'currency' => 'USD',
                     'subtotal_minor' => 600000,
@@ -99,6 +110,7 @@ class DatabaseSeeder extends Seeder
                 ['reservation_id' => $reservation->id, 'title' => 'Preparar habitacion'],
                 ['property_id' => $property->id, 'status' => TaskStatus::Todo, 'priority' => 'high', 'due_at' => $reservation->starts_at->subHours(2)],
             );
+            $this->seedDemoOperations($property, $programs, $resources, $staff, $today);
             GuestPortalDocument::query()->firstOrCreate(
                 ['property_id' => $property->id, 'slug' => 'outdoor-waiver', 'version' => '1.0'],
                 [
@@ -129,10 +141,15 @@ class DatabaseSeeder extends Seeder
     private function seedTeam(string $tenantId, string $propertyId): array
     {
         $team = [
+            'owner' => ['name' => 'Sofia Propietaria', 'email' => 'owner@example.com', 'role' => MembershipRole::Owner],
+            'manager' => ['name' => 'Valentina Gerencia', 'email' => 'manager@example.com', 'role' => MembershipRole::Manager],
+            'sales' => ['name' => 'Tomas Ventas', 'email' => 'sales@example.com', 'role' => MembershipRole::Sales],
             'guide' => ['name' => 'Mateo Rios', 'email' => 'guide@example.com', 'role' => MembershipRole::Guide],
             'kitchen' => ['name' => 'Lucia Cocina', 'email' => 'kitchen@example.com', 'role' => MembershipRole::Kitchen],
+            'housekeeping' => ['name' => 'Elena Habitaciones', 'email' => 'housekeeping@example.com', 'role' => MembershipRole::Housekeeping],
             'operations' => ['name' => 'Ana Operaciones', 'email' => 'operations@example.com', 'role' => MembershipRole::Operations],
             'finance' => ['name' => 'Diego Finanzas', 'email' => 'finance@example.com', 'role' => MembershipRole::Finance],
+            'viewer' => ['name' => 'Auditoria Demo', 'email' => 'viewer@example.com', 'role' => MembershipRole::Viewer],
         ];
 
         return collect($team)->map(function (array $profile) use ($tenantId, $propertyId): User {
@@ -217,8 +234,11 @@ class DatabaseSeeder extends Seeder
         return $programs;
     }
 
-    /** @param array<string, User> $staff */
-    private function seedResources(string $propertyId, array $staff): void
+    /**
+     * @param  array<string, User>  $staff
+     * @return array<string, \App\Models\Resource>
+     */
+    private function seedResources(string $propertyId, array $staff): array
     {
         $resources = [
             ['code' => '101', 'name' => 'Coihue Suite', 'type' => ResourceType::Room, 'capacity' => 2],
@@ -231,8 +251,9 @@ class DatabaseSeeder extends Seeder
             ['code' => 'BUYOUT', 'name' => 'Full lodge buyout', 'type' => ResourceType::Venue, 'capacity' => 1, 'is_buyout' => true],
         ];
 
+        $created = [];
         foreach ($resources as $resource) {
-            Resource::query()->updateOrCreate(
+            $created[$resource['code']] = Resource::query()->updateOrCreate(
                 ['code' => $resource['code']],
                 [
                     'property_id' => $propertyId,
@@ -243,6 +264,264 @@ class DatabaseSeeder extends Seeder
                     'attributes' => $resource['attributes'] ?? null,
                     'is_buyout' => $resource['is_buyout'] ?? false,
                     'is_active' => true,
+                ],
+            );
+        }
+
+        return $created;
+    }
+
+    /**
+     * @param  array<string, Program>  $programs
+     * @param  array<string, \App\Models\Resource>  $resources
+     * @param  array<string, User>  $staff
+     */
+    private function seedDemoOperations(
+        Property $property,
+        array $programs,
+        array $resources,
+        array $staff,
+        CarbonImmutable $today,
+    ): void {
+        $arrivalGuest = Guest::query()->updateOrCreate(
+            ['email' => 'arrival@example.com'],
+            [
+                'first_name' => 'Isabella',
+                'last_name' => 'Walker',
+                'phone' => '+1 555 0101',
+                'language' => 'en',
+                'preferences' => ['dietary' => ['Gluten-free', 'Severe shellfish allergy'], 'room' => 'Quiet room'],
+            ],
+        );
+        $inHouseGuest = Guest::query()->updateOrCreate(
+            ['email' => 'inhouse@example.com'],
+            [
+                'first_name' => 'Martin',
+                'last_name' => 'Alvarez',
+                'phone' => '+54 9 11 5555 0199',
+                'language' => 'es',
+                'preferences' => ['dietary' => ['Vegetarian'], 'activities' => ['fly fishing']],
+            ],
+        );
+        $buyoutGuest = Guest::query()->updateOrCreate(
+            ['email' => 'buyout@example.com'],
+            ['first_name' => 'Patagonia', 'last_name' => 'Expedition Group', 'language' => 'en'],
+        );
+
+        $arrival = Reservation::query()->updateOrCreate(
+            ['confirmation_number' => 'RSV-DEMO-ARRIVAL'],
+            [
+                'property_id' => $property->id,
+                'program_id' => $programs['stag']->id,
+                'primary_guest_id' => $arrivalGuest->id,
+                'status' => ReservationStatus::Confirmed,
+                'starts_at' => $today->addHours(15),
+                'ends_at' => $today->addDays(4)->addHours(11),
+                'adults' => 2,
+                'children' => 0,
+                'currency' => 'USD',
+                'subtotal_minor' => 1_250_000,
+                'tax_minor' => 237_500,
+                'total_minor' => 1_487_500,
+                'source' => 'Virtuoso',
+                'confirmed_at' => $today->subDays(30),
+            ],
+        );
+        $arrival->allocations()->updateOrCreate(
+            ['resource_id' => $resources['102']->id],
+            ['status' => AllocationStatus::Confirmed, 'starts_at' => $arrival->starts_at, 'ends_at' => $arrival->ends_at, 'quantity' => 1],
+        );
+
+        $inHouse = Reservation::query()->updateOrCreate(
+            ['confirmation_number' => 'RSV-DEMO-INHOUSE'],
+            [
+                'property_id' => $property->id,
+                'program_id' => $programs['double']->id,
+                'primary_guest_id' => $inHouseGuest->id,
+                'status' => ReservationStatus::CheckedIn,
+                'starts_at' => $today->subDay()->addHours(15),
+                'ends_at' => $today->addDays(2)->addHours(11),
+                'adults' => 2,
+                'children' => 1,
+                'currency' => 'USD',
+                'subtotal_minor' => 1_840_000,
+                'tax_minor' => 349_600,
+                'total_minor' => 2_189_600,
+                'source' => 'Direct',
+                'confirmed_at' => $today->subDays(45),
+            ],
+        );
+        $inHouse->allocations()->updateOrCreate(
+            ['resource_id' => $resources['CABIN']->id],
+            ['status' => AllocationStatus::Confirmed, 'starts_at' => $inHouse->starts_at, 'ends_at' => $inHouse->ends_at, 'quantity' => 1],
+        );
+
+        $buyout = Reservation::query()->updateOrCreate(
+            ['confirmation_number' => 'RSV-DEMO-BUYOUT'],
+            [
+                'property_id' => $property->id,
+                'program_id' => $programs['stag']->id,
+                'primary_guest_id' => $buyoutGuest->id,
+                'status' => ReservationStatus::Confirmed,
+                'starts_at' => $today->addDays(8)->addHours(15),
+                'ends_at' => $today->addDays(12)->addHours(11),
+                'adults' => 6,
+                'children' => 0,
+                'currency' => 'USD',
+                'subtotal_minor' => 4_800_000,
+                'tax_minor' => 912_000,
+                'total_minor' => 5_712_000,
+                'source' => 'Summit Travel',
+                'confirmed_at' => $today->subDays(60),
+            ],
+        );
+        $buyout->allocations()->updateOrCreate(
+            ['resource_id' => $resources['BUYOUT']->id],
+            ['status' => AllocationStatus::Confirmed, 'starts_at' => $buyout->starts_at, 'ends_at' => $buyout->ends_at, 'quantity' => 1],
+        );
+
+        $occurrences = [
+            ['key' => 'fishing', 'point' => 'Rio Gallegos launch', 'start' => $today->addDay()->addHours(8), 'duration' => 8, 'capacity' => 4],
+            ['key' => 'horseback', 'point' => 'Main corral', 'start' => $today->addDays(2)->addHours(9), 'duration' => 3, 'capacity' => 8],
+            ['key' => 'trekking', 'point' => 'North trailhead', 'start' => $today->addDays(3)->addHours(8), 'duration' => 6, 'capacity' => 10],
+        ];
+        foreach ($occurrences as $definition) {
+            $occurrence = ServiceOccurrence::query()->updateOrCreate(
+                ['program_id' => $programs[$definition['key']]->id, 'meeting_point' => $definition['point']],
+                [
+                    'property_id' => $property->id,
+                    'starts_at' => $definition['start'],
+                    'ends_at' => $definition['start']->addHours($definition['duration']),
+                    'capacity' => $definition['capacity'],
+                    'is_cancelled' => false,
+                ],
+            );
+            $resourceCodes = match ($definition['key']) {
+                'fishing' => ['GUIDE-MATEO', 'BOAT-01'],
+                'horseback' => ['HORSES'],
+                default => ['GUIDE-MATEO'],
+            };
+            foreach ($resourceCodes as $resourceCode) {
+                $arrival->allocations()->updateOrCreate(
+                    ['service_occurrence_id' => $occurrence->id, 'resource_id' => $resources[$resourceCode]->id],
+                    [
+                        'status' => AllocationStatus::Confirmed,
+                        'starts_at' => $occurrence->starts_at,
+                        'ends_at' => $occurrence->ends_at,
+                        'quantity' => $resourceCode === 'HORSES' ? 2 : 1,
+                    ],
+                );
+            }
+        }
+
+        $arrivalPayment = Payment::query()->updateOrCreate(
+            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-ARRIVAL-DEPOSIT'],
+            [
+                'reservation_id' => $arrival->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'bank_transfer',
+                'currency' => 'USD',
+                'amount_minor' => 743_750,
+                'processed_at' => $today->subDays(20),
+                'metadata' => ['evidence' => 'demo-wire-confirmation.pdf'],
+            ],
+        );
+        $inHousePayment = Payment::query()->updateOrCreate(
+            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-INHOUSE-PAID'],
+            [
+                'reservation_id' => $inHouse->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'bank_transfer',
+                'currency' => 'USD',
+                'amount_minor' => 2_189_600,
+                'processed_at' => $today->subDays(5),
+                'metadata' => ['evidence' => 'demo-paid-in-full.pdf'],
+            ],
+        );
+        Deposit::query()->updateOrCreate(
+            ['reservation_id' => $arrival->id, 'schedule_type' => 'deposit'],
+            [
+                'payment_id' => $arrivalPayment->id,
+                'status' => DepositStatus::Paid,
+                'currency' => 'USD',
+                'amount_minor' => 743_750,
+                'due_at' => $today->subDays(21),
+                'paid_at' => $today->subDays(20),
+            ],
+        );
+        Deposit::query()->updateOrCreate(
+            ['reservation_id' => $arrival->id, 'schedule_type' => 'balance'],
+            [
+                'payment_id' => null,
+                'status' => DepositStatus::Due,
+                'currency' => 'USD',
+                'amount_minor' => 743_750,
+                'due_at' => $today->subDay(),
+                'paid_at' => null,
+            ],
+        );
+        Deposit::query()->updateOrCreate(
+            ['reservation_id' => $inHouse->id, 'schedule_type' => 'balance'],
+            [
+                'payment_id' => $inHousePayment->id,
+                'status' => DepositStatus::Paid,
+                'currency' => 'USD',
+                'amount_minor' => 2_189_600,
+                'due_at' => $today->subDays(30),
+                'paid_at' => $today->subDays(5),
+            ],
+        );
+        FolioLine::query()->firstOrCreate(
+            ['reservation_id' => $inHouse->id, 'description' => 'Private fly-fishing transfer'],
+            [
+                'type' => FolioLineType::Charge,
+                'quantity' => 1,
+                'unit_amount_minor' => 185_000,
+                'amount_minor' => 185_000,
+                'currency' => 'USD',
+                'posted_at' => $today->addHours(18),
+                'metadata' => ['category' => 'extra'],
+            ],
+        );
+
+        CostRecord::query()->updateOrCreate(
+            ['reservation_id' => $arrival->id, 'description' => 'Guide and field provisions'],
+            [
+                'program_id' => $arrival->program_id,
+                'staff_user_id' => $staff['guide']->id,
+                'kind' => 'actual',
+                'category' => 'guide',
+                'currency' => 'USD',
+                'amount_minor' => 175_000,
+                'occurred_at' => $today,
+            ],
+        );
+        CommissionAccrual::query()->updateOrCreate(
+            ['reservation_id' => $arrival->id, 'payee_name' => 'Virtuoso'],
+            [
+                'payee_type' => 'channel',
+                'rate_basis_points' => 1_000,
+                'base_amount_minor' => $arrival->total_minor,
+                'amount_minor' => 148_750,
+                'currency' => 'USD',
+                'status' => 'accrued',
+            ],
+        );
+
+        foreach ([
+            ['reservation' => $arrival, 'title' => 'Confirm Isabella airport transfer', 'role' => 'operations', 'priority' => 'urgent', 'due' => $today->addHours(10)],
+            ['reservation' => $arrival, 'title' => 'Brief guide on Red Stag itinerary', 'role' => 'guide', 'priority' => 'high', 'due' => $today->addHours(11)],
+            ['reservation' => $arrival, 'title' => 'Prepare allergy-safe welcome dinner', 'role' => 'kitchen', 'priority' => 'high', 'due' => $today->addHours(12)],
+            ['reservation' => $inHouse, 'title' => 'Post private fishing transfer extra', 'role' => 'finance', 'priority' => 'normal', 'due' => $today->addHours(18)],
+        ] as $task) {
+            OperationalTask::query()->updateOrCreate(
+                ['reservation_id' => $task['reservation']->id, 'title' => $task['title']],
+                [
+                    'property_id' => $property->id,
+                    'status' => TaskStatus::Todo,
+                    'priority' => $task['priority'],
+                    'due_at' => $task['due'],
+                    'metadata' => ['role' => $task['role']],
                 ],
             );
         }

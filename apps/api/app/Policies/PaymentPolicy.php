@@ -19,7 +19,7 @@ class PaymentPolicy extends TenantPolicy
 
     public function viewFinance(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canViewFinance($user);
     }
 
     public function create(User $user): bool

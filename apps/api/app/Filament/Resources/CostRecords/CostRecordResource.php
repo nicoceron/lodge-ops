@@ -6,6 +6,7 @@ use App\Filament\Resources\CostRecords\Pages\ManageCostRecords;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\CostRecord;
+use App\Models\Program;
 use App\Models\Reservation;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
@@ -22,6 +23,8 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class CostRecordResource extends TenantResource
 {
@@ -29,24 +32,55 @@ class CostRecordResource extends TenantResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-receipt-percent';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Finance & Reporting';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
     protected static ?int $navigationSort = 20;
 
     protected static ?string $recordTitleAttribute = 'description';
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
 
     protected static bool $canDeleteRecords = false;
 
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        if ($propertyId === null) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $scope) => $scope
+            ->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId))
+            ->orWhereHas('program', fn (Builder $program) => $program->where('property_id', $propertyId)));
+    }
+
+    public static function canView(Model $record): bool
+    {
+        if (! parent::canView($record) || ! $record instanceof CostRecord) {
+            return false;
+        }
+
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        return $propertyId === null
+            || $record->reservation?->property_id === $propertyId
+            || $record->program?->property_id === $propertyId;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
             Section::make('Cost record')->columns(2)->schema([
-                Select::make('reservation_id')->label('Reservation')->relationship('reservation', 'confirmation_number')->searchable()->preload(),
-                Select::make('program_id')->label('Program')->relationship('program', 'name')->searchable()->preload(),
+                Select::make('reservation_id')->label('Reservation')->options(fn (): array => Reservation::query()
+                    ->when(app(TenantContext::class)->membership()?->property_id, fn (Builder $query, string $propertyId) => $query->where('property_id', $propertyId))
+                    ->orderByDesc('starts_at')->limit(100)->pluck('confirmation_number', 'id')->all())->searchable(),
+                Select::make('program_id')->label('Program')->options(fn (): array => Program::query()
+                    ->when(app(TenantContext::class)->membership()?->property_id, fn (Builder $query, string $propertyId) => $query->where('property_id', $propertyId))
+                    ->orderBy('name')->pluck('name', 'id')->all())->searchable(),
                 Select::make('staff_user_id')->label('Staff member')->relationship('staffUser', 'name')->searchable()->preload(),
                 Select::make('kind')->options(['estimated' => 'Estimated', 'actual' => 'Actual'])->required()->default('actual'),
                 TextInput::make('category')->required()->maxLength(50),

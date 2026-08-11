@@ -27,7 +27,7 @@ class TeamMemberServiceTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_owner_can_invite_a_property_scoped_team_member(): void
+    public function test_administrator_can_invite_a_property_scoped_team_member(): void
     {
         Notification::fake();
         [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
@@ -70,23 +70,23 @@ class TeamMemberServiceTest extends TestCase
         app(TeamMemberService::class)->invite('Guide', 'guide@example.test', MembershipRole::Guide, $otherProperty->id);
     }
 
-    public function test_last_active_owner_cannot_be_demoted_or_deactivated(): void
+    public function test_last_active_administrator_cannot_be_demoted_or_deactivated(): void
     {
-        [, , , $owner] = $this->tenantEnvironment(authenticate: false);
+        [, , , $administrator] = $this->tenantEnvironment(authenticate: false);
 
         $this->expectException(DomainException::class);
 
-        app(TeamMemberService::class)->update($owner, MembershipRole::Manager, null, true);
+        app(TeamMemberService::class)->update($administrator, MembershipRole::Manager, null, true);
     }
 
-    public function test_owner_can_change_access_after_another_active_owner_exists(): void
+    public function test_administrator_can_change_access_after_another_active_administrator_exists(): void
     {
-        [, , , $owner] = $this->tenantEnvironment(authenticate: false);
-        $secondOwner = Membership::factory()->create(['role' => MembershipRole::Owner]);
+        [, , , $administrator] = $this->tenantEnvironment(authenticate: false);
+        $secondAdministrator = Membership::factory()->create(['role' => MembershipRole::Administrator]);
 
-        $updated = app(TeamMemberService::class)->update($owner, MembershipRole::Manager, null, true);
+        $updated = app(TeamMemberService::class)->update($administrator, MembershipRole::Manager, null, true);
 
         $this->assertSame(MembershipRole::Manager, $updated->role);
-        $this->assertTrue($secondOwner->fresh()->is_active);
+        $this->assertTrue($secondAdministrator->fresh()->is_active);
     }
 }

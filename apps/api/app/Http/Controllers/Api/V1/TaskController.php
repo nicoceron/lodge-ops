@@ -8,6 +8,9 @@ use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
 use App\Models\OperationalTask;
+use App\Models\User;
+use App\Services\OperationalTaskAccess;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -18,7 +21,12 @@ class TaskController extends Controller
     {
         $this->authorize('viewAny', OperationalTask::class);
 
-        $tasks = OperationalTask::query()
+        $query = OperationalTask::query();
+        $membership = app(TenantContext::class)->membership();
+        $user = $request->user();
+        abort_unless($membership?->role !== null && $user instanceof User, 403);
+
+        $tasks = app(OperationalTaskAccess::class)->scope($query, $user, $membership->role)
             ->with('assignee')
             ->when($request->query('status'), fn ($query, $value) => $query->where('status', $value))
             ->when($request->query('property_id'), fn ($query, $value) => $query->where('property_id', $value))

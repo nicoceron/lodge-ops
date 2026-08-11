@@ -3,8 +3,13 @@
 namespace App\Models;
 
 use App\Enums\DepositStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property DepositStatus $status
+ * @property CarbonImmutable|null $due_at
+ */
 class Deposit extends TenantModel
 {
     protected function casts(): array

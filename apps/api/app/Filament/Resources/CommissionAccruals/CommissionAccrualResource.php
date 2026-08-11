@@ -27,15 +27,17 @@ class CommissionAccrualResource extends TenantResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-user-group';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Finance & Reporting';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
     protected static ?int $navigationSort = 25;
 
     protected static ?string $recordTitleAttribute = 'payee_name';
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
+
+    protected static ?string $propertyRelationship = 'reservation';
 
     protected static bool $canEditRecords = false;
 

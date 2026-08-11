@@ -2,25 +2,25 @@
 
 ## Decision summary
 
-LodgeOps is a modular monolith. Laravel is the sole owner of domain rules, authorization, transactions, audit history, pricing, availability, and persistence. Filament and Next.js are delivery adapters over the same application layer.
+LodgeOps is a modular monolith. Laravel is the sole owner of authentication, domain rules, authorization, transactions, audit history, pricing, availability, persistence, and the secure guest workflow. Filament is the tenant-aware staff product UI over that application layer. Next.js is a separate public marketing site only.
 
-This avoids two sources of truth while preserving a purpose-built calendar and mobile workflow that CRUD-oriented administration screens cannot provide well.
+Filament resources handle record-centric workflows; Filament custom Livewire pages handle the master calendar, live operations board, and finance dashboard. Shared calendar, dashboard, operations, and finance projections live in application services so Filament and JSON controllers never invoke one another. The guest stay center uses server-rendered Laravel views and the same hardened guest-portal actions as the JSON API. The Next.js site has no login implementation, protected routes, tenant selection, API proxy, Sanctum state, or guest magic-link workflow.
 
 ## Runtime topology
 
-- `app.example.com`: Next.js staff and guest application.
-- `api.example.com`: versioned Laravel JSON API.
-- `ops.example.com`: Filament administration, using the Laravel web session.
+- `www.example.com`: public-only Next.js marketing website.
+- `app.example.com`: Laravel application, Filament staff panel at `/manage`, guest stay center, and versioned JSON API.
 - PostgreSQL stores canonical state; Redis backs queues, cache, locks, and sessions; object storage holds tenant-prefixed private files.
 - Slow or external work is queued after database commit. The scheduler runs in UTC and dispatches tenant-local jobs.
 
-All three application hosts must share a registrable domain so first-party browser authentication can use Sanctum cookie sessions with CSRF protection. Bearer tokens are reserved for explicit integrations and are never stored in browser local storage.
+Filament uses Laravel's encrypted web session and CSRF protection. Guest magic links are exchanged once for a server-side encrypted session value; raw session tokens are never rendered into HTML or stored in browser local storage. Bearer tokens remain available for explicit API integrations.
 
 ## Multi-tenancy
 
 The initial deployment uses a shared database with strict row ownership:
 
 - global users join tenants through active memberships;
+- Filament identifies the active tenant in `/manage/workspace/{tenant-slug}/...` and verifies that the signed-in user has an active membership before resolving the application tenant context;
 - every tenant-owned row has a non-null `tenant_id`;
 - tenant IDs are derived from trusted route/host context and an authenticated membership, never accepted from request bodies;
 - models use a tenant scope, while policies and service methods independently enforce membership and role;
@@ -56,13 +56,17 @@ PostgreSQL row-level security can be added as defense in depth after request and
 - Every retryable command has a tenant-scoped idempotency key.
 - Every sensitive write and file access is audited.
 
-## Experience split
+## Application surfaces
 
-Filament owns platform provisioning, tenant configuration, resources, programs, rate plans, templates, integrations, payment reconciliation, users, roles, costs, commissions, imports, exports, and exception queues.
+Filament owns the complete authenticated staff experience: calendar, reservation composer, CRM, operations board, task queues, guide/kitchen/housekeeping views, finance dashboard, configuration, integrations, reconciliation, users, imports, exports, and exception work.
 
-Next.js owns the master calendar, reservation composer, proposal workspace, arrival board, assignment suggestions, task board, kitchen and housekeeping views, guide mobile view, owner dashboard, notification center, and branded guest portal.
+Laravel owns the public guest stay center: one-time magic-link exchange, itinerary, pre-arrival profile, document acknowledgement, payment evidence, folio, survey, and secure logout. These web controllers reuse the guest API's validated workflow methods rather than duplicating domain behavior.
 
-Business rules are never implemented only in Filament callbacks or Client Components. Both call Laravel actions guarded by policies and transactions.
+Next.js owns only public-facing marketing content: homepage, product features, pricing, and security information. Its sign-in and application calls to action are ordinary links to Laravel/Filament `/manage`; it never interprets Laravel authentication state.
+
+Business rules are never implemented only in Filament callbacks or Blade templates. Both surfaces call Laravel actions guarded by policies and transactions.
+
+PHPStan with Larastan runs at level 5 in the local and CI lint gates. The checked-in baseline records legacy findings so every new or changed application path is held to the gate without hiding regressions.
 
 ## Source references
 
@@ -71,6 +75,6 @@ The version choices and architecture follow current official documentation:
 - Laravel 13 release and support policy: https://laravel.com/docs/13.x/releases
 - Laravel Sanctum SPA authentication: https://laravel.com/docs/13.x/sanctum
 - Laravel queues and scheduler: https://laravel.com/docs/13.x/queues and https://laravel.com/docs/13.x/scheduling
-- Filament 5 installation, tenancy, and security: https://filamentphp.com/docs/5.x/introduction/installation, https://filamentphp.com/docs/5.x/users/tenancy, https://filamentphp.com/docs/5.x/advanced/security
-- Next.js 16 App Router and data security: https://nextjs.org/docs/app and https://nextjs.org/docs/app/guides/data-security
+- Filament 5 resources, custom pages, tenancy, authentication, and security: https://filamentphp.com/docs/5.x/resources/overview, https://filamentphp.com/docs/5.x/navigation/custom-pages, https://filamentphp.com/docs/5.x/users/tenancy, https://filamentphp.com/docs/5.x/users/overview, https://filamentphp.com/docs/5.x/advanced/security
+- Next.js 16 App Router for public content: https://nextjs.org/docs/app
 

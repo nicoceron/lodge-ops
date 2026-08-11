@@ -30,9 +30,11 @@ class PaymentResource extends TenantResource
 
     protected static bool $canDeleteRecords = false;
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
+
+    protected static ?string $propertyRelationship = 'reservation';
 
     public static function canRunWorkflow(Payment $payment): bool
     {

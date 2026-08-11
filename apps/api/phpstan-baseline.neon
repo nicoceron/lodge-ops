@@ -1,0 +1,3103 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Console/Commands/DispatchReservationMilestones.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Console/Commands/DispatchReservationMilestones.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus\:\:CheckedOut will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Console/Commands/DispatchReservationMilestones.php
+
+		-
+			message: '#^Cannot call method canManageMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Pages/FinanceDashboard.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Pages/FinanceDashboard.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\DepositStatus\:\:Due will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Pages/FinanceDashboard.php
+
+		-
+			message: '#^Call to function abort_unless\(\) with false and 403 will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Cannot call method canManageOperations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Cannot call method timezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Instanceof between string\|null and App\\Enums\\MembershipRole will always evaluate to false\.$#'
+			identifier: instanceof.alwaysFalse
+			count: 1
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Method App\\Filament\\Pages\\KitchenDashboard\:\:reservationGuests\(\) should return Illuminate\\Support\\Collection\<int, App\\Models\\Guest\> but returns Illuminate\\Support\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Parameter \#1 \$preferences of method App\\Filament\\Pages\\KitchenDashboard\:\:dietaryLabels\(\) expects array\<string, mixed\>\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Filament/Pages/KitchenDashboard.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$display_color\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 7
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$resource\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Anonymous function should return Illuminate\\Support\\Collection\<int, array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}\> but returns Illuminate\\Support\\Collection\<int, array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}\>\.$#'
+			identifier: return.type
+			count: 3
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string\|null, array\{App\\Enums\\MembershipRole\:\:Owner, App\\Enums\\MembershipRole\:\:Manager, App\\Enums\\MembershipRole\:\:Sales, App\\Enums\\MembershipRole\:\:Operations, App\\Enums\\MembershipRole\:\:Guide, App\\Enums\\MembershipRole\:\:Viewer\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Method App\\Filament\\Pages\\MasterCalendar\:\:events\(\) should return Illuminate\\Support\\Collection\<int, array\<string, mixed\>\> but returns Illuminate\\Support\\Collection\<int, array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,App\\Models\\Reservation\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:sortBy\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \.\.\.\$values of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:push\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 3
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \.\.\.\$values of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:push\(\) expects array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}, array\{type\: ''Activity'', title\: mixed, reference\: string\|null, starts_at\: string\|null, ends_at\: string\|null, status\: ''cancelled''\|''scheduled'', property\: mixed, program\: mixed, \.\.\.\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \.\.\.\$values of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:push\(\) expects array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}, array\{type\: ''Resource block'', title\: string, reference\: mixed, starts_at\: string\|null, ends_at\: string\|null, status\: ''blocked'', property\: mixed, program\: null, \.\.\.\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Parameter \#1 \.\.\.\$values of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:push\(\) expects array\{type\: string, title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: mixed, \.\.\.\}, array\{type\: ''Task'', title\: string, reference\: string, starts_at\: string\|null, ends_at\: string\|null, status\: mixed, property\: mixed, program\: null, \.\.\.\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Ternary operator condition is always false\.$#'
+			identifier: ternary.alwaysFalse
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>property_id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Filament/Pages/MasterCalendar.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Call to function abort_unless\(\) with false and 403 will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments \*NEVER\*, array\{App\\Enums\\MembershipRole\:\:Owner, App\\Enums\\MembershipRole\:\:Manager, App\\Enums\\MembershipRole\:\:Operations\} and true will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Cannot call method canManageOperations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Cannot call method greaterThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Cannot call method lessThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Instanceof between string\|null and App\\Enums\\MembershipRole will always evaluate to false\.$#'
+			identifier: instanceof.alwaysFalse
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type App\\Models\\Membership\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Filament/Pages/OperationsBoard.php
+
+		-
+			message: '#^Cannot call method canManageConfiguration\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Resources/CatalogItems/CatalogItemResource.php
+
+		-
+			message: '#^Cannot call method canManageMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Resources/CatalogItems/CatalogItemResource.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Filament/Resources/CostRecords/CostRecordResource.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Filament/Resources/Deposits/DepositResource.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\DepositStatus\:\:Due will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Filament/Resources/Deposits/DepositResource.php
+
+		-
+			message: '#^Parameter \#1 \$template of method App\\Services\\MessageTemplateService\:\:createVersion\(\) expects App\\Models\\MessageTemplate, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Resources/MessageTemplates/RelationManagers/VersionsRelationManager.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Resources/Payments/PaymentWorkflowActions.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\PaymentStatus\:\:Pending will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Payments/PaymentWorkflowActions.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\PaymentStatus\:\:Succeeded will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Payments/PaymentWorkflowActions.php
+
+		-
+			message: '#^Parameter \#1 \$proposal of static method App\\Filament\\Resources\\Proposals\\ProposalFormData\:\:fromRecord\(\) expects App\\Models\\Proposal, Illuminate\\Database\\Eloquent\\Model\|int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Resources/Proposals/Pages/EditProposal.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Proposals/ProposalResource.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ProposalStatus\:\:Draft will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Proposals/ProposalResource.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string, array\{App\\Enums\\ProposalStatus\:\:Draft, App\\Enums\\ProposalStatus\:\:Accepted\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Resources/Proposals/ProposalWorkflowActions.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ProposalStatus\:\:Draft will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Proposals/ProposalWorkflowActions.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ProposalStatus\:\:Sent will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Filament/Resources/Proposals/ProposalWorkflowActions.php
+
+		-
+			message: '#^Call to an undefined method Filament\\Infolists\\Components\\CodeEntry\:\:language\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Filament/Resources/Proposals/Schemas/ProposalInfolist.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Proposals/Tables/ProposalsTable.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Proposals/Tables/ProposalsTable.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/Pages/CreateReservation.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$primary_guest_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Filament/Resources/Reservations/Pages/CreateReservation.php
+
+		-
+			message: '#^Cannot access property \$id on Illuminate\\Database\\Eloquent\\Model\|int\|string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Filament/Resources/Reservations/Pages/EditReservation.php
+
+		-
+			message: '#^Cannot access property \$primary_guest_id on Illuminate\\Database\\Eloquent\\Model\|int\|string\.$#'
+			identifier: property.nonObject
+			count: 3
+			path: app/Filament/Resources/Reservations/Pages/EditReservation.php
+
+		-
+			message: '#^Cannot access property \$revision on Illuminate\\Database\\Eloquent\\Model\|int\|string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Filament/Resources/Reservations/Pages/EditReservation.php
+
+		-
+			message: '#^Cannot call method guests\(\) on Illuminate\\Database\\Eloquent\\Model\|int\|string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Filament/Resources/Reservations/Pages/EditReservation.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Parameter \#1 \$reservation of method App\\Services\\AllocationWorkflowService\:\:create\(\) expects App\\Models\\Reservation, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Parameter \#1 \$reservation of method App\\Services\\AllocationWorkflowService\:\:release\(\) expects App\\Models\\Reservation, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Parameter \#1 \$reservation of method App\\Services\\AllocationWorkflowService\:\:update\(\) expects App\\Models\\Reservation, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\AllocationStatus\:\:Released will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Filament/Resources/Reservations/RelationManagers/AllocationsRelationManager.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string, array\{App\\Enums\\ReservationStatus\:\:Draft, App\\Enums\\ReservationStatus\:\:Hold\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Resources/Reservations/ReservationResource.php
+
+		-
+			message: '#^Cannot call method canTransitionTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Filament/Resources/Reservations/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Filament/Resources/Reservations/Schemas/ReservationInfolist.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Filament/Resources/Reservations/Schemas/ReservationInfolist.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/Tables/ReservationsTable.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/Tables/ReservationsTable.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/Tables/ReservationsTable.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Reservations/Tables/ReservationsTable.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Filament/Resources/ResourceBlocks/ResourceBlockResource.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Filament/Resources/ResourceBlocks/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Resources/Schemas/ResourceForm.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/Resources/Schemas/ResourceForm.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Filament/Resources/RetailSales/RelationManagers/LinesRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/StockLocations/RelationManagers/MovementsRelationManager.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/SurveyResponses/SurveyResponseResource.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type App\\Models\\Membership\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Filament/Resources/SurveyResponses/SurveyResponseResource.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/TeamMembers/Pages/EditTeamMember.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/TeamMembers/Pages/EditTeamMember.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/TeamMembers/TeamMemberResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Membership\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/TenantResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\TenantModel\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Filament/Resources/TenantResource.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string\|null, array\{App\\Enums\\MembershipRole\:\:Owner, App\\Enums\\MembershipRole\:\:Manager, App\\Enums\\MembershipRole\:\:Sales, App\\Enums\\MembershipRole\:\:Operations, App\\Enums\\MembershipRole\:\:Finance, App\\Enums\\MembershipRole\:\:Viewer\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Filament/Widgets/LodgeCommandCenter.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Membership\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$slug\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Call to function method_exists\(\) with Laravel\\Sanctum\\PersonalAccessToken and ''delete'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\Membership\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Models\\User and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Laravel\\Sanctum\\PersonalAccessToken and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Controllers/Api/V1/AuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$capacity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$display_color\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 7
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:isBuyout\(\)\.$#'
+			identifier: method.notFound
+			count: 4
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Call to function abort_unless\(\) with false and 403 will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string\|null, array\{App\\Enums\\MembershipRole\:\:Owner, App\\Enums\\MembershipRole\:\:Manager, App\\Enums\\MembershipRole\:\:Sales, App\\Enums\\MembershipRole\:\:Operations, App\\Enums\\MembershipRole\:\:Guide, App\\Enums\\MembershipRole\:\:Viewer\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 4
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Cannot call method lessThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 10
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\Allocation\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\Resource\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between \*NEVER\* and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Ternary operator condition is always false\.$#'
+			identifier: ternary.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>capacity" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type App\\Models\\Membership\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Model\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Http/Controllers/Api/V1/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$catalog_item_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$quantity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$unit_amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method canManageConfiguration\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 5
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method canManageGuests\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method canManageMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method canManageReservations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 5
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method canManageRetail\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Cannot call method toISOString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\CatalogItem\>\:\:create\(\) expects array\<model property of App\\Models\\CatalogItem, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Opportunity\>\:\:create\(\) expects array\<model property of App\\Models\\Opportunity, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Organization\>\:\:create\(\) expects array\<model property of App\\Models\\Organization, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Api/V1/ExtendedOperationsController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$program\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$program_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\Reservation\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\DepositStatus\:\:Due will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/V1/FinanceProjectionController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\GuestPortalAccessToken\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/GuestPortalController.php
+
+		-
+			message: '#^Cannot call method isFuture\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Api/V1/GuestPortalController.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Http/Controllers/Api/V1/GuestPortalController.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string, array\{App\\Enums\\ReservationStatus\:\:Draft, App\\Enums\\ReservationStatus\:\:Hold\} and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Http/Controllers/Api/V1/ReservationController.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Reservation\>\:\:create\(\) expects array\<model property of App\\Models\\Reservation, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Api/V1/ReservationController.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Http/Controllers/Api/V1/ReservationController.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Api/V1/ResourceBlockController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Api/V1/ResourceBlockController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Api/V1/ResourceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\GuestPortalAccessToken\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Middleware/ResolveGuestPortalSession.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Middleware/ResolveGuestPortalSession.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$quantity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$resource_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$serviceOccurrence\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$service_occurrence_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\AllocationResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/AllocationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$due_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$paid_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$payment_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$waived_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\DepositResource\:\:\$waiver_reason\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/DepositResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$created_by\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$metadata\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$payment_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$posted_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$quantity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$reverses_folio_line_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\FolioLineResource\:\:\$unit_amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/FolioLineResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalFolioResource\:\:\$confirmation_number\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalFolioResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalFolioResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalFolioResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalFolioResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalFolioResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalFolioResource\:\:\$folioLines\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/GuestPortalFolioResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$adults\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$allocations\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$children\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$confirmation_number\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$guestPaymentEvidence\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$guestPortalAcknowledgements\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$guestPortalProfiles\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$guestsForPortal\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$payments\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$property\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$surveys\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestPortalReservationResource\:\:\$total_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Resources/GuestPortalReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$document_number\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$document_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$language\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$marketing_consent\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$phone\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$preferences\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\GuestResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/GuestResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$attributes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$capacity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$property\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\LodgingResource\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Call to an undefined method App\\Http\\Resources\\LodgingResource\:\:isBuyout\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Resources/LodgingResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$evidence_note\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$evidence_url\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$metadata\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$processed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$provider\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$provider_reference\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$reconciled_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$reversal_reason\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$reversed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PaymentResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PaymentResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$capacity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$default_duration_minutes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$display_color\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$price_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$requirements\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProgramResource\:\:\$requires_accommodation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProgramResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$address\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\PropertyResource\:\:\$timezone\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/PropertyResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$accepted_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$adults\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$children\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$converted_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$expires_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$primary_guest_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$reference\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$sent_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$snapshot\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$tax_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$total_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ProposalResource\:\:\$version\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ProposalResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$adults\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$allocations\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$children\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$confirmation_number\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$confirmed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$currency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$hold_expires_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$notes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$primaryGuest\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$primary_guest_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$program\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$program_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$revision\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$source\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$statusHistory\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$subtotal_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$tax_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$total_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ReservationResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ReservationResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$notes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$reason\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$resource_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ResourceBlockResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ResourceBlockResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$allocated_quantity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$capacity\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$is_cancelled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$meeting_point\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$program\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$program_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\ServiceOccurrenceResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/ServiceOccurrenceResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$assignee\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$assignee_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$completed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$due_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$metadata\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$priority\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$reservation_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Access to an undefined property App\\Http\\Resources\\TaskResource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Resources/TaskResource.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Policies/GuestPolicy.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Viewer will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Policies/GuestPolicy.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Policies/ResourceBlockPolicy.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Policies/ResourceBlockPolicy.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Policies/ResourceBlockPolicy.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 1
+			path: app/Policies/ResourcePolicy.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string\|null and App\\Enums\\MembershipRole\:\:Guide will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Policies/ResourcePolicy.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\TenantModel\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageAvailability\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageConfiguration\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageGuestMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageGuests\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageOperations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canManageReservations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canScheduleOperations\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canViewGuestMoney\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Cannot call method canWrite\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Policies/TenantPolicy.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Anonymous function should return App\\Models\\Allocation but returns Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Cannot call method isFuture\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Parameter \#1 \$allocation of method App\\Services\\AvailabilityService\:\:assertAvailable\(\) expects App\\Models\\Allocation, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Relations\\HasOneOrMany\<Illuminate\\Database\\Eloquent\\Model,Illuminate\\Database\\Eloquent\\Model,Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\>\:\:create\(\) expects array\<model property of Illuminate\\Database\\Eloquent\\Model, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Result of \|\| is always false\.$#'
+			identifier: booleanOr.alwaysFalse
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus\:\:Confirmed will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 3
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus\:\:Hold will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/AllocationWorkflowService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Automation/AutomationActionExecutor.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/Automation/AutomationActionExecutor.php
+
+		-
+			message: '#^Parameter \#2 \$guest of method App\\Services\\GuestPortalTokenService\:\:issue\(\) expects App\\Models\\Guest, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Automation/AutomationActionExecutor.php
+
+		-
+			message: '#^Call to function is_string\(\) with null will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 3
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Cannot call method toArray\(\) on null\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Offset ''communication_id'' on string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Offset ''payment_id'' on string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Offset ''reservation_id'' on string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Parameter \#1 \$actions of method App\\Services\\Automation\\AutomationEngine\:\:normalizeActions\(\) expects array\<mixed\>, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Parameter \#1 \$conditions of method App\\Services\\Automation\\AutomationConditionMatcher\:\:matches\(\) expects array\<string, mixed\>\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Property App\\Services\\Automation\\AutomationEngine\:\:\$delivery is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between \*NEVER\* and '''' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/Automation/AutomationEngine.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Outbox\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Automation/OutboxBatchPublisher.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/Automation/OutboxBatchPublisher.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Services/Automation/OutboxBatchPublisher.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: array\{id\: string, tenant_id\: mixed, claim_token\: non\-empty\-string\}, Closure\(App\\Models\\Outbox\)\: array\{id\: string, tenant_id\: mixed, claim_token\: non\-empty\-string\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Automation/OutboxBatchPublisher.php
+
+		-
+			message: '#^Parameter \#1 \$callback of static method Illuminate\\Database\\Connection\:\:transaction\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 2
+			path: app/Services/Automation/OutboxBatchPublisher.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Outbox\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Automation/OutboxRecorder.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CommunicationDeliveryService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>attempt" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/CommunicationDeliveryService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/DepositService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\DepositStatus\:\:Due will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/DepositService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\DepositStatus\:\:Waived will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/DepositService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/DepositService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Services/DocumentService.php
+
+		-
+			message: '#^Parameter \#1 \$that of method Brick\\Math\\BigDecimal\:\:multipliedBy\(\) expects Brick\\Math\\BigNumber\|int\|string, float given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/ExchangeRateService.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Services/FolioService.php
+
+		-
+			message: '#^Parameter \$reservation of method App\\Services\\FolioService\:\:createLine\(\) expects App\\Models\\Reservation, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Services/FolioService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\FolioLineType\:\:Payment will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/FolioService.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/GuestPortalTokenService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$body\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/MessageTemplateService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$language\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/MessageTemplateService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$subject\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/MessageTemplateService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$version\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/MessageTemplateService.php
+
+		-
+			message: '#^Anonymous function should return App\\Models\\MessageTemplateVersion but returns Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/MessageTemplateService.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Payment\>\:\:create\(\) expects array\<model property of App\\Models\\Payment, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Property App\\Services\\PaymentService\:\:\$folio is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\PaymentStatus\:\:Pending will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\PaymentStatus\:\:Succeeded will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\PaymentStatus\:\:Reversed will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\PaymentStatus\:\:Succeeded will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 2
+			path: app/Services/PaymentService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$property_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$requirements\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$requires_accommodation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$resource\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Offset ''capabilities'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Offset ''languages'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Offset ''specialties'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>requirements" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Model\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/ProgramRequirementService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$preferences\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Cannot call method timezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\OperationalTask\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:filter\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|null, Closure\(App\\Models\\Allocation\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$key of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:contains\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|Illuminate\\Database\\Eloquent\\Model\|int\|string, Closure\(App\\Models\\Allocation\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\AllocationStatus\:\:Released will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/Projections/DashboardProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$resource\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Cannot call method greaterThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Cannot call method lessThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Method App\\Services\\Projections\\OperationsProjectionService\:\:reservationGuests\(\) should return Illuminate\\Support\\Collection\<int, App\\Models\\Guest\> but returns Illuminate\\Support\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\OperationalTask\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:first\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|null, Closure\(App\\Models\\Allocation\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Parameter \#1 \$preferences of method App\\Services\\Projections\\OperationsProjectionService\:\:dietaryLabels\(\) expects array\<string, mixed\>\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>title" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/Projections/OperationsProjectionService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$timezone\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Only iterables can be unpacked, string given\.$#'
+			identifier: arrayUnpacking.nonIterable
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Parameter \#1 \$array of static method Illuminate\\Support\\Arr\:\:except\(\) expects array, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Proposal\>\:\:create\(\) expects array\<model property of App\\Models\\Proposal, mixed\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\ProposalStatus\:\:Draft will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\ProposalStatus\:\:Sent will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ProposalStatus\:\:Accepted will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ProposalStatus\:\:Sent will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/ProposalService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$amount_minor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$due_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$taskTemplates\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Cannot call method addMinutes\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Cannot call method subDays\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/ReservationConfirmationProvisioner.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Reservation\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Cannot call method canTransitionTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Cannot call method isFuture\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Parameter \#1 \$allocation of method App\\Services\\AvailabilityService\:\:assertAvailable\(\) expects App\\Models\\Allocation, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Parameter \#1 \$from of class App\\Exceptions\\InvalidStatusTransitionException constructor expects App\\Enums\\ReservationStatus, string given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\ReservationStatus\:\:Hold will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus\:\:Confirmed will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\ReservationStatus\:\:Hold will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/ReservationService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Resource\:\:\$recent_assignments\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ResourceSuggestionService.php
+
+		-
+			message: '#^Method App\\Services\\ResourceSuggestionService\:\:suggest\(\) should return Illuminate\\Support\\Collection\<int, array\{id\: string, name\: string, capacity\: int, reasons\: list\<string\>, recent_assignments\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{id\: string, name\: string, capacity\: int\<0, max\>, reasons\: list\{0\: non\-falsy\-string, 1\?\: non\-falsy\-string, 2\?\: non\-falsy\-string\}, recent_assignments\: mixed\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/ResourceSuggestionService.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,App\\Models\\Resource\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Services/ResourceSuggestionService.php
+
+		-
+			message: '#^Offset ''catalog_item_id'' on array\{catalog_item_id\: string, quantity_milli\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/RetailPostingService.php
+
+		-
+			message: '#^Offset ''quantity_milli'' on array\{catalog_item_id\: string, quantity_milli\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/RetailPostingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Membership\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^If condition is always false\.$#'
+			identifier: if.alwaysFalse
+			count: 1
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string\|null and App\\Enums\\MembershipRole\:\:Owner will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\MembershipRole\:\:Owner will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/TeamMemberService.php
+
+		-
+			message: '#^Method App\\Support\\Projections\\StaffProjectionVisibility\:\:role\(\) never returns App\\Enums\\MembershipRole so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: app/Support/Projections/StaffProjectionVisibility.php
+
+		-
+			message: '#^Method App\\Support\\Projections\\StaffProjectionVisibility\:\:role\(\) should return App\\Enums\\MembershipRole\|null but returns string\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Support/Projections/StaffProjectionVisibility.php

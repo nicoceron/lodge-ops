@@ -19,6 +19,7 @@ use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,9 @@ class ProjectionRoleAndReconciliationTest extends TestCase
 
     public function test_finance_projection_reconciles_program_cost_and_commission_components_in_tenant_currency(): void
     {
-        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        [$tenant, $property, , $membership] = $this->tenantEnvironment(MembershipRole::Finance);
+        $membership->update(['property_id' => null]);
+        app(TenantContext::class)->set($tenant, $membership);
         $tenant->update(['currency' => 'USD']);
         $periodDate = CarbonImmutable::now($tenant->timezone)->startOfMonth()->addDays(2)->addHours(15)->utc();
         $program = Program::query()->create([

@@ -6,9 +6,11 @@ use App\Filament\Resources\ExchangeRates\Pages\ManageExchangeRates;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\ExchangeRate;
+use App\Support\Tenancy\TenantContext;
 use BackedEnum;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -23,11 +25,11 @@ class ExchangeRateResource extends TenantResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-arrows-right-left';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Finance & Reporting';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
     protected static ?int $navigationSort = 30;
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
 
@@ -35,10 +37,21 @@ class ExchangeRateResource extends TenantResource
 
     protected static bool $canDeleteRecords = false;
 
+    protected static bool $includeTenantWideForProperty = true;
+
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
             Section::make('Immutable rate snapshot')->description('Rates are appended as dated snapshots and never edited in place.')->columns(2)->schema([
+                Select::make('property_id')
+                    ->label('Rate scope')
+                    ->placeholder('Tenant-wide default')
+                    ->options(LodgeOpsPresentation::propertyOptions(...))
+                    ->default(fn (): ?string => app(TenantContext::class)->membership()?->property_id)
+                    ->disabled(fn (): bool => app(TenantContext::class)->membership()?->property_id !== null)
+                    ->dehydrated()
+                    ->required(fn (): bool => app(TenantContext::class)->membership()?->property_id !== null)
+                    ->columnSpanFull(),
                 TextInput::make('base_currency')->label('Base currency')->required()->length(3)->dehydrateStateUsing(fn (string $state): string => strtoupper($state)),
                 TextInput::make('quote_currency')->label('Quote currency')->required()->length(3)->different('base_currency')->dehydrateStateUsing(fn (string $state): string => strtoupper($state)),
                 TextInput::make('rate')->required()->numeric()->minValue(0.0000000001),
@@ -66,6 +79,7 @@ class ExchangeRateResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('effective_at')->label('Effective')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('property.name')->label('Scope')->placeholder('Tenant-wide'),
                 TextColumn::make('base_currency')->label('Base')->badge(),
                 TextColumn::make('quote_currency')->label('Quote')->badge(),
                 TextColumn::make('rate')->numeric(decimalPlaces: 10)->copyable(),

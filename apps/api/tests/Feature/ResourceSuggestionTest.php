@@ -157,4 +157,33 @@ class ResourceSuggestionTest extends TestCase
 
         $this->assertNotContains($guide->id, $suggestions->pluck('id')->all());
     }
+
+    public function test_suggestions_honor_the_buyout_column_used_by_the_resource_model(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $guide = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Guide]);
+        $buyout = Resource::factory()->create([
+            'property_id' => $property->id,
+            'type' => ResourceType::Venue,
+            'is_buyout' => true,
+            'attributes' => [],
+        ]);
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        Allocation::query()->create([
+            'reservation_id' => $reservation->id,
+            'resource_id' => $buyout->id,
+            'status' => AllocationStatus::Confirmed,
+            'starts_at' => now()->addDay(),
+            'ends_at' => now()->addDays(2),
+            'quantity' => 1,
+        ]);
+
+        $suggestions = app(ResourceSuggestionService::class)->suggest(
+            ResourceType::Guide,
+            now()->addDay(),
+            now()->addDays(2),
+        );
+
+        $this->assertNotContains($guide->id, $suggestions->pluck('id')->all());
+    }
 }

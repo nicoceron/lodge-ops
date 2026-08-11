@@ -26,6 +26,8 @@ class RetailSaleResource extends TenantResource
 {
     protected static ?string $model = RetailSale::class;
 
+    protected static ?string $propertyRelationship = 'stockLocation';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-shopping-bag';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Retail & Stock';
@@ -34,7 +36,7 @@ class RetailSaleResource extends TenantResource
 
     protected static ?string $recordTitleAttribute = 'reference';
 
-    protected static ?string $viewCapability = 'canManageRetail';
+    protected static ?string $viewCapability = 'canViewRetail';
 
     protected static string $writeCapability = 'canManageRetail';
 

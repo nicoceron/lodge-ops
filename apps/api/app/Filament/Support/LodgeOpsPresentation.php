@@ -2,8 +2,10 @@
 
 namespace App\Filament\Support;
 
+use App\Models\Property;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 final class LodgeOpsPresentation
@@ -44,6 +46,39 @@ final class LodgeOpsPresentation
             'low' => 'gray',
             default => 'info',
         };
+    }
+
+    /** @return array<string, string> */
+    public static function automationTriggerOptions(): array
+    {
+        return [
+            'reservation.confirmed' => 'Reservation confirmed',
+            'reservation.status_changed' => 'Reservation status changed',
+            'reservation.arrival_approaching' => 'Arrival approaching',
+            'reservation.checkout_completed' => 'Reservation checkout completed',
+            'reservation.hold_expired' => 'Reservation hold expired',
+            'deposit.created' => 'Deposit created',
+            'deposit.overdue' => 'Deposit overdue',
+            'deposit.waived' => 'Deposit waived',
+            'payment.created' => 'Payment created',
+            'payment.succeeded' => 'Payment succeeded',
+            'payment.reversed' => 'Payment reversed',
+            'proposal.sent' => 'Proposal sent',
+            'proposal.accepted' => 'Proposal accepted',
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function propertyOptions(): array
+    {
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        return Property::query()
+            ->when($propertyId, fn (Builder $query, string $id): Builder => $query->whereKey($id))
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     public static function timezone(): string

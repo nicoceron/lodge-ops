@@ -4,17 +4,21 @@ namespace App\Filament\Resources\Reservations\RelationManagers;
 
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
+use App\Enums\ResourceType;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Allocation;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Services\AllocationWorkflowService;
+use App\Services\ResourceSuggestionService;
+use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -67,6 +71,50 @@ class AllocationsRelationManager extends RelationManager
                 TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
             ])
             ->headerActions([
+                Action::make('suggestResource')
+                    ->label('Suggest resource')
+                    ->icon('heroicon-o-sparkles')
+                    ->schema([
+                        Select::make('type')
+                            ->options(LodgeOpsPresentation::enumOptions(ResourceType::cases()))
+                            ->required(),
+                        DateTimePicker::make('starts_at')
+                            ->default(fn () => $this->getOwnerRecord()->starts_at)
+                            ->required()
+                            ->seconds(false),
+                        DateTimePicker::make('ends_at')
+                            ->default(fn () => $this->getOwnerRecord()->ends_at)
+                            ->required()
+                            ->seconds(false)
+                            ->after('starts_at'),
+                        TextInput::make('quantity')->integer()->minValue(1)->default(1)->required(),
+                    ])
+                    ->action(function (array $data): void {
+                        $suggestions = app(ResourceSuggestionService::class)->suggest(
+                            ResourceType::from($data['type']),
+                            CarbonImmutable::parse($data['starts_at']),
+                            CarbonImmutable::parse($data['ends_at']),
+                            quantity: (int) $data['quantity'],
+                            propertyId: $this->getOwnerRecord()->property_id,
+                        );
+
+                        if ($suggestions->isEmpty()) {
+                            Notification::make()
+                                ->warning()
+                                ->title('No available resource matches this window')
+                                ->send();
+
+                            return;
+                        }
+
+                        Notification::make()
+                            ->success()
+                            ->title('Recommended: '.$suggestions->take(3)->pluck('name')->implode(', '))
+                            ->body($suggestions->take(3)->map(
+                                fn (array $suggestion): string => $suggestion['name'].' — '.implode('; ', $suggestion['reasons']),
+                            )->implode("\n"))
+                            ->send();
+                    }),
                 CreateAction::make()->using(fn (array $data): Allocation => app(AllocationWorkflowService::class)
                     ->create($this->getOwnerRecord(), $data)),
             ])

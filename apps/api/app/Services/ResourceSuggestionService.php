@@ -25,8 +25,10 @@ class ResourceSuggestionService
         int $quantity = 1,
         array $capabilities = [],
         array $languages = [],
+        ?string $propertyId = null,
     ): Collection {
         return Resource::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->where('type', $type)
             ->where('is_active', true)
             ->where('capacity', '>=', $quantity)
@@ -48,9 +50,9 @@ class ResourceSuggestionService
                 $buyoutResourceIds = Resource::query()
                     ->where('property_id', $resource->property_id)
                     ->get()
-                    ->filter(fn (Resource $candidate): bool => (bool) data_get($candidate->attributes, 'buyout', false))
+                    ->filter(fn (Resource $candidate): bool => $candidate->isBuyout())
                     ->pluck('id');
-                $conflictingResourceIds = (bool) data_get($resource->attributes, 'buyout', false)
+                $conflictingResourceIds = $resource->isBuyout()
                     ? $propertyResourceIds
                     : $buyoutResourceIds->push($resource->id)->unique();
                 $blocked = ResourceBlock::query()

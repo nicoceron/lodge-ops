@@ -18,6 +18,7 @@ class AutomationActionExecutor
         private readonly AutomationTemplateRenderer $renderer,
         private readonly OutboxRecorder $outbox,
         private readonly GuestPortalTokenService $guestPortalTokens,
+        private readonly InternalStaffNotificationService $internalStaffNotifications,
     ) {}
 
     /**
@@ -38,6 +39,7 @@ class AutomationActionExecutor
             'communication', 'queue_communication' => $this->queueCommunication($message, $rule, $actionIndex, $action, $context),
             'deposit_reminder', 'send_deposit_reminder' => $this->queueDepositReminders($message, $rule, $actionIndex, $action, $context),
             'guest_portal_invitation', 'queue_guest_portal_invitation' => $this->queueGuestPortalInvitation($message, $rule, $actionIndex, $action, $context),
+            'internal_notify' => $this->internalStaffNotifications->deliver($message, $rule, $actionIndex, $action, $context),
             default => throw new DomainException("Unsupported automation action [{$type}]."),
         };
     }

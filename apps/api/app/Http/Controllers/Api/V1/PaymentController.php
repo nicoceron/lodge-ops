@@ -6,19 +6,29 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePaymentRequest;
 use App\Http\Resources\PaymentResource;
 use App\Models\Payment;
+use App\Models\Reservation;
 use App\Services\PaymentService;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PaymentController extends Controller
 {
-    public function __construct(private readonly PaymentService $service) {}
+    public function __construct(
+        private readonly PaymentService $service,
+        private readonly TenantContext $tenantContext,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Payment::class);
 
+        $propertyId = $this->tenantContext->membership()?->property_id;
         $payments = Payment::query()
+            ->when($propertyId, fn ($query) => $query->whereHas(
+                'reservation',
+                fn ($reservation) => $reservation->where('property_id', $propertyId),
+            ))
             ->when($request->query('reservation_id'), fn ($query, $value) => $query->where('reservation_id', $value))
             ->latest()
             ->paginate(min((int) $request->integer('per_page', 50), 100));
@@ -30,6 +40,7 @@ class PaymentController extends Controller
     {
         $this->authorize('create', Payment::class);
         $data = $request->validated();
+        $this->assertReservationProperty($data['reservation_id']);
 
         $captured = (bool) ($data['captured'] ?? false);
         unset($data['captured']);
@@ -69,5 +80,17 @@ class PaymentController extends Controller
         $validated = $request->validate(['reason' => ['required', 'string', 'max:5000']]);
 
         return new PaymentResource($this->service->reverse($payment, $validated['reason'], $request->user()->id));
+    }
+
+    private function assertReservationProperty(string $reservationId): void
+    {
+        $propertyId = $this->tenantContext->membership()?->property_id;
+        abort_unless(
+            $propertyId === null || Reservation::query()
+                ->whereKey($reservationId)
+                ->where('property_id', $propertyId)
+                ->exists(),
+            403,
+        );
     }
 }

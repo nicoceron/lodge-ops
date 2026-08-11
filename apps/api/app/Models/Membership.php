@@ -5,6 +5,14 @@ namespace App\Models;
 use App\Enums\MembershipRole;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property MembershipRole $role
+ * @property string $tenant_id
+ * @property int $user_id
+ * @property string|null $property_id
+ * @property bool $is_active
+ * @property-read User $user
+ */
 class Membership extends TenantModel
 {
     protected function casts(): array

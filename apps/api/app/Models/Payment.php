@@ -3,9 +3,16 @@
 namespace App\Models;
 
 use App\Enums\PaymentStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property CarbonImmutable|null $processed_at
+ * @property string $currency
+ * @property int $amount_minor
+ * @property-read Reservation $reservation
+ */
 class Payment extends TenantModel
 {
     protected function casts(): array

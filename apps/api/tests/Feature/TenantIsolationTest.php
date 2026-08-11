@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DepositStatus;
 use App\Enums\MembershipRole;
+use App\Enums\PaymentStatus;
+use App\Models\Deposit;
 use App\Models\Guest;
+use App\Models\OperationalTask;
+use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Tenant;
@@ -114,13 +119,104 @@ class TenantIsolationTest extends TestCase
 
         app(TenantContext::class)->clear();
         [$kitchenTenant, $kitchenProperty] = $this->tenantEnvironment(MembershipRole::Kitchen);
+        $otherKitchenProperty = Property::factory()->create();
+        $kitchenTask = OperationalTask::query()->create([
+            'property_id' => $kitchenProperty->id,
+            'title' => 'Prepare allergen-safe service',
+            'status' => 'todo',
+            'priority' => 'high',
+            'metadata' => ['assignee_role' => MembershipRole::Kitchen->value],
+        ]);
+        OperationalTask::query()->create([
+            'property_id' => $otherKitchenProperty->id,
+            'title' => 'Other property kitchen task',
+            'status' => 'todo',
+            'priority' => 'high',
+            'metadata' => ['assignee_role' => MembershipRole::Kitchen->value],
+        ]);
         $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
             ->postJson('/api/v1/tasks', [
                 'property_id' => $kitchenProperty->id,
                 'title' => 'Prepare allergen-safe service',
-            ])->assertCreated();
+            ])->assertForbidden();
+        $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
+            ->putJson("/api/v1/tasks/{$kitchenTask->id}", ['status' => 'done'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'done');
+        $tasks = $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
+            ->getJson('/api/v1/tasks')
+            ->assertOk();
+        $this->assertSame([$kitchenTask->id], collect($tasks->json('data'))->pluck('id')->all());
         $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
             ->postJson('/api/v1/guests', ['first_name' => 'Not allowed'])
             ->assertForbidden();
+    }
+
+    public function test_property_scoped_finance_api_cannot_read_or_write_another_property_ledger(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $otherProperty = Property::factory()->create();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $otherReservation = Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $payment = Payment::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'cash',
+            'currency' => 'USD',
+            'amount_minor' => 1000,
+            'processed_at' => now(),
+        ]);
+        $otherPayment = Payment::query()->create([
+            'reservation_id' => $otherReservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'cash',
+            'currency' => 'USD',
+            'amount_minor' => 2000,
+            'processed_at' => now(),
+        ]);
+        $deposit = Deposit::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => DepositStatus::Due,
+            'schedule_type' => 'manual',
+            'currency' => 'USD',
+            'amount_minor' => 1000,
+            'due_at' => now(),
+        ]);
+        $otherDeposit = Deposit::query()->create([
+            'reservation_id' => $otherReservation->id,
+            'status' => DepositStatus::Due,
+            'schedule_type' => 'manual',
+            'currency' => 'USD',
+            'amount_minor' => 2000,
+            'due_at' => now(),
+        ]);
+        $headers = ['X-Tenant-ID' => $tenant->id];
+
+        $payments = $this->withHeaders($headers)->getJson('/api/v1/payments')->assertOk();
+        $this->assertSame([$payment->id], collect($payments->json('data'))->pluck('id')->all());
+        $this->withHeaders($headers)->getJson("/api/v1/payments/{$otherPayment->id}")->assertForbidden();
+        $this->withHeaders($headers)->postJson('/api/v1/payments', [
+            'reservation_id' => $otherReservation->id,
+            'method' => 'cash',
+            'currency' => 'USD',
+            'amount_minor' => 500,
+        ])->assertForbidden();
+
+        $deposits = $this->withHeaders($headers)->getJson('/api/v1/deposits')->assertOk();
+        $this->assertSame([$deposit->id], collect($deposits->json('data'))->pluck('id')->all());
+        $this->withHeaders($headers)->getJson("/api/v1/deposits/{$otherDeposit->id}")->assertForbidden();
+    }
+
+    public function test_reservation_api_is_scoped_for_property_memberships(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Sales);
+        $otherProperty = Property::factory()->create();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $otherReservation = Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $headers = ['X-Tenant-ID' => $tenant->id];
+
+        $response = $this->withHeaders($headers)->getJson('/api/v1/reservations')->assertOk();
+        $this->assertSame([$reservation->id], collect($response->json('data'))->pluck('id')->all());
+        $this->withHeaders($headers)->getJson("/api/v1/reservations/{$otherReservation->id}")->assertForbidden();
     }
 }

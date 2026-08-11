@@ -38,6 +38,8 @@ class ResourceBlockResource extends TenantResource
 
     protected static string $deleteCapability = 'canManageAvailability';
 
+    protected static ?string $propertyRelationship = 'resource';
+
     public static function getEloquentQuery(): Builder
     {
         $membership = app(TenantContext::class)->membership();

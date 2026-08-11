@@ -30,7 +30,7 @@ missing_references = references.uniq.reject do |reference|
 end
 abort "Missing OpenAPI references:\n#{missing_references.join("\n")}" if missing_references.any?
 
-duplicate_operation_ids = operation_ids.tally.select { |_id, count| count > 1 }.keys
+duplicate_operation_ids = operation_ids.group_by(&:itself).select { |_id, values| values.length > 1 }.keys
 abort "Duplicate operation IDs:\n#{duplicate_operation_ids.join("\n")}" if duplicate_operation_ids.any?
 
 http_methods = /^(get|post|put|patch|delete)$/
