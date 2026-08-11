@@ -123,7 +123,7 @@ class CostRecordResource extends TenantResource
             ])
             ->filters([
                 SelectFilter::make('kind')->options(['estimated' => 'Estimated', 'actual' => 'Actual']),
-                SelectFilter::make('reservation_id')->label('Reservation')->options(fn (): array => Reservation::query()->orderByDesc('starts_at')->limit(100)->pluck('confirmation_number', 'id')->all())->searchable(),
+                SelectFilter::make('reservation_id')->label('Reservation')->options(LodgeOpsPresentation::reservationOptions(...))->searchable(),
             ])
             ->recordActions([ViewAction::make(), EditAction::make()])
             ->defaultSort('occurred_at', 'desc')

@@ -152,12 +152,48 @@ class TenantIsolationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_property_scoped_operations_cannot_create_tasks_for_another_property_or_reservation(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Operations);
+        $otherProperty = Property::factory()->for($tenant)->create();
+        $otherReservation = Reservation::factory()->create(['property_id' => $otherProperty->id]);
+
+        $this->postJson('/api/v1/tasks', [
+            'property_id' => $otherProperty->id,
+            'title' => 'Cross-property task',
+            'status' => 'todo',
+            'priority' => 'normal',
+        ])->assertStatus(400);
+
+        $this->postJson('/api/v1/tasks', [
+            'property_id' => $property->id,
+            'reservation_id' => $otherReservation->id,
+            'title' => 'Mismatched reservation task',
+            'status' => 'todo',
+            'priority' => 'normal',
+        ])->assertStatus(400);
+    }
+
     public function test_property_scoped_finance_api_cannot_read_or_write_another_property_ledger(): void
     {
         [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
         $otherProperty = Property::factory()->create();
-        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
-        $otherReservation = Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => 'confirmed',
+            'currency' => 'USD',
+            'total_minor' => 10_000,
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addDay(),
+        ]);
+        $otherReservation = Reservation::factory()->create([
+            'property_id' => $otherProperty->id,
+            'status' => 'confirmed',
+            'currency' => 'USD',
+            'total_minor' => 20_000,
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addDay(),
+        ]);
         $payment = Payment::query()->create([
             'reservation_id' => $reservation->id,
             'status' => PaymentStatus::Succeeded,
@@ -205,6 +241,9 @@ class TenantIsolationTest extends TestCase
         $deposits = $this->withHeaders($headers)->getJson('/api/v1/deposits')->assertOk();
         $this->assertSame([$deposit->id], collect($deposits->json('data'))->pluck('id')->all());
         $this->withHeaders($headers)->getJson("/api/v1/deposits/{$otherDeposit->id}")->assertForbidden();
+
+        $summary = $this->withHeaders($headers)->getJson('/api/v1/financial-summary?currency=USD&starts_at='.urlencode(now()->subDays(2)->toDateString()).'&ends_at='.urlencode(now()->addDays(2)->toDateString()))->assertOk();
+        $summary->assertJsonPath('data.booked_minor', 10_000);
     }
 
     public function test_reservation_api_is_scoped_for_property_memberships(): void

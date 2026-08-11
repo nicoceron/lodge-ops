@@ -86,6 +86,9 @@ class FinanceProjectionService
         $deposits = Deposit::query()
             ->when($propertyId, fn (Builder $query) => $query->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId)))
             ->where('currency', $currency)
+            ->where(fn (Builder $query) => $query
+                ->where(fn (Builder $due) => $due->where('due_at', '>=', $start)->where('due_at', '<', $end))
+                ->orWhere(fn (Builder $paid) => $paid->where('paid_at', '>=', $start)->where('paid_at', '<', $end)))
             ->get();
         $folioLines = FolioLine::query()
             ->when($propertyId, fn (Builder $query) => $query->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId)))

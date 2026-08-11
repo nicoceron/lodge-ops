@@ -127,7 +127,12 @@ class ExtendedOperationsController extends Controller
         $start = CarbonImmutable::parse($data['starts_at'] ?? 'first day of this month', $timezone)->startOfDay()->utc();
         $end = CarbonImmutable::parse($data['ends_at'] ?? 'first day of next month', $timezone)->startOfDay()->utc();
 
-        return response()->json(['data' => $service->summary(strtoupper($data['currency'] ?? $context->tenant()->currency), $start, $end)]);
+        return response()->json(['data' => $service->summary(
+            strtoupper($data['currency'] ?? $context->tenant()->currency),
+            $start,
+            $end,
+            $context->membership()->property_id,
+        )]);
     }
 
     public function storeCost(Request $request, TenantContext $context): JsonResponse

@@ -30,9 +30,11 @@ class DashboardProjectionService
         $start = $now->startOfDay()->utc();
         $end = $now->addDay()->startOfDay()->utc();
         $readinessEnd = $now->addDays(7)->endOfDay()->utc();
+        $propertyId = $this->context->membership()?->property_id;
 
         $arrivals = Reservation::query()
             ->with(['primaryGuest', 'allocations.resource', 'payments'])
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
             ->where('starts_at', '>=', $start)
             ->where('starts_at', '<', $end)
@@ -40,11 +42,13 @@ class DashboardProjectionService
             ->get();
         $upcoming = Reservation::query()
             ->with(['primaryGuest', 'allocations.resource', 'payments'])
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
             ->where('starts_at', '>=', $start)
             ->where('starts_at', '<=', $readinessEnd)
             ->get();
         $activeRooms = Resource::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->where('type', ResourceType::Room)
             ->where('is_active', true)
             ->count();
@@ -52,14 +56,18 @@ class DashboardProjectionService
             ->where('status', AllocationStatus::Confirmed)
             ->where('starts_at', '<=', $now->utc())
             ->where('ends_at', '>', $now->utc())
-            ->whereHas('resource', fn ($query) => $query->where('type', ResourceType::Room))
+            ->whereHas('resource', fn ($query) => $query
+                ->where('type', ResourceType::Room)
+                ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId)))
             ->distinct()
             ->count('resource_id');
         $openTasks = OperationalTask::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
             ->count();
         $tasks = OperationalTask::query()
             ->with('assignee:id,name')
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
             ->orderByRaw("case priority when 'urgent' then 1 when 'high' then 2 when 'normal' then 3 else 4 end")
             ->orderBy('due_at')
@@ -78,11 +86,13 @@ class DashboardProjectionService
             ]);
 
         $departures = Reservation::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
             ->where('ends_at', '>=', $start)
             ->where('ends_at', '<', $end)
             ->count();
         $inHouse = Reservation::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->where('status', ReservationStatus::CheckedIn)
             ->where('starts_at', '<=', $now->utc())
             ->where('ends_at', '>', $now->utc())
@@ -144,6 +154,7 @@ class DashboardProjectionService
     {
         $paid = $reservation->payments
             ->where('status', PaymentStatus::Succeeded)
+            ->where('currency', $reservation->currency)
             ->sum('amount_minor');
 
         return max(0, $reservation->total_minor - (int) $paid);

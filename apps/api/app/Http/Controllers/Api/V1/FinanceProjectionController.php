@@ -20,18 +20,23 @@ class FinanceProjectionController extends Controller
         $this->authorize('viewFinance', Payment::class);
         $timezone = $context->tenant()->timezone;
         $now = CarbonImmutable::now($timezone);
-        $start = $request->filled('start')
-            ? CarbonImmutable::parse((string) $request->input('start'), $timezone)->startOfDay()->utc()
+        $validated = $request->validate([
+            'start' => ['nullable', 'date'],
+            'end' => ['nullable', 'date', 'after_or_equal:start'],
+            'display_currency' => ['nullable', 'string', 'size:3'],
+        ]);
+        $start = filled($validated['start'] ?? null)
+            ? CarbonImmutable::parse((string) $validated['start'], $timezone)->startOfDay()->utc()
             : $now->startOfMonth()->utc();
-        $end = $request->filled('end')
-            ? CarbonImmutable::parse((string) $request->input('end'), $timezone)->addDay()->startOfDay()->utc()
+        $end = filled($validated['end'] ?? null)
+            ? CarbonImmutable::parse((string) $validated['end'], $timezone)->addDay()->startOfDay()->utc()
             : $now->addMonth()->startOfMonth()->utc();
 
         return response()->json([
             'data' => $projection->build(
                 $start,
                 $end,
-                (string) $request->input('display_currency', $context->tenant()->currency),
+                (string) ($validated['display_currency'] ?? $context->tenant()->currency),
             ),
         ]);
     }

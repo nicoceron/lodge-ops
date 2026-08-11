@@ -16,9 +16,10 @@ use Illuminate\Database\Eloquent\Builder;
 class FinancialReportingService
 {
     /** @return array<string, int|string> */
-    public function summary(string $currency, CarbonInterface $startsAt, CarbonInterface $endsAt): array
+    public function summary(string $currency, CarbonInterface $startsAt, CarbonInterface $endsAt, ?string $propertyId = null): array
     {
         $reservations = Reservation::query()
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->where('currency', $currency)
             ->whereNotIn('status', [ReservationStatus::Cancelled, ReservationStatus::NoShow])
             ->where('starts_at', '<', $endsAt)
@@ -32,6 +33,10 @@ class FinancialReportingService
             ->whereIn('reservation_id', $reservationIds)
             ->sum('amount_minor');
         $costs = (int) CostRecord::query()
+            ->when($propertyId, fn (Builder $query) => $query->where(function (Builder $scope) use ($propertyId): void {
+                $scope->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId))
+                    ->orWhereHas('program', fn (Builder $program) => $program->where('property_id', $propertyId));
+            }))
             ->where('currency', $currency)
             ->where('occurred_at', '>=', $startsAt)
             ->where('occurred_at', '<', $endsAt)

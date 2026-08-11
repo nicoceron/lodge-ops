@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\FolioLines;
 
 use App\Enums\FolioLineType;
+use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\FolioLine;
 use App\Models\Reservation;
 use App\Services\FolioService;
@@ -22,7 +23,7 @@ final class FolioWorkflowActions
             ->visible(FolioLineResource::canAppend(...))
             ->schema([
                 Select::make('reservation_id')
-                    ->options(fn (): array => Reservation::query()->latest('starts_at')->limit(100)->pluck('confirmation_number', 'id')->all())
+                    ->options(LodgeOpsPresentation::reservationOptions(...))
                     ->searchable()
                     ->required(),
                 Select::make('type')

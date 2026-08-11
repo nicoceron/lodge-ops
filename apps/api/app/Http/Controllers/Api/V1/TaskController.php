@@ -7,7 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
+use App\Models\Membership;
 use App\Models\OperationalTask;
+use App\Models\Reservation;
 use App\Models\User;
 use App\Services\OperationalTaskAccess;
 use App\Support\Tenancy\TenantContext;
@@ -42,10 +44,28 @@ class TaskController extends Controller
     public function store(StoreTaskRequest $request): TaskResource
     {
         $this->authorize('create', OperationalTask::class);
+        $data = $request->validated();
+        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
+        abort_if($membershipPropertyId !== null && $data['property_id'] !== $membershipPropertyId, 403);
+        if (isset($data['reservation_id'])) {
+            abort_unless(Reservation::query()
+                ->whereKey($data['reservation_id'])
+                ->where('property_id', $data['property_id'])
+                ->exists(), 403);
+        }
+        if (isset($data['assignee_id'])) {
+            abort_unless(Membership::query()
+                ->where('user_id', $data['assignee_id'])
+                ->where('is_active', true)
+                ->where(fn ($query) => $query
+                    ->whereNull('property_id')
+                    ->orWhere('property_id', $data['property_id']))
+                ->exists(), 403);
+        }
         $task = OperationalTask::query()->create($this->withCompletionTimestamp([
             'status' => TaskStatus::Todo->value,
             'priority' => 'normal',
-            ...$request->validated(),
+            ...$data,
         ]));
 
         return new TaskResource($task->load('assignee'));

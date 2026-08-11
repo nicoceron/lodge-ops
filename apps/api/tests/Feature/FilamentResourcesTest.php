@@ -33,9 +33,11 @@ use App\Filament\Resources\RetailSales\RetailSaleResource;
 use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
 use App\Filament\Resources\StockLocations\StockLocationResource;
 use App\Filament\Resources\TeamMembers\TeamMemberResource;
+use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Guest;
 use App\Models\Property;
 use App\Models\Reservation;
+use App\Models\StockLocation;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -239,6 +241,19 @@ class FilamentResourcesTest extends TestCase
             ->assertSee('Arrival approaching')
             ->assertSee('Deposit overdue')
             ->assertSee('Reservation checkout completed');
+    }
+
+    public function test_property_scoped_financial_and_retail_selectors_exclude_other_properties(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $otherProperty = Property::factory()->for($tenant)->create();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $location = StockLocation::query()->create(['property_id' => $property->id, 'name' => 'Own stock', 'code' => 'OWN']);
+        StockLocation::query()->create(['property_id' => $otherProperty->id, 'name' => 'Other stock', 'code' => 'OTHER']);
+
+        $this->assertSame([$reservation->id], array_keys(LodgeOpsPresentation::reservationOptions()));
+        $this->assertSame([$location->id], array_keys(LodgeOpsPresentation::stockLocationOptions()));
     }
 
     /** @return array<class-string> */

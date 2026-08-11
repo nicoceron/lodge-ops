@@ -22,6 +22,7 @@ use DomainException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -184,6 +185,29 @@ class OutboxAutomationTest extends TestCase
         );
         $this->assertSame(0, $deliveredAgain);
         $this->assertSame(1, DB::table('notifications')->count());
+
+        app(TenantContext::class)->set($tenantB);
+        $tenantBMembership = Membership::withoutGlobalScopes()->forceCreate([
+            'tenant_id' => $tenantB->id,
+            'user_id' => $eligible->id,
+            'role' => MembershipRole::Operations,
+            'is_active' => true,
+        ]);
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        DB::table('notifications')->insert([
+            'id' => (string) Str::uuid(),
+            'type' => 'Filament\\Notifications\\DatabaseNotification',
+            'notifiable_type' => User::class,
+            'notifiable_id' => $eligible->id,
+            'data' => json_encode(['format' => 'filament', 'title' => 'Other workspace', 'viewData' => ['tenant_id' => $tenantB->id]], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        $this->assertSame(['Reservation confirmed'], $eligible->notifications()->pluck('data')->pluck('title')->all());
+        app(TenantContext::class)->set($tenantB, $tenantBMembership);
+        $this->assertSame(['Other workspace'], $eligible->notifications()->pluck('data')->pluck('title')->all());
     }
 
     public function test_failures_are_observable_and_retry_without_duplicate_side_effects(): void

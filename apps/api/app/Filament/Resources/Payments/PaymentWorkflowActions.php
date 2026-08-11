@@ -4,9 +4,9 @@ namespace App\Filament\Resources\Payments;
 
 use App\Enums\DepositStatus;
 use App\Enums\PaymentStatus;
+use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Deposit;
 use App\Models\Payment;
-use App\Models\Reservation;
 use App\Services\PaymentService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -71,7 +71,7 @@ final class PaymentWorkflowActions
             ->visible(PaymentResource::canRecordManual(...))
             ->schema([
                 Select::make('reservation_id')
-                    ->options(fn (): array => Reservation::query()->latest('starts_at')->limit(100)->pluck('confirmation_number', 'id')->all())
+                    ->options(LodgeOpsPresentation::reservationOptions(...))
                     ->searchable()
                     ->required(),
                 Select::make('method')

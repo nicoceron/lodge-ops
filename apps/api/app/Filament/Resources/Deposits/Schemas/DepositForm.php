@@ -16,7 +16,7 @@ class DepositForm
         return $schema->components([
             Section::make('Deposit requirement')->columns(2)->schema([
                 Select::make('reservation_id')
-                    ->relationship('reservation', 'confirmation_number')
+                    ->options(LodgeOpsPresentation::reservationOptions(...))
                     ->searchable()
                     ->preload()
                     ->disabledOn('edit')

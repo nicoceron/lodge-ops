@@ -3,6 +3,8 @@
 namespace App\Filament\Support;
 
 use App\Models\Property;
+use App\Models\Reservation;
+use App\Models\StockLocation;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Builder;
@@ -76,6 +78,31 @@ final class LodgeOpsPresentation
         return Property::query()
             ->when($propertyId, fn (Builder $query, string $id): Builder => $query->whereKey($id))
             ->where('is_active', true)
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /** @return array<string, string> */
+    public static function reservationOptions(?string $propertyId = null): array
+    {
+        $propertyId = app(TenantContext::class)->membership()->property_id ?? $propertyId;
+
+        return Reservation::query()
+            ->when($propertyId, fn (Builder $query): Builder => $query->where('property_id', $propertyId))
+            ->orderByDesc('starts_at')
+            ->limit(100)
+            ->pluck('confirmation_number', 'id')
+            ->all();
+    }
+
+    /** @return array<string, string> */
+    public static function stockLocationOptions(): array
+    {
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        return StockLocation::query()
+            ->when($propertyId, fn (Builder $query): Builder => $query->where('property_id', $propertyId))
             ->orderBy('name')
             ->pluck('name', 'id')
             ->all();

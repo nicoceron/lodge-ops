@@ -2,19 +2,23 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DepositStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Filament\Pages\FinanceDashboard;
 use App\Filament\Resources\ExchangeRates\ExchangeRateResource;
+use App\Models\Deposit;
 use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Services\ExchangeRateService;
 use App\Services\MoneyFormatter;
+use App\Services\Projections\FinanceProjectionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use NumberFormatter;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -179,6 +183,49 @@ class FinanceReportingTest extends TestCase
         $this->assertSame($usdExpected, $formatter->formatMinor(123_456, 'USD', 'en_US'));
         $this->assertSame($arsExpected, $formatter->formatMinor(123_456, 'ARS', 'es_AR'));
         $this->assertNotSame('123456.00', $formatter->formatMinor(123_456, 'USD', 'en_US'));
+    }
+
+    public function test_finance_period_excludes_deposits_outside_the_range_and_rejects_reversed_api_dates(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => $tenant->currency,
+            'starts_at' => '2026-08-10 15:00:00',
+            'ends_at' => '2026-08-14 11:00:00',
+        ]);
+        Deposit::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => DepositStatus::Due,
+            'schedule_type' => 'manual',
+            'currency' => $tenant->currency,
+            'amount_minor' => 10_000,
+            'due_at' => '2026-08-15 12:00:00',
+        ]);
+        Deposit::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => DepositStatus::Due,
+            'schedule_type' => 'balance',
+            'currency' => $tenant->currency,
+            'amount_minor' => 20_000,
+            'due_at' => '2026-09-15 12:00:00',
+        ]);
+
+        $projection = app(FinanceProjectionService::class)->build(
+            CarbonImmutable::parse('2026-08-01 00:00:00 UTC'),
+            CarbonImmutable::parse('2026-09-01 00:00:00 UTC'),
+            $tenant->currency,
+        );
+
+        $this->assertSame(1, $projection['deposits']['due_count']);
+        $this->assertSame(10_000, $projection['deposits']['due_minor']);
+
+        Sanctum::actingAs($user);
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->getJson('/api/v1/finance?start=2026-08-20&end=2026-08-10')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('end');
     }
 
     public function test_finance_dashboard_exposes_selectable_range_and_reporting_currency_controls(): void

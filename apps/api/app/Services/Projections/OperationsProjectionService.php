@@ -36,6 +36,7 @@ class OperationsProjectionService
         $activeStatuses = [ReservationStatus::Confirmed, ReservationStatus::CheckedIn];
         $role = $this->visibility->role();
         abort_unless($role instanceof MembershipRole, 403);
+        $propertyId = $this->context->membership()?->property_id;
         $userId = (int) $user->getAuthIdentifier();
         $managerialRoles = [MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Operations];
         $canSeeKitchen = in_array($role, [...$managerialRoles, MembershipRole::Kitchen], true);
@@ -52,6 +53,7 @@ class OperationsProjectionService
                         'reservation:id,primary_guest_id,adults,children,confirmation_number',
                     ]),
             ])
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->where('starts_at', '>=', $end)
             ->where('starts_at', '<', $tomorrowEnd)
             ->where('is_cancelled', false)
@@ -73,6 +75,7 @@ class OperationsProjectionService
 
         $tasks = OperationalTask::query()
             ->with('assignee:id,name')
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->when(
                 ! in_array($role, $managerialRoles, true),
                 fn (Builder $query) => $this->applyTaskRoleScope($query, $role, $userId, $guideReservationIds),
@@ -89,6 +92,7 @@ class OperationsProjectionService
                 'primaryGuest:id,first_name,last_name,preferences',
                 'guests:id,first_name,last_name,preferences',
             ])
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->whereIn('status', $activeStatuses)
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
