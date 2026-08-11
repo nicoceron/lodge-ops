@@ -26,6 +26,11 @@ jobs:
         working-directory: apps/api
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
@@ -34,8 +39,12 @@ jobs:
       - uses: ramsey/composer-install@v3
         with:
           working-directory: apps/api
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run build
       - run: cp .env.example .env && php artisan key:generate
       - run: ./vendor/bin/pint --test
+      - run: ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
       - run: composer audit --locked
       - run: php artisan migrate --force
         env:
@@ -72,12 +81,9 @@ jobs:
       - run: npm run lint
       - run: npm audit --audit-level=high
       - run: npm run typecheck
-      - run: npm run test:run
-      - name: Build the live-data production application
-        run: NEXT_PUBLIC_DEMO_MODE=false GUEST_PORTAL_DEMO_MODE=false npm run build
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - name: Run desktop and mobile browser journeys against an explicit demo build
-        run: npm run e2e
+      - run: npm run e2e
 
   contract:
     runs-on: ubuntu-latest

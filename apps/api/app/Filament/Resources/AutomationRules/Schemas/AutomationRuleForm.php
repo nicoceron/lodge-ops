@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\AutomationRules\Schemas;
 
+use App\Filament\Support\LodgeOpsPresentation;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -22,13 +23,7 @@ class AutomationRuleForm
                         ->required()
                         ->maxLength(255),
                     Select::make('trigger')
-                        ->options([
-                            'reservation.confirmed' => 'Reservation confirmed',
-                            'reservation.status_changed' => 'Reservation status changed',
-                            'deposit.due' => 'Deposit due',
-                            'task.overdue' => 'Task overdue',
-                            'guest.checked_out' => 'Guest checked out',
-                        ])
+                        ->options(LodgeOpsPresentation::automationTriggerOptions())
                         ->searchable()
                         ->required(),
                     Toggle::make('is_active')

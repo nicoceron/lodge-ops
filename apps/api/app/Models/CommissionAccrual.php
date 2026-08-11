@@ -3,7 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon|null $created_at
+ * @property string $currency
+ * @property int $amount_minor
+ * @property-read Reservation $reservation
+ */
 class CommissionAccrual extends TenantModel
 {
     protected function casts(): array

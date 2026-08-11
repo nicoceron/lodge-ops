@@ -2,20 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MembershipRole;
 use App\Jobs\PublishOutboxMessage;
 use App\Models\AutomationRule;
 use App\Models\Communication;
 use App\Models\Deposit;
 use App\Models\Guest;
+use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Outbox;
+use App\Models\Property;
 use App\Models\Reservation;
+use App\Models\User;
 use App\Services\Automation\AutomationEngine;
+use App\Services\Automation\InternalStaffNotificationService;
 use App\Services\Automation\OutboxBatchPublisher;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -92,6 +99,115 @@ class OutboxAutomationTest extends TestCase
         $this->assertSame(1, OperationalTask::withoutGlobalScopes()->where('tenant_id', $tenantA->id)->count());
         $this->assertSame(2, Communication::withoutGlobalScopes()->where('tenant_id', $tenantA->id)->count());
         $this->assertDatabaseHas('communications', ['metadata->deposit_id' => $deposit->id]);
+    }
+
+    public function test_internal_notify_delivers_scoped_filament_database_notifications(): void
+    {
+        [$tenantA, $propertyA, $owner, $ownerMembership] = $this->tenantEnvironment(authenticate: false);
+        $propertyB = Property::factory()->create();
+
+        $eligible = User::factory()->create();
+        Membership::factory()->create([
+            'user_id' => $eligible->id,
+            'property_id' => $propertyA->id,
+            'role' => MembershipRole::Operations,
+            'is_active' => true,
+        ]);
+
+        $otherProperty = User::factory()->create();
+        Membership::factory()->create([
+            'user_id' => $otherProperty->id,
+            'property_id' => $propertyB->id,
+            'role' => MembershipRole::Operations,
+            'is_active' => true,
+        ]);
+
+        $inactive = User::factory()->create();
+        Membership::factory()->create([
+            'user_id' => $inactive->id,
+            'property_id' => $propertyA->id,
+            'role' => MembershipRole::Operations,
+            'is_active' => false,
+        ]);
+
+        [$tenantB, , $unrelatedTenantUser] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $propertyA->id,
+            'confirmation_number' => 'NOTIFY-100',
+        ]);
+        $rule = AutomationRule::query()->create([
+            'name' => 'Notify operations on confirmation',
+            'trigger' => 'reservation.confirmed',
+            'actions' => [[
+                'type' => 'internal_notify',
+                'title' => 'Reservation confirmed',
+                'body' => 'Review {{reservation.confirmation_number}}',
+                'roles' => ['operations'],
+            ]],
+        ]);
+        $message = $this->outbox($reservation, 'reservation.confirmed', [
+            'reservation_id' => $reservation->id,
+            'confirmation_number' => 'NOTIFY-100',
+        ]);
+
+        Queue::fake();
+        app(TenantContext::class)->clear();
+        $this->process($tenantA->id, $message->id);
+
+        $this->assertSame(1, DB::table('notifications')->count());
+        $notification = DB::table('notifications')->where('notifiable_id', $eligible->id)->first();
+        $this->assertNotNull($notification);
+        $data = json_decode($notification->data, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('filament', $data['format']);
+        $this->assertSame('Reservation confirmed', $data['title']);
+        $this->assertSame('Review NOTIFY-100', $data['body']);
+
+        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $owner->id]);
+        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $otherProperty->id]);
+        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $inactive->id]);
+        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $unrelatedTenantUser->id]);
+        $this->assertSame(0, DB::table('notifications')->where('notifiable_id', $owner->id)->count());
+        $this->assertSame(0, DB::table('notifications')->where('notifiable_id', $unrelatedTenantUser->id)->count());
+        $this->assertSame($tenantB->id, $unrelatedTenantUser->memberships()->withoutGlobalScopes()->first()->tenant_id);
+
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        $deliveredAgain = app(InternalStaffNotificationService::class)->deliver(
+            $message,
+            $rule,
+            0,
+            $rule->actions[0],
+            ['reservation' => [
+                'id' => $reservation->id,
+                'property_id' => $propertyA->id,
+                'confirmation_number' => 'NOTIFY-100',
+            ]],
+        );
+        $this->assertSame(0, $deliveredAgain);
+        $this->assertSame(1, DB::table('notifications')->count());
+
+        app(TenantContext::class)->set($tenantB);
+        $tenantBMembership = Membership::withoutGlobalScopes()->forceCreate([
+            'tenant_id' => $tenantB->id,
+            'user_id' => $eligible->id,
+            'role' => MembershipRole::Operations,
+            'is_active' => true,
+        ]);
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        DB::table('notifications')->insert([
+            'id' => (string) Str::uuid(),
+            'type' => 'Filament\\Notifications\\DatabaseNotification',
+            'notifiable_type' => User::class,
+            'notifiable_id' => $eligible->id,
+            'data' => json_encode(['format' => 'filament', 'title' => 'Other workspace', 'viewData' => ['tenant_id' => $tenantB->id]], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(TenantContext::class)->set($tenantA, $ownerMembership);
+        $this->assertSame(['Reservation confirmed'], $eligible->notifications()->pluck('data')->pluck('title')->all());
+        app(TenantContext::class)->set($tenantB, $tenantBMembership);
+        $this->assertSame(['Other workspace'], $eligible->notifications()->pluck('data')->pluck('title')->all());
     }
 
     public function test_failures_are_observable_and_retry_without_duplicate_side_effects(): void

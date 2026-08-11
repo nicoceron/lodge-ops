@@ -14,6 +14,7 @@ use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\Payment;
 use App\Models\Program;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
@@ -125,6 +126,23 @@ class StaffProjectionTest extends TestCase
         $this->withHeaders($headers)->getJson('/api/v1/calendar?start='.$arrival->subDay()->toDateString().'&end='.$arrival->addDays(3)->toDateString())
             ->assertOk()
             ->assertJsonFragment(['type' => 'reservation', 'title' => 'Visible Operator']);
+    }
+
+    public function test_dashboard_reports_calendar_nights_as_an_integer(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $arrival = CarbonImmutable::now($tenant->timezone)->startOfDay()->addHours(15)->utc();
+        Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => $arrival,
+            'ends_at' => $arrival->addDays(4)->subHours(4),
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->getJson('/api/v1/dashboard')
+            ->assertOk()
+            ->assertJsonPath('data.arrival_parties.0.nights', 4);
     }
 
     public function test_calendar_projection_contains_resources_allocations_occurrences_and_blocks(): void
@@ -240,6 +258,40 @@ class StaffProjectionTest extends TestCase
         $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
             ->getJson('/api/v1/finance')
             ->assertForbidden();
+    }
+
+    public function test_finance_projection_honors_a_property_scoped_membership(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $tenant->update(['currency' => 'USD']);
+        $otherProperty = Property::factory()->create(['name' => 'Outside finance scope']);
+        $arrival = CarbonImmutable::now($tenant->timezone)->startOfMonth()->addDays(2)->addHours(15)->utc();
+
+        Reservation::factory()->create([
+            'property_id' => $property->id,
+            'confirmation_number' => 'FIN-IN-SCOPE',
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => $arrival,
+            'ends_at' => $arrival->addDays(2),
+            'currency' => 'USD',
+            'total_minor' => 75_000,
+        ]);
+        Reservation::factory()->create([
+            'property_id' => $otherProperty->id,
+            'confirmation_number' => 'FIN-OUTSIDE-SCOPE',
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => $arrival,
+            'ends_at' => $arrival->addDays(2),
+            'currency' => 'USD',
+            'total_minor' => 125_000,
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->getJson('/api/v1/finance')
+            ->assertOk()
+            ->assertJsonPath('data.summary.booked_revenue_minor', 75_000)
+            ->assertJsonFragment(['confirmation_number' => 'FIN-IN-SCOPE'])
+            ->assertJsonMissing(['confirmation_number' => 'FIN-OUTSIDE-SCOPE']);
     }
 
     private function arrivalTime(string $timezone): CarbonImmutable

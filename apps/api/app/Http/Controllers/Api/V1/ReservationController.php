@@ -118,7 +118,7 @@ class ReservationController extends Controller
                 $data['total_minor'] = ($data['subtotal_minor'] ?? $locked->subtotal_minor) + ($data['tax_minor'] ?? $locked->tax_minor);
             }
             $data['revision'] = $locked->revision + 1;
-            $locked->update($data);
+            $locked->forceFill($data)->save();
 
             if ($guestIds !== null) {
                 $locked->guests()->detach();

@@ -13,7 +13,7 @@ use Laravel\Sanctum\Sanctum;
 trait CreatesTenant
 {
     /** @return array{Tenant, Property, User, Membership} */
-    protected function tenantEnvironment(MembershipRole $role = MembershipRole::Owner, bool $authenticate = true): array
+    protected function tenantEnvironment(MembershipRole $role = MembershipRole::Administrator, bool $authenticate = true): array
     {
         $tenant = Tenant::factory()->create();
         app(TenantContext::class)->set($tenant);

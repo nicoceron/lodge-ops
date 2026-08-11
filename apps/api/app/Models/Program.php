@@ -2,9 +2,18 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $property_id
+ * @property string $name
+ * @property bool $is_active
+ * @property bool $requires_accommodation
+ * @property-read Collection<int, ProgramResourceRequirement> $requirements
+ * @property-read Collection<int, ProgramTaskTemplate> $taskTemplates
+ */
 class Program extends TenantModel
 {
     protected function casts(): array

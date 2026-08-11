@@ -19,8 +19,12 @@ class ResolveGuestPortalSession
     {
         $plainToken = $request->bearerToken();
 
+        if (! is_string($plainToken) && $request->hasSession()) {
+            $plainToken = $request->session()->get('guest_portal_session_token');
+        }
+
         if (! is_string($plainToken) || strlen($plainToken) < 32 || strlen($plainToken) > 256) {
-            return $this->unauthenticated();
+            return $this->unauthenticated($request);
         }
 
         $access = GuestPortalAccessToken::withoutGlobalScopes()
@@ -34,13 +38,13 @@ class ResolveGuestPortalSession
             || $access->session_expires_at === null
             || $access->session_expires_at->isPast()
         ) {
-            return $this->unauthenticated();
+            return $this->unauthenticated($request);
         }
 
         $tenant = Tenant::query()->whereKey($access->tenant_id)->where('is_active', true)->first();
 
         if ($tenant === null) {
-            return $this->unauthenticated();
+            return $this->unauthenticated($request);
         }
 
         $this->context->set($tenant);
@@ -55,8 +59,14 @@ class ResolveGuestPortalSession
         }
     }
 
-    private function unauthenticated(): JsonResponse
+    private function unauthenticated(Request $request): Response
     {
+        if (! $request->expectsJson() && $request->hasSession()) {
+            $request->session()->forget('guest_portal_session_token');
+
+            return redirect()->route('guest.portal.unavailable');
+        }
+
         return new JsonResponse(['message' => 'This guest portal session is unavailable.'], 401);
     }
 }

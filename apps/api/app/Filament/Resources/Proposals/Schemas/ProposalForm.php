@@ -22,7 +22,7 @@ class ProposalForm
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->relationship('property', 'name')
+                        ->options(LodgeOpsPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),

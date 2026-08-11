@@ -54,7 +54,7 @@ class OpportunityResource extends TenantResource
         return $schema->components([
             Section::make('Opportunity')->columns(2)->schema([
                 TextInput::make('title')->required()->maxLength(200)->columnSpanFull(),
-                Select::make('property_id')->label('Property')->relationship('property', 'name')->required()->searchable()->preload(),
+                Select::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions(...))->required()->searchable()->preload(),
                 Select::make('owner_id')->label('Owner')->relationship('owner', 'name')->searchable()->preload()->default(auth()->id()),
                 Select::make('guest_id')->label('Guest')->relationship('guest', 'email')->getOptionLabelFromRecordUsing(fn (Guest $record): string => trim("{$record->first_name} {$record->last_name}").($record->email ? " · {$record->email}" : ''))->searchable(['first_name', 'last_name', 'email'])->preload(),
                 Select::make('organization_id')->label('Organization')->relationship('organization', 'name')->searchable()->preload(),
@@ -101,7 +101,7 @@ class OpportunityResource extends TenantResource
             ])
             ->filters([
                 SelectFilter::make('stage')->options(['inquiry' => 'Inquiry', 'qualified' => 'Qualified', 'proposal' => 'Proposal', 'won' => 'Won', 'lost' => 'Lost'])->multiple(),
-                SelectFilter::make('property_id')->label('Property')->relationship('property', 'name'),
+                SelectFilter::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions()),
                 SelectFilter::make('owner_id')->label('Owner')->relationship('owner', 'name'),
             ])
             ->recordActions([

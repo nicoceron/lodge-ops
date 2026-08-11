@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
 use App\Enums\TaskStatus;
 use App\Models\OperationalTask;
@@ -21,7 +22,12 @@ class LodgeReadinessOverview extends StatsOverviewWidget
 
     public static function canView(): bool
     {
-        return app(TenantContext::class)->membership()?->is_active === true;
+        return in_array(app(TenantContext::class)->membership()?->role, [
+            MembershipRole::Administrator,
+            MembershipRole::Manager,
+            MembershipRole::Sales,
+            MembershipRole::Operations,
+        ], true);
     }
 
     protected function getStats(): array

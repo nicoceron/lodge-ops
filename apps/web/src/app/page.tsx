@@ -1,149 +1,94 @@
-import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { ArrowRight, CircleCheck, Clock3, MapPin, Plane, UsersRound } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
-import { DataNotice, DataState } from "@/components/data-state";
-import { MasterCalendar } from "@/components/master-calendar";
-import { MetricCard } from "@/components/metric-card";
-import { StatusPill } from "@/components/status-pill";
-import { requireStaffUser, selectedTenant } from "@/data/staff-api";
-import { loadDashboardProjection } from "@/data/staff-projections";
-import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Overview" };
+const manageUrl = process.env.NEXT_PUBLIC_MANAGE_URL ?? "http://localhost:8000/manage";
 
-export default async function OverviewPage() {
-  const user = await requireStaffUser();
-  const selectedId = (await cookies()).get("lodgeops_tenant_id")?.value;
-  const activeTenant = selectedTenant(user, selectedId);
-  const role = user.membership?.role ?? activeTenant?.role ?? "viewer";
+const features = [
+  ["01", "One reservation book", "Replace disconnected room, group, guide, and activity bookings with one reservation and allocation workflow."],
+  ["02", "Live operations", "Arrivals, departures, housekeeping, kitchen restrictions, guide assignments, and open tasks stay in the same operational picture."],
+  ["03", "Money without mystery", "Deposits, manual payments, folios, costs, commissions, receivables, and margin use explicit minor-unit accounting."],
+  ["04", "Every resource, scheduled", "Rooms, guides, horses, vehicles, boats, equipment, blocks, buyouts, and capacity rules share one calendar."],
+  ["05", "A guest-ready journey", "Secure magic links handle itineraries, pre-arrival details, waivers, payment evidence, folios, and post-stay feedback."],
+  ["06", "Built for many lodges", "Tenant memberships, property scopes, role permissions, and database-enforced ownership keep each operation isolated."],
+];
 
-  if (role === "finance") redirect("/finance");
-  if (["guide", "kitchen", "housekeeping"].includes(role)) redirect("/operations");
-
-  const canManageReservations = ["owner", "manager", "sales", "operations"].includes(role);
-  const canViewOperations = ["owner", "manager", "operations"].includes(role);
-  const state = await loadDashboardProjection();
-  const dashboard = state.data;
-
+export default function Home() {
   return (
-    <AppShell
-      eyebrow={dashboard?.dateLabel ?? "Live operations"}
-      title={state.mode === "demo" ? "Good morning, Nico" : "Operations overview"}
-      description={dashboard?.description ?? "A tenant-scoped view of arrivals, readiness, assignments, and today’s operating pulse."}
-      action={canManageReservations ? { label: "New reservation", shortLabel: "Reservation", href: "/reservations/new" } : undefined}
-    >
-      {!dashboard ? <DataState kind="error" title="Overview unavailable" description={state.error ?? "Live operations could not be loaded."} /> : null}
-      {dashboard && state.notice ? <DataNotice>{state.notice}</DataNotice> : null}
-      {dashboard ? <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        {dashboard.stats.map((stat) => <MetricCard key={stat.label} {...stat} />)}
-      </div>
-
-      <div className="mt-5 animate-enter">
-        <MasterCalendar calendar={dashboard.calendar} compact />
-      </div>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.8fr)]">
-        <section className="surface-card overflow-hidden rounded-2xl animate-enter-delay" aria-labelledby="arrivals-heading">
-          <div className="flex items-center justify-between border-b border-black/7 px-5 py-4">
-            <div>
-              <h2 id="arrivals-heading" className="text-sm font-bold">Today&apos;s arrivals</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">{dashboard.arrivals.reduce((total, arrival) => total + arrival.guests, 0)} guests across {dashboard.arrivals.length} parties</p>
-            </div>
-            {canManageReservations ? <Link href="/reservations" className="inline-flex items-center gap-1 text-xs font-bold text-[var(--forest)] hover:underline">
-              All reservations <ArrowRight aria-hidden="true" className="size-3.5" />
-            </Link> : null}
-          </div>
-          <div className="divide-y divide-black/6">
-            {dashboard.arrivals.map((arrival) => (
-              <article key={arrival.id} className="grid gap-4 px-5 py-4 sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center">
-                <div>
-                  <p className="font-mono text-sm font-bold">{arrival.time}</p>
-                  <p className="mt-1 text-[9px] font-bold tracking-[0.1em] text-[var(--muted)] uppercase">Arrival</p>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-bold">{arrival.party}</h3>
-                    <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]"><UsersRound aria-hidden="true" className="size-3" />{arrival.guests}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-[var(--muted)]">{arrival.program} · {arrival.stay}</p>
-                  <p className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
-                    {arrival.readiness === "ready" ? <Plane aria-hidden="true" className="size-3" /> : <Clock3 aria-hidden="true" className="size-3" />}
-                    {arrival.transfer}
-                  </p>
-                </div>
-                <StatusPill tone={arrival.readiness} compact />
-              </article>
-            ))}
-            {!dashboard.arrivals.length ? <div className="px-5 py-10 text-center"><p className="text-sm font-semibold">No arrivals today</p><p className="mt-1 text-xs text-[var(--muted)]">The live tenant has no arrival parties in today’s property-time window.</p></div> : null}
-          </div>
-        </section>
-
-        <section className="surface-card rounded-2xl p-5" aria-labelledby="readiness-heading">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 id="readiness-heading" className="text-sm font-bold">Arrival readiness</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">Next 7 days · {dashboard.readiness.totalGuests} arriving guests</p>
-            </div>
-            <div className="grid size-11 place-items-center rounded-full border-[5px] border-[var(--forest)] border-r-[var(--amber-soft)] font-mono text-[10px] font-bold">{dashboard.readiness.percent}%</div>
-          </div>
-          <div className="mt-5 space-y-4">
-            {dashboard.readiness.items.map((item) => {
-              const percent = item.total ? Math.round((item.complete / item.total) * 100) : 100;
-              return (
-                <div key={item.label}>
-                  <div className="mb-1.5 flex justify-between text-[11px]">
-                    <span className="font-semibold">{item.label}</span>
-                    <span className="font-mono text-[var(--muted)]">{item.complete}/{item.total}</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-black/6">
-                    <div className={cn("h-full rounded-full", percent === 100 ? "bg-[var(--forest)]" : "bg-[var(--amber)]")} style={{ width: `${percent}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {canViewOperations ? <Link href="/operations" className="mt-5 flex items-center justify-center gap-1.5 rounded-xl border border-black/8 bg-white/65 py-2.5 text-xs font-bold text-[var(--forest)] hover:bg-white">
-            Open readiness board <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Link> : null}
-        </section>
-      </div>
-
-      <section className="surface-card mt-5 rounded-2xl" aria-labelledby="tasks-heading">
-        <div className="flex items-center justify-between border-b border-black/7 px-5 py-4">
-          <div>
-            <h2 id="tasks-heading" className="text-sm font-bold">Operations pulse</h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">What needs a decision next</p>
-          </div>
-          {canViewOperations ? <Link href="/operations" className="text-xs font-bold text-[var(--forest)] hover:underline">View task board</Link> : null}
-        </div>
-        <div className="grid divide-y divide-black/6 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-          <div className="divide-y divide-black/6">
-            {dashboard.tasks.map((task) => (
-              <div key={task.id} className="flex items-center gap-3 px-5 py-3.5">
-                <span className={cn("grid size-7 place-items-center rounded-full border", task.done ? "border-[var(--forest)] bg-[var(--forest)] text-white" : "border-black/12 bg-white text-black/25")}>
-                  <CircleCheck aria-hidden="true" className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={cn("truncate text-xs font-bold", task.done && "text-[var(--muted)] line-through")}>{task.title}</p>
-                  <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{task.meta}</p>
-                </div>
-                <span className="grid size-7 place-items-center rounded-lg bg-black/5 text-[9px] font-bold">{task.owner}</span>
-              </div>
-            ))}
-            {!dashboard.tasks.length ? <div className="px-5 py-10 text-center text-xs text-[var(--muted)]">No open tasks in the current tenant.</div> : null}
-          </div>
-          <div className="subtle-grid flex min-h-48 flex-col items-center justify-center p-8 text-center">
-            <span className="grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><MapPin aria-hidden="true" className="size-5" /></span>
-            <p className="mt-4 font-display text-2xl font-semibold">No capacity conflicts</p>
-            <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--muted)]">{dashboard.calendar.summary.unassignedReservations ? `${dashboard.calendar.summary.unassignedReservations} reservation assignment${dashboard.calendar.summary.unassignedReservations === 1 ? " is" : "s are"} still open.` : "All visible reservation assignments are covered."}</p>
+    <>
+      <section className="hero">
+        <div className="shell hero-copy">
+          <div className="eyebrow">Lodge operations, finally connected</div>
+          <h1>Run the whole lodge from <span>one calm place.</span></h1>
+          <p className="lede">LodgeOps brings reservations, guest preparation, resources, teams, payments, and reporting together—without forcing independent operators into hotel software that does not fit.</p>
+          <div className="hero-actions">
+            <a className="button" href={manageUrl}>Open LodgeOps <span aria-hidden="true">→</span></a>
+            <Link className="button button-secondary" href="/features">Explore the platform</Link>
           </div>
         </div>
       </section>
-      </> : null}
-    </AppShell>
+
+      <section className="proof-strip" aria-label="Platform highlights">
+        <div className="shell proof-grid">
+          <div className="proof-item"><strong>One calendar</strong><span>Rooms, guides, activities, and gear</span></div>
+          <div className="proof-item"><strong>One guest record</strong><span>Sales history through post-stay care</span></div>
+          <div className="proof-item"><strong>One operations board</strong><span>Every role sees the work that matters</span></div>
+          <div className="proof-item"><strong>One source of truth</strong><span>Tenant-safe Laravel domain workflows</span></div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="shell">
+          <div className="section-head">
+            <div><div className="eyebrow">The complete operating picture</div><h2>Less tab switching.<br/>More hosting.</h2></div>
+            <p>Purpose-built workflows connect the commercial promise to the people, resources, preparation, and money required to deliver it.</p>
+          </div>
+          <div className="feature-grid">
+            {features.map(([number, title, description]) => <article className="feature-card" key={number}><div className="number">{number}</div><h3>{title}</h3><p>{description}</p></article>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="section section-dark">
+        <div className="shell workspace">
+          <div className="workspace-copy">
+            <div className="eyebrow">The staff workspace</div>
+            <h2>Built around the day the lodge is actually having.</h2>
+            <p>The authenticated LodgeOps application runs in Laravel and Filament, so login, roles, tenant switching, workflows, and records share one secure application boundary.</p>
+            <ul className="check-list">
+              <li>Role-specific calendar and work queues</li>
+              <li>Reservation composer with resource conflict checks</li>
+              <li>Kitchen, housekeeping, guide, finance, and owner views</li>
+              <li>No duplicate frontend authentication or browser API proxy</li>
+            </ul>
+          </div>
+          <div className="product-window" aria-label="Illustration of the LodgeOps operations board">
+            <div className="window-bar"><i></i><i></i><i></i></div>
+            <div className="window-body">
+              <div className="window-nav"><strong>LodgeOps</strong><span>Operations</span><span>Calendar</span><span>Reservations</span><span>Guests</span><span>Finance</span></div>
+              <div className="window-main">
+                <h3>Today at North Ridge Lodge</h3>
+                <div className="metric-grid"><div className="metric"><b>8</b><small>Arrivals</small></div><div className="metric"><b>5</b><small>Departures</small></div><div className="metric"><b>3</b><small>Open tasks</small></div></div>
+                <div className="schedule-row"><span>08:30</span><b>Laguna trail group</b><span className="tag">Ready</span></div>
+                <div className="schedule-row"><span>11:00</span><b>Rooms 4–8 turnover</b><span className="tag">In progress</span></div>
+                <div className="schedule-row"><span>15:20</span><b>Airport arrival · 6 guests</b><span className="tag">Assigned</span></div>
+                <div className="schedule-row"><span>18:30</span><b>Dietary prep review</b><span className="tag">2 alerts</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section section-muted">
+        <div className="shell">
+          <div className="section-head"><div><div className="eyebrow">Designed for independent hospitality</div><h2>Your operation is not a generic hotel.</h2></div><p>LodgeOps respects programs, guides, shared resources, remote logistics, group travel, and the high-touch guest care that defines a great lodge.</p></div>
+          <div className="story-grid">
+            <article className="story"><blockquote>“Every team can work from the same reservation without seeing information their role does not need.”</blockquote><cite>Role-scoped by design</cite></article>
+            <article className="story"><blockquote>“The calendar understands a room, a guide, and a boat as resources in the same trip.”</blockquote><cite>One allocation model</cite></article>
+            <article className="story"><blockquote>“Guest preparation flows directly into the kitchen and operations day.”</blockquote><cite>Connected workflows</cite></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="section"><div className="shell cta"><div><h2>Make the next arrival day calmer.</h2><p>Sign in to your secure LodgeOps workspace and run the operation from one place.</p></div><a className="button" href={manageUrl}>Open the staff application →</a></div></section>
+    </>
   );
 }

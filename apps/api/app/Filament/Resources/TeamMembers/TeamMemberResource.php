@@ -67,7 +67,7 @@ class TeamMemberResource extends TenantResource
                         ->required(),
                     Select::make('property_id')
                         ->label('Property scope')
-                        ->relationship('property', 'name')
+                        ->options(LodgeOpsPresentation::propertyOptions(...))
                         ->placeholder('All properties')
                         ->searchable()
                         ->preload(),

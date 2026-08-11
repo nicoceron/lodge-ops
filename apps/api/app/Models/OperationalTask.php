@@ -3,8 +3,14 @@
 namespace App\Models;
 
 use App\Enums\TaskStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property CarbonImmutable|null $due_at
+ * @property TaskStatus $status
+ * @property-read ProgramTaskTemplate|null $programTaskTemplate
+ */
 class OperationalTask extends TenantModel
 {
     protected $table = 'operational_tasks';

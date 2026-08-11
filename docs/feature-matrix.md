@@ -4,24 +4,24 @@ This matrix is the definition of product coverage. A capability is complete only
 
 | Area | Required outcome | Primary experience | Status and automated evidence |
 | --- | --- | --- | --- |
-| Master calendar | Rooms, programs, activities and shared resources in one date grid, program labels, buyouts, saved lenses | Next | Implemented — `StaffProjectionTest`, `AllocationConflictTest`, `master-calendar.test.tsx`, Playwright navigation |
-| Resource planning | Guide skills/languages/ratios plus horses, boats and vehicles with suggestions and hard conflicts | Next + Filament | Implemented — `ResourceSuggestionTest`, `AllocationConflictTest` |
-| Reservations | Manual entry, guests/companions, itinerary, stays, activities, flags, notes, copy/amend/cancel | Next | Implemented — `ReservationApiTest`, `ReservationStatusTest`, `StaffProjectionTest` |
-| CRM and sales | Repeat guest history, preferences, agency/channel, inquiry pipeline, proposal versions and conversion | Next + Filament | Implemented — `CommercialWorkflowTest`, `ExtendedOperationsTest` |
+| Master calendar | Rooms, programs, activities and shared resources in one date grid, program labels, buyouts, saved lenses | Filament custom page | Implemented — `FilamentWorkspacePagesTest`, `StaffProjectionTest`, `AllocationConflictTest` |
+| Resource planning | Guide skills/languages/ratios plus horses, boats and vehicles with suggestions and hard conflicts | Filament | Implemented — `ResourceSuggestionTest`, `ResourceSuggestionFilamentTest`, `AllocationConflictTest`, `FilamentResourcesTest` |
+| Reservations | Manual entry, guests/companions, itinerary, stays, activities, flags, notes, copy/amend/cancel | Filament | Implemented — `ReservationApiTest`, `ReservationStatusTest`, `FilamentResourcesTest` |
+| CRM and sales | Repeat guest history, preferences, agency/channel, inquiry pipeline, proposal versions and conversion | Filament | Implemented — `CommercialWorkflowTest`, `ExtendedOperationsTest`, `FilamentResourcesTest` |
 | Communications | Versioned email/SMS templates, confirmation/payment/pre-arrival/post-stay automations, internal alerts | Filament + queues | Implemented — `OutboxAfterCommitTest`, `OutboxAutomationTest`, `OutboxBatchPublisherTest`, `ExtendedOperationsTest` |
-| Payments | Deposit schedule, 50% default, balance 30 days prior, manual bank transfer and evidence | Next + Filament | Implemented — `PaymentApiTest`, `CommercialWorkflowTest`, `GuestPortalTest` |
-| Multi-currency | USD/ARS price books and exchange-rate snapshots without duplicate catalog data | Filament | Implemented — `MoneyCalculatorTest`, `ExtendedOperationsTest` |
-| Financial dashboard | Occupancy, program revenue, costs, margin, receivables and channel commission | Next owner view | Implemented — `StaffProjectionTest`, `ExtendedOperationsTest` |
-| Kitchen | Guest counts and restricted dietary summary by date without unrelated data access | Next role view | Implemented — `StaffProjectionTest` role and field-redaction matrix |
-| Operational tasks | Program-generated checklists by role with arrival readiness and escalation | Next + Filament | Implemented — `OutboxAutomationTest`, `StaffProjectionTest` |
-| Extras and final folio | In-stay extras, discounts, adjustments, gratuity and consolidated account | Next | Implemented — `CommercialWorkflowTest`, `GuestPortalTest` |
-| Surveys | Automatic post-checkout invitation and response tracking | Guest portal + Filament | Implemented — `GuestPortalTest`, guest Playwright journey |
-| Roles | Admin, sales/operations, guide, kitchen, housekeeping, finance and owner workspaces | All | Implemented — `TenantIsolationTest`, `FilamentTenancyTest`, `FilamentResourcesTest`, `StaffProjectionTest` |
-| Guest portal | Secure itinerary, pre-registration, companion details, travel, waivers, evidence and survey | Next | Implemented — `GuestPortalTest`, `DatabaseSeederTest`, guest component tests and Playwright journey |
+| Payments | Deposit schedule, 50% default, balance 30 days prior, manual bank transfer and evidence | Filament + Laravel guest portal | Implemented — `PaymentApiTest`, `CommercialWorkflowTest`, `GuestPortalTest`, `GuestPortalWebTest` |
+| Multi-currency | USD/ARS price books and property-aware exchange-rate snapshots without duplicate catalog data | Filament | Implemented — `MoneyCalculatorTest`, `FinanceReportingTest`, `ExtendedOperationsTest` |
+| Financial dashboard | Selectable reporting periods, raw currency totals, explicit FX consolidation, revenue, costs, margin, receivables and commission | Filament custom page | Implemented — `FinanceReportingTest`, `FilamentWorkspacePagesTest`, `StaffProjectionTest`, `ExtendedOperationsTest` |
+| Kitchen | Guest counts and restricted dietary summary for a selectable property-local planning range without unrelated identity access | Filament custom page | Implemented — `FilamentKitchenDashboardTest`, `FilamentWorkspacePagesTest`, `StaffProjectionTest` role and field-redaction matrix |
+| Operational tasks | Program-generated checklists by role with arrival readiness and escalation | Filament | Implemented — `FilamentWorkspacePagesTest`, `OutboxAutomationTest`, `StaffProjectionTest` |
+| Extras and final folio | In-stay extras, discounts, adjustments, gratuity and consolidated account | Filament + Laravel guest portal | Implemented — `CommercialWorkflowTest`, `GuestPortalTest`, `GuestPortalWebTest` |
+| Surveys | Automatic post-checkout invitation plus filterable, read-only staff response tracking | Laravel guest portal + Filament | Implemented — `GuestPortalTest`, `GuestPortalWebTest`, `FilamentSurveyResponseTrackerTest` |
+| Roles | Full Administrator, finance-read-only Owner, manager, sales/operations, guide, kitchen, housekeeping and finance workspaces | Filament | Implemented — `RoleSemanticsTest`, `TenantIsolationTest`, `FilamentTenancyTest`, `FilamentRelatedPropertyScopeTest`, `FilamentResourcesTest` |
+| Guest portal | Secure itinerary, pre-registration, companion details, travel, waivers, evidence and survey | Laravel | Implemented — `GuestPortalTest`, `GuestPortalWebTest`, `DatabaseSeederTest` |
 | Documents | Versioned templates, invoices, itinerary, attachments and signature adapters | Filament + portal | Implemented — `ExtendedOperationsTest`, `GuestPortalTest` |
-| Retail/POS | Optional catalog, stock movement, tablet sale and reservation-linked charges | Filament/Next module | Implemented — `ExtendedOperationsTest` transactional stock-and-folio invariants |
+| Retail/POS | Optional catalog, stock movement, tablet sale and reservation-linked charges | Filament | Implemented — `ExtendedOperationsTest` transactional stock-and-folio invariants |
 | Payroll/costs | Guide/staff cost records and commission accruals | Filament | Implemented — `ExtendedOperationsTest` |
-| Reporting | Role dashboards, explicit definitions, filters, CSV/PDF export | Next + Filament | Implemented — `StaffProjectionTest`, `ExtendedOperationsTest` CSV-injection protection |
+| Reporting | Role dashboards, explicit definitions, date/property filters, FX policy, CSV/PDF export | Filament | Implemented — `FinanceReportingTest`, `FilamentWorkspacePagesTest`, `StaffProjectionTest`, `ExtendedOperationsTest` CSV-injection protection |
 | Integrations | Email/calendar/accounting/payment/e-sign/webhook adapters | Filament | Implemented adapter boundary — `ExtendedOperationsTest`, outbox suites; provider activation requires tenant-owned credentials |
 
 ## Simplifications over the legacy product

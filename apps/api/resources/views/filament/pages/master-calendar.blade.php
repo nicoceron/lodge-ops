@@ -1,0 +1,175 @@
+<x-filament-panels::page>
+    <div class="space-y-6">
+        <x-filament::section>
+            <div class="grid gap-4 md:grid-cols-3">
+                <label class="space-y-1 text-sm font-medium">
+                    <span>From</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input type="date" wire:model.live="start" />
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Through</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input type="date" wire:model.live="end" />
+                    </x-filament::input.wrapper>
+                </label>
+                @if ($properties->isNotEmpty())
+                    <label class="space-y-1 text-sm font-medium">
+                        <span>Property</span>
+                        <x-filament::input.wrapper>
+                            <x-filament::input.select wire:model.live="propertyId">
+                                <option value="">All properties</option>
+                                @foreach ($properties as $property)
+                                    <option value="{{ $property->id }}">{{ $property->name }}</option>
+                                @endforeach
+                            </x-filament::input.select>
+                        </x-filament::input.wrapper>
+                    </label>
+                @endif
+            </div>
+        </x-filament::section>
+
+        @if ($buyouts->isNotEmpty())
+            <x-filament::section
+                heading="Full lodge buyout active"
+                description="Do not overlap another reservation or shared resource allocation with these protected windows."
+                icon="heroicon-o-shield-exclamation"
+                icon-color="danger"
+            >
+                <div class="grid gap-3 lg:grid-cols-2">
+                    @foreach ($buyouts as $buyout)
+                        <div class="rounded-xl border border-danger-300 bg-danger-50 p-4 dark:border-danger-500/40 dark:bg-danger-950/20">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold text-danger-800 dark:text-danger-200">{{ $buyout['title'] }}</div>
+                                    <div class="mt-1 text-sm text-danger-700 dark:text-danger-300">{{ $buyout['reference'] }} · {{ $buyout['property'] }}</div>
+                                </div>
+                                <x-filament::badge color="danger">Exclusive</x-filament::badge>
+                            </div>
+                            <div class="mt-3 text-sm text-danger-700 dark:text-danger-300">
+                                {{ $buyout['starts_at']->timezone($timezone)->format('M j, Y · H:i') }}
+                                – {{ $buyout['ends_at']->timezone($timezone)->format('M j, Y · H:i') }}
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </x-filament::section>
+        @endif
+
+        @if ($programs->isNotEmpty())
+            <x-filament::section heading="Program legend" description="Closed programs and simple stays keep their configured color everywhere on the schedule.">
+                <div class="flex flex-wrap gap-3">
+                    @foreach ($programs as $program)
+                        <div class="flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1.5 text-sm dark:border-white/10">
+                            <span class="size-3 rounded-full" style="background-color: {{ $program['color'] }}"></span>
+                            <span class="font-medium">{{ $program['name'] }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            </x-filament::section>
+        @endif
+
+        <div class="grid gap-4 md:grid-cols-3">
+            <x-filament::section heading="Allocation health">
+                <div class="text-3xl font-bold {{ $allocationSummary['hard_conflicts'] ? 'text-danger-600' : 'text-success-600' }}">{{ $allocationSummary['hard_conflicts'] }}</div>
+                <div class="mt-1 text-sm text-gray-500">Hard conflicts</div>
+            </x-filament::section>
+            <x-filament::section heading="Unassigned reservations">
+                <div class="text-3xl font-bold">{{ $allocationSummary['unassigned_reservations'] }}</div>
+                <div class="mt-1 text-sm text-gray-500">Reservations without resource allocations</div>
+            </x-filament::section>
+            <x-filament::section heading="Resource suggestions">
+                <div class="text-3xl font-bold">{{ $allocationSummary['suggestions'] }}</div>
+                <div class="mt-1 text-sm text-gray-500">Stays requiring planning attention</div>
+            </x-filament::section>
+        </div>
+
+        <x-filament::section heading="Calendar overview" description="A property-local day grid. Multi-day stays appear on every day they occupy.">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ($days as $day)
+                    <div class="min-h-48 rounded-xl border border-gray-200 p-3 dark:border-white/10">
+                        <div class="mb-3 flex items-center justify-between gap-2 border-b border-gray-100 pb-2 dark:border-white/5">
+                            <div><div class="text-xs uppercase text-gray-500">{{ $day['date']->format('D') }}</div><div class="font-bold">{{ $day['date']->format('M j') }}</div></div>
+                            <x-filament::badge color="gray">{{ $day['events']->count() }}</x-filament::badge>
+                        </div>
+                        <div class="space-y-2">
+                            @forelse ($day['events'] as $event)
+                                <div class="rounded-lg border-l-4 bg-gray-50 p-2 text-xs dark:bg-white/5" style="border-left-color: {{ $event['color'] ?? '#D97706' }}">
+                                    <div class="font-semibold">
+                                        @if ($event['url'])<a class="text-primary-600 hover:underline dark:text-primary-400" href="{{ $event['url'] }}" wire:navigate>{{ $event['title'] }}</a>@else{{ $event['title'] }}@endif
+                                    </div>
+                                    <div class="mt-1 text-gray-500">{{ $event['starts_at']->timezone($timezone)->format('H:i') }} · {{ $event['type'] }}</div>
+                                </div>
+                            @empty
+                                <div class="py-6 text-center text-xs text-gray-400">No scheduled work</div>
+                            @endforelse
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </x-filament::section>
+
+        @if ($resources->isNotEmpty())
+            <x-filament::section heading="Resource utilization" description="Allocated capacity inside the selected calendar range.">
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    @foreach ($resources as $resource)
+                        <div class="rounded-lg border border-gray-200 p-3 dark:border-white/10">
+                            <div class="flex items-center justify-between gap-2"><span class="font-semibold">{{ $resource['name'] }}</span><x-filament::badge color="gray">{{ str($resource['type'])->headline() }}</x-filament::badge></div>
+                            <progress class="mt-3 h-2 w-full accent-primary-500" max="100" value="{{ $resource['utilization_percent'] }}">{{ $resource['utilization_percent'] }}%</progress>
+                            <div class="mt-1 text-xs text-gray-500">{{ $resource['utilization_percent'] }}% utilized · capacity {{ $resource['capacity'] }}</div>
+                        </div>
+                    @endforeach
+                </div>
+            </x-filament::section>
+        @endif
+
+        <x-filament::section heading="Schedule" description="Reservations, activities, resource blocks, and due tasks in {{ $timezone }}.">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-white/10 dark:text-gray-400">
+                        <tr>
+                            <th class="px-3 py-3">When</th>
+                            <th class="px-3 py-3">Type</th>
+                            <th class="px-3 py-3">Item</th>
+                            <th class="px-3 py-3">Property</th>
+                            <th class="px-3 py-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-white/5">
+                        @forelse ($events as $event)
+                            <tr>
+                                <td class="whitespace-nowrap px-3 py-3">
+                                    <div class="font-medium">{{ $event['starts_at']->timezone($timezone)->format('M j, Y · H:i') }}</div>
+                                    @if (!$event['starts_at']->equalTo($event['ends_at']))
+                                        <div class="text-xs text-gray-500">to {{ $event['ends_at']->timezone($timezone)->format('M j · H:i') }}</div>
+                                    @endif
+                                </td>
+                                <td class="px-3 py-3 text-gray-600 dark:text-gray-300">
+                                    <div class="flex items-center gap-2">
+                                        @if ($event['color'])<span class="size-2.5 rounded-full" style="background-color: {{ $event['color'] }}"></span>@endif
+                                        <span>{{ $event['type'] }}</span>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3">
+                                    @if ($event['url'])
+                                        <a href="{{ $event['url'] }}" wire:navigate class="font-semibold text-primary-600 hover:underline dark:text-primary-400">{{ $event['title'] }}</a>
+                                    @else
+                                        <span class="font-semibold">{{ $event['title'] }}</span>
+                                    @endif
+                                    @if ($event['reference'])
+                                        <div class="text-xs text-gray-500">{{ $event['reference'] }}</div>
+                                    @endif
+                                </td>
+                                <td class="px-3 py-3">{{ $event['property'] }}</td>
+                                <td class="px-3 py-3"><x-filament::badge>{{ str($event['status'])->headline() }}</x-filament::badge></td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="px-3 py-12 text-center text-gray-500">No scheduled work in this range.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </x-filament::section>
+    </div>
+</x-filament-panels::page>

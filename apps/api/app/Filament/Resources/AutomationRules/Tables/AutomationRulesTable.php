@@ -41,13 +41,7 @@ class AutomationRulesTable
             ])
             ->filters([
                 SelectFilter::make('trigger')
-                    ->options([
-                        'reservation.confirmed' => 'Reservation confirmed',
-                        'reservation.status_changed' => 'Reservation status changed',
-                        'deposit.due' => 'Deposit due',
-                        'task.overdue' => 'Task overdue',
-                        'guest.checked_out' => 'Guest checked out',
-                    ]),
+                    ->options(LodgeOpsPresentation::automationTriggerOptions()),
                 TernaryFilter::make('is_active')
                     ->label('Enabled rules')
                     ->native(false),

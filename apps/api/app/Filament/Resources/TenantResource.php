@@ -5,7 +5,9 @@ namespace App\Filament\Resources;
 use App\Models\TenantModel;
 use App\Support\Tenancy\TenantContext;
 use Filament\Resources\Resource;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 abstract class TenantResource extends Resource
 {
@@ -20,6 +22,40 @@ abstract class TenantResource extends Resource
     protected static string $writeCapability = 'canWrite';
 
     protected static string $deleteCapability = 'canManageConfiguration';
+
+    protected static ?string $propertyRelationship = null;
+
+    protected static bool $includeTenantWideForProperty = false;
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        if ($propertyId === null) {
+            return $query;
+        }
+
+        if (Schema::hasColumn($query->getModel()->getTable(), 'property_id')) {
+            if (static::$includeTenantWideForProperty) {
+                return $query->where(function (Builder $scope) use ($propertyId): void {
+                    $scope->where($scope->getModel()->qualifyColumn('property_id'), $propertyId)
+                        ->orWhereNull($scope->getModel()->qualifyColumn('property_id'));
+                });
+            }
+
+            return $query->where($query->getModel()->qualifyColumn('property_id'), $propertyId);
+        }
+
+        if (static::$propertyRelationship !== null) {
+            return $query->whereHas(
+                static::$propertyRelationship,
+                fn (Builder $relationship) => $relationship->where('property_id', $propertyId),
+            );
+        }
+
+        return $query;
+    }
 
     public static function canViewAny(): bool
     {
@@ -85,7 +121,28 @@ abstract class TenantResource extends Resource
 
     protected static function belongsToCurrentTenant(Model $record): bool
     {
-        return $record instanceof TenantModel
-            && $record->tenant_id === app(TenantContext::class)->id();
+        if (! $record instanceof TenantModel || $record->tenant_id !== app(TenantContext::class)->id()) {
+            return false;
+        }
+
+        $propertyId = app(TenantContext::class)->membership()?->property_id;
+
+        if ($propertyId === null) {
+            return true;
+        }
+
+        if (array_key_exists('property_id', $record->getAttributes())) {
+            if (static::$includeTenantWideForProperty && $record->getAttribute('property_id') === null) {
+                return true;
+            }
+
+            return $record->getAttribute('property_id') === $propertyId;
+        }
+
+        if (static::$propertyRelationship !== null) {
+            return data_get($record, static::$propertyRelationship.'.property_id') === $propertyId;
+        }
+
+        return true;
     }
 }

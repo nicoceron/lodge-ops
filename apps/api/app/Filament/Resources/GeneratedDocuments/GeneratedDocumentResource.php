@@ -20,6 +20,8 @@ class GeneratedDocumentResource extends TenantResource
 {
     protected static ?string $model = GeneratedDocument::class;
 
+    protected static ?string $propertyRelationship = 'reservation';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-document-check';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Templates & Integrations';

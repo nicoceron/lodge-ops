@@ -33,7 +33,11 @@ use App\Filament\Resources\RetailSales\RetailSaleResource;
 use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
 use App\Filament\Resources\StockLocations\StockLocationResource;
 use App\Filament\Resources\TeamMembers\TeamMemberResource;
+use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Guest;
+use App\Models\Property;
+use App\Models\Reservation;
+use App\Models\StockLocation;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -104,6 +108,18 @@ class FilamentResourcesTest extends TestCase
         $this->assertFalse(PaymentResource::canViewAny());
     }
 
+    public function test_property_scoped_membership_cannot_browse_other_property_records(): void
+    {
+        [, $property, $user] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
+        $ownReservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $otherProperty = Property::factory()->create();
+        $otherReservation = Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $this->actingAs($user);
+
+        $this->assertSame([$ownReservation->id], ReservationResource::getEloquentQuery()->pluck('id')->all());
+        $this->assertFalse(ReservationResource::canView($otherReservation));
+    }
+
     public function test_finance_can_read_but_never_mutate_payment_records(): void
     {
         [, , $financeUser] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);
@@ -123,7 +139,7 @@ class FilamentResourcesTest extends TestCase
         $this->actingAs($kitchenUser);
 
         $this->assertTrue(OperationalTaskResource::canViewAny());
-        $this->assertTrue(OperationalTaskResource::canCreate());
+        $this->assertFalse(OperationalTaskResource::canCreate());
         $this->assertFalse(GuestResource::canViewAny());
     }
 
@@ -184,6 +200,60 @@ class FilamentResourcesTest extends TestCase
             'currency' => 'USD',
             'total_minor' => 11900,
         ]);
+    }
+
+    public function test_property_scoped_membership_cannot_create_a_reservation_for_another_property(): void
+    {
+        [$tenant, , $user, $membership] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
+        $otherProperty = Property::factory()->create();
+        $guest = Guest::factory()->create();
+        $this->actingAs($user);
+        Filament::setCurrentPanel(filament()->getPanel('admin'));
+        Filament::setTenant($tenant, isQuiet: true);
+        app(TenantContext::class)->set($tenant, $membership);
+
+        Livewire::test(CreateReservation::class)
+            ->fillForm([
+                'property_id' => $otherProperty->id,
+                'primary_guest_id' => $guest->id,
+                'confirmation_number' => 'RSV-CROSS-PROPERTY',
+                'starts_at' => now()->addDay()->format('Y-m-d H:i:s'),
+                'ends_at' => now()->addDays(3)->format('Y-m-d H:i:s'),
+                'adults' => 1,
+                'children' => 0,
+                'currency' => 'USD',
+                'subtotal_minor' => 10000,
+                'tax_minor' => 0,
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['property_id']);
+
+        $this->assertDatabaseMissing('reservations', ['confirmation_number' => 'RSV-CROSS-PROPERTY']);
+    }
+
+    public function test_automation_rule_form_exposes_the_runtime_milestone_triggers(): void
+    {
+        [$tenant, , $user] = $this->tenantEnvironment(authenticate: false);
+        $this->actingAs($user);
+
+        $this->get(AutomationRuleResource::getUrl('create', ['tenant' => $tenant]))
+            ->assertOk()
+            ->assertSee('Arrival approaching')
+            ->assertSee('Deposit overdue')
+            ->assertSee('Reservation checkout completed');
+    }
+
+    public function test_property_scoped_financial_and_retail_selectors_exclude_other_properties(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $otherProperty = Property::factory()->for($tenant)->create();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        Reservation::factory()->create(['property_id' => $otherProperty->id]);
+        $location = StockLocation::query()->create(['property_id' => $property->id, 'name' => 'Own stock', 'code' => 'OWN']);
+        StockLocation::query()->create(['property_id' => $otherProperty->id, 'name' => 'Other stock', 'code' => 'OTHER']);
+
+        $this->assertSame([$reservation->id], array_keys(LodgeOpsPresentation::reservationOptions()));
+        $this->assertSame([$location->id], array_keys(LodgeOpsPresentation::stockLocationOptions()));
     }
 
     /** @return array<class-string> */

@@ -26,6 +26,8 @@ class RetailSaleResource extends TenantResource
 {
     protected static ?string $model = RetailSale::class;
 
+    protected static ?string $propertyRelationship = 'stockLocation';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-shopping-bag';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Retail & Stock';
@@ -34,7 +36,7 @@ class RetailSaleResource extends TenantResource
 
     protected static ?string $recordTitleAttribute = 'reference';
 
-    protected static ?string $viewCapability = 'canManageRetail';
+    protected static ?string $viewCapability = 'canViewRetail';
 
     protected static string $writeCapability = 'canManageRetail';
 
@@ -46,8 +48,8 @@ class RetailSaleResource extends TenantResource
     {
         return $schema->components([
             Section::make('Post retail sale')->description('Posting is atomic: stock, sale lines, and any reservation folio charge are created together.')->columns(2)->schema([
-                Select::make('stock_location_id')->label('Stock location')->relationship('stockLocation', 'name')->required()->searchable()->preload(),
-                Select::make('reservation_id')->label('Reservation folio · optional')->relationship('reservation', 'confirmation_number')->searchable()->preload(),
+                Select::make('stock_location_id')->label('Stock location')->options(LodgeOpsPresentation::stockLocationOptions(...))->required()->searchable()->preload(),
+                Select::make('reservation_id')->label('Reservation folio · optional')->options(LodgeOpsPresentation::reservationOptions(...))->searchable()->preload(),
                 TextInput::make('reference')->required()->maxLength(160)->unique(ignoreRecord: true),
                 TextInput::make('tax_minor')->label('Tax · minor units')->numeric()->minValue(0)->default(0)->required(),
                 Repeater::make('lines')->minItems(1)->defaultItems(1)->columns(2)->schema([

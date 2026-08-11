@@ -117,7 +117,7 @@ class ExtendedOperationsController extends Controller
 
     public function finance(Request $request, TenantContext $context, FinancialReportingService $service): JsonResponse
     {
-        abort_unless($context->membership()?->role->canManageMoney(), 403);
+        abort_unless($context->membership()?->role->canViewFinance(), 403);
         $data = $request->validate([
             'currency' => ['sometimes', 'string', 'size:3'],
             'starts_at' => ['sometimes', 'date'],
@@ -127,7 +127,12 @@ class ExtendedOperationsController extends Controller
         $start = CarbonImmutable::parse($data['starts_at'] ?? 'first day of this month', $timezone)->startOfDay()->utc();
         $end = CarbonImmutable::parse($data['ends_at'] ?? 'first day of next month', $timezone)->startOfDay()->utc();
 
-        return response()->json(['data' => $service->summary(strtoupper($data['currency'] ?? $context->tenant()->currency), $start, $end)]);
+        return response()->json(['data' => $service->summary(
+            strtoupper($data['currency'] ?? $context->tenant()->currency),
+            $start,
+            $end,
+            $context->membership()->property_id,
+        )]);
     }
 
     public function storeCost(Request $request, TenantContext $context): JsonResponse

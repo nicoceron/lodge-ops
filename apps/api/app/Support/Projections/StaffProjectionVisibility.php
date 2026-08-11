@@ -12,7 +12,7 @@ final class StaffProjectionVisibility
     public function canSeeGuestIdentity(): bool
     {
         return in_array($this->role(), [
-            MembershipRole::Owner,
+            MembershipRole::Administrator,
             MembershipRole::Manager,
             MembershipRole::Sales,
             MembershipRole::Operations,
@@ -23,7 +23,7 @@ final class StaffProjectionVisibility
     public function canSeeDietaryDetails(): bool
     {
         return in_array($this->role(), [
-            MembershipRole::Owner,
+            MembershipRole::Administrator,
             MembershipRole::Manager,
             MembershipRole::Operations,
             MembershipRole::Kitchen,

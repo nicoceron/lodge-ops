@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Tenancy\TenantContext;
 use Database\Factories\UserFactory;
 use Filament\Auth\MultiFactor\App\Concerns\InteractsWithAppAuthentication;
 use Filament\Auth\MultiFactor\App\Concerns\InteractsWithAppAuthenticationRecovery;
@@ -15,7 +16,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
@@ -35,6 +38,16 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     public function guideResources()
     {
         return $this->hasMany(Resource::class);
+    }
+
+    public function notifications(): MorphMany
+    {
+        $notifications = $this->morphMany(DatabaseNotification::class, 'notifiable')->latest();
+        $context = app(TenantContext::class);
+
+        return $context->check()
+            ? $notifications->where('data->viewData->tenant_id', $context->id())
+            : $notifications->whereRaw('1 = 0');
     }
 
     public function tenants()

@@ -42,7 +42,7 @@ class OperationalBookingCoreTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.membership.tenant_id', $tenant->id)
             ->assertJsonPath('data.membership.property_id', $property->id)
-            ->assertJsonPath('data.membership.role', 'owner');
+            ->assertJsonPath('data.membership.role', 'administrator');
 
         $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/properties?per_page=100')
             ->assertOk()

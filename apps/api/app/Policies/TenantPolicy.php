@@ -17,10 +17,7 @@ abstract class TenantPolicy
             && $membership->user_id === $user->id
             && $membership->is_active
             && ($model === null || $model->tenant_id === $context->id())
-            && ($model === null
-                || ! array_key_exists('property_id', $model->getAttributes())
-                || $membership->property_id === null
-                || $model->getAttribute('property_id') === $membership->property_id);
+            && ($model === null || $this->belongsToMembershipProperty($model, $membership->property_id));
     }
 
     protected function canWrite(User $user, ?TenantModel $model = null): bool
@@ -33,6 +30,12 @@ abstract class TenantPolicy
     {
         return $this->canView($user, $model)
             && app(TenantContext::class)->membership()?->role->canManageMoney() === true;
+    }
+
+    protected function canViewFinance(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canViewFinance() === true;
     }
 
     protected function canManageGuestMoney(User $user, ?TenantModel $model = null): bool
@@ -81,5 +84,31 @@ abstract class TenantPolicy
     {
         return $this->canView($user, $model)
             && app(TenantContext::class)->membership()?->role->canScheduleOperations() === true;
+    }
+
+    private function belongsToMembershipProperty(TenantModel $model, ?string $propertyId): bool
+    {
+        if ($propertyId === null) {
+            return true;
+        }
+
+        if (array_key_exists('property_id', $model->getAttributes())) {
+            $recordPropertyId = $model->getAttribute('property_id');
+
+            return $recordPropertyId === null || $recordPropertyId === $propertyId;
+        }
+
+        foreach (['reservation', 'resource', 'stockLocation', 'program'] as $relationship) {
+            if (! method_exists($model, $relationship)) {
+                continue;
+            }
+
+            $recordPropertyId = data_get($model, $relationship.'.property_id');
+            if ($recordPropertyId !== null) {
+                return $recordPropertyId === $propertyId;
+            }
+        }
+
+        return true;
     }
 }

@@ -27,15 +27,17 @@ class CommissionAccrualResource extends TenantResource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-user-group';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Finance & Reporting';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
     protected static ?int $navigationSort = 25;
 
     protected static ?string $recordTitleAttribute = 'payee_name';
 
-    protected static ?string $viewCapability = 'canManageMoney';
+    protected static ?string $viewCapability = 'canViewFinance';
 
     protected static string $writeCapability = 'canManageMoney';
+
+    protected static ?string $propertyRelationship = 'reservation';
 
     protected static bool $canEditRecords = false;
 
@@ -45,7 +47,7 @@ class CommissionAccrualResource extends TenantResource
     {
         return $schema->components([
             Section::make('Accrue commission')->description('The commission base is frozen from the selected reservation total.')->columns(2)->schema([
-                Select::make('reservation_id')->label('Reservation')->relationship('reservation', 'confirmation_number')->required()->searchable()->preload()->columnSpanFull(),
+                Select::make('reservation_id')->label('Reservation')->options(LodgeOpsPresentation::reservationOptions(...))->required()->searchable()->preload()->columnSpanFull(),
                 Select::make('payee_type')->options(['agency' => 'Agency', 'staff' => 'Staff', 'guide' => 'Guide', 'partner' => 'Partner'])->required(),
                 TextInput::make('payee_name')->label('Payee')->required()->maxLength(160),
                 TextInput::make('rate_basis_points')->label('Rate')->numeric()->minValue(0)->maxValue(10000)->suffix('basis points')->required(),

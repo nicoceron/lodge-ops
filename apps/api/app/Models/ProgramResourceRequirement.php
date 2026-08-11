@@ -5,6 +5,13 @@ namespace App\Models;
 use App\Enums\ResourceType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property ResourceType $resource_type
+ * @property int $minimum_quantity
+ * @property int|null $guests_per_resource
+ * @property array<int, string>|null $capabilities
+ * @property array<int, string>|null $languages
+ */
 class ProgramResourceRequirement extends TenantModel
 {
     protected function casts(): array

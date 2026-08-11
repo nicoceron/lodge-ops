@@ -2,8 +2,16 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property CarbonImmutable $occurred_at
+ * @property string $currency
+ * @property int $amount_minor
+ * @property-read Reservation|null $reservation
+ * @property-read Program|null $program
+ */
 class CostRecord extends TenantModel
 {
     protected function casts(): array

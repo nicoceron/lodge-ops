@@ -21,16 +21,12 @@ class ResolveFilamentTenant
         abort_unless($tenant instanceof Tenant && $request->user()?->canAccessTenant($tenant), 403);
         $this->context->set($tenant);
 
-        try {
-            $membership = Membership::query()
-                ->where('user_id', $request->user()->getAuthIdentifier())
-                ->where('is_active', true)
-                ->firstOrFail();
-            $this->context->set($tenant, $membership);
+        $membership = Membership::query()
+            ->where('user_id', $request->user()->getAuthIdentifier())
+            ->where('is_active', true)
+            ->firstOrFail();
+        $this->context->set($tenant, $membership);
 
-            return $next($request);
-        } finally {
-            $this->context->clear();
-        }
+        return $next($request);
     }
 }
