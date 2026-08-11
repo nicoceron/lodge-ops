@@ -15,7 +15,10 @@ class LodgeFlowTrend extends ChartWidget
 
     protected static ?int $sort = 2;
 
-    protected ?string $maxHeight = '280px';
+    protected int|string|array $columnSpan = [
+        'md' => 1,
+        '2xl' => 2,
+    ];
 
     protected ?string $pollingInterval = '60s';
 
@@ -58,10 +61,36 @@ class LodgeFlowTrend extends ChartWidget
     protected function getOptions(): array
     {
         return [
+            'layout' => [
+                'padding' => [
+                    'top' => 8,
+                    'right' => 4,
+                    'bottom' => 4,
+                    'left' => 4,
+                ],
+            ],
+            'plugins' => [
+                'legend' => [
+                    'labels' => [
+                        'padding' => 16,
+                    ],
+                ],
+            ],
             'scales' => [
+                'x' => [
+                    'ticks' => [
+                        'maxRotation' => 0,
+                        'minRotation' => 0,
+                        'maxTicksLimit' => 7,
+                    ],
+                ],
                 'y' => [
                     'beginAtZero' => true,
-                    'ticks' => ['precision' => 0],
+                    'ticks' => [
+                        'precision' => 0,
+                        'maxTicksLimit' => 5,
+                        'padding' => 8,
+                    ],
                 ],
             ],
         ];

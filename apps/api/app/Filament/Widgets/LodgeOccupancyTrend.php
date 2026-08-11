@@ -15,7 +15,10 @@ class LodgeOccupancyTrend extends ChartWidget
 
     protected static ?int $sort = 3;
 
-    protected ?string $maxHeight = '280px';
+    protected int|string|array $columnSpan = [
+        'md' => 1,
+        '2xl' => 2,
+    ];
 
     protected ?string $pollingInterval = '60s';
 
@@ -51,10 +54,34 @@ class LodgeOccupancyTrend extends ChartWidget
     protected function getOptions(): array
     {
         return [
+            'layout' => [
+                'padding' => [
+                    'top' => 8,
+                    'right' => 4,
+                    'bottom' => 4,
+                    'left' => 4,
+                ],
+            ],
+            'plugins' => [
+                'legend' => [
+                    'display' => false,
+                ],
+            ],
             'scales' => [
+                'x' => [
+                    'ticks' => [
+                        'maxRotation' => 0,
+                        'minRotation' => 0,
+                        'maxTicksLimit' => 7,
+                    ],
+                ],
                 'y' => [
                     'beginAtZero' => true,
                     'max' => 100,
+                    'ticks' => [
+                        'maxTicksLimit' => 6,
+                        'padding' => 8,
+                    ],
                 ],
             ],
         ];

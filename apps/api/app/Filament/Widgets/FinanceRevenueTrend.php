@@ -26,8 +26,6 @@ class FinanceRevenueTrend extends ChartWidget
 
     protected ?string $description = 'Seven-month trend ending in the selected period, in the lodge currency.';
 
-    protected ?string $maxHeight = '300px';
-
     protected ?string $pollingInterval = null;
 
     protected function getData(): array
@@ -60,8 +58,29 @@ class FinanceRevenueTrend extends ChartWidget
     protected function getOptions(): array
     {
         return [
+            'layout' => [
+                'padding' => [
+                    'top' => 8,
+                    'right' => 4,
+                    'bottom' => 4,
+                    'left' => 4,
+                ],
+            ],
             'scales' => [
-                'y' => ['beginAtZero' => true],
+                'x' => [
+                    'ticks' => [
+                        'maxRotation' => 0,
+                        'minRotation' => 0,
+                        'maxTicksLimit' => 7,
+                    ],
+                ],
+                'y' => [
+                    'beginAtZero' => true,
+                    'ticks' => [
+                        'maxTicksLimit' => 6,
+                        'padding' => 8,
+                    ],
+                ],
             ],
         ];
     }

@@ -42,8 +42,8 @@ class LodgeReadinessOverview extends StatsOverviewWidget
 
         return [
             Stat::make('Occupancy now', "{$dashboard['occupied_rooms']} of {$dashboard['active_rooms']} rooms")
-                ->description("{$dashboard['occupancy_percent']}% occupied")
-                ->descriptionIcon('heroicon-m-home-modern')
+                ->description("{$dashboard['in_house']} in-house ".str('stay')->plural($dashboard['in_house']))
+                ->icon('heroicon-m-home-modern')
                 ->chart(array_map('floatval', $trend['occupancy_percent']))
                 ->color($dashboard['occupancy_percent'] > 0 ? 'info' : 'gray')
                 ->url(MasterCalendar::getUrl()),
