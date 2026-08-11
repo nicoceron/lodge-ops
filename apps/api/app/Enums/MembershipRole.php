@@ -24,6 +24,16 @@ enum MembershipRole: string
         return in_array($this, [self::Owner, self::Manager, self::Finance], true);
     }
 
+    public function canManageGuestMoney(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Operations, self::Finance], true);
+    }
+
+    public function canViewGuestMoney(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Sales, self::Operations, self::Finance], true);
+    }
+
     public function canManageReservations(): bool
     {
         return in_array($this, [self::Owner, self::Manager, self::Sales, self::Operations], true);
@@ -42,6 +52,21 @@ enum MembershipRole: string
     public function canManageConfiguration(): bool
     {
         return in_array($this, [self::Owner, self::Manager], true);
+    }
+
+    public function canManageAvailability(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Operations, self::Guide], true);
+    }
+
+    public function canScheduleOperations(): bool
+    {
+        return in_array($this, [self::Owner, self::Manager, self::Operations], true);
+    }
+
+    public function canManageTeam(): bool
+    {
+        return $this === self::Owner;
     }
 
     public function canManageRetail(): bool

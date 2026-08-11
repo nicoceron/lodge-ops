@@ -99,8 +99,7 @@ class StaffProjectionTest extends TestCase
             ->assertJsonFragment(['label' => 'Severe nut allergy', 'serious' => true])
             ->assertDontSee('Private Guest');
         $this->withHeaders($headers)->getJson('/api/v1/calendar?start='.$arrival->subDay()->toDateString().'&end='.$arrival->addDays(3)->toDateString())
-            ->assertOk()
-            ->assertJsonMissing(['title' => 'Private Guest']);
+            ->assertForbidden();
     }
 
     public function test_authorized_operational_roles_receive_identity_only_where_needed(): void
@@ -183,6 +182,7 @@ class StaffProjectionTest extends TestCase
     public function test_finance_projection_is_role_restricted_minimal_and_tenant_scoped(): void
     {
         [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $tenant->update(['currency' => 'USD']);
         $guest = Guest::factory()->create(['first_name' => 'Financial', 'last_name' => 'Privacy', 'email' => 'finance-private@example.com']);
         $arrival = CarbonImmutable::now($tenant->timezone)->startOfMonth()->addDays(2)->addHours(15)->utc();
         $reservation = Reservation::factory()->create([
@@ -192,6 +192,7 @@ class StaffProjectionTest extends TestCase
             'status' => ReservationStatus::Confirmed,
             'starts_at' => $arrival,
             'ends_at' => $arrival->addDays(2),
+            'currency' => 'USD',
             'total_minor' => 100000,
             'source' => 'Direct',
         ]);

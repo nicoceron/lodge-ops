@@ -7,8 +7,10 @@ import { loadCalendarProjection } from "@/data/staff-projections";
 
 export const metadata: Metadata = { title: "Master calendar" };
 
-export default async function CalendarPage() {
-  const state = await loadCalendarProjection();
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ start?: string }> }) {
+  const params = await searchParams;
+  const start = params.start && /^\d{4}-\d{2}-\d{2}$/.test(params.start) ? params.start : undefined;
+  const state = await loadCalendarProjection(start);
   const calendar = state.data;
 
   return (
@@ -16,7 +18,7 @@ export default async function CalendarPage() {
       eyebrow="Operations"
       title="Master calendar"
       description="See rooms, people, activities, and equipment on the same timeline. Every assignment is checked before it reaches this plan."
-      action={{ label: "Place a hold", shortLabel: "New hold" }}
+      action={{ label: "Place a hold", shortLabel: "New hold", href: "/reservations/new?status=hold" }}
     >
       {!calendar ? <DataState kind="error" title="Calendar unavailable" description={state.error ?? "The live resource plan could not be loaded."} /> : null}
       {calendar ? <>

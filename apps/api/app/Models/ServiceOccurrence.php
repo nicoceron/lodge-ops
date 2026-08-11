@@ -4,9 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use LogicException;
 
 class ServiceOccurrence extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(function (ServiceOccurrence $occurrence): void {
+            if (! Program::query()->whereKey($occurrence->program_id)->where('property_id', $occurrence->property_id)->exists()) {
+                throw new LogicException('The occurrence program must belong to its property and tenant.');
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return ['starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime', 'capacity' => 'integer', 'is_cancelled' => 'boolean'];

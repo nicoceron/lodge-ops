@@ -2,8 +2,10 @@
 
 namespace App\Policies;
 
+use App\Enums\MembershipRole;
 use App\Models\Resource;
 use App\Models\User;
+use App\Support\Tenancy\TenantContext;
 
 class ResourcePolicy extends TenantPolicy
 {
@@ -14,7 +16,9 @@ class ResourcePolicy extends TenantPolicy
 
     public function view(User $user, Resource $resource): bool
     {
-        return $this->canView($user, $resource);
+        return $this->canView($user, $resource)
+            && (app(TenantContext::class)->membership()?->role !== MembershipRole::Guide
+                || $resource->user_id === $user->id);
     }
 
     public function create(User $user): bool

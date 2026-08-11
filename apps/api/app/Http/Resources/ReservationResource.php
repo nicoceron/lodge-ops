@@ -12,6 +12,7 @@ class ReservationResource extends JsonResource
         return [
             'id' => $this->id,
             'property_id' => $this->property_id,
+            'program_id' => $this->program_id,
             'primary_guest_id' => $this->primary_guest_id,
             'confirmation_number' => $this->confirmation_number,
             'status' => $this->status->value,
@@ -29,6 +30,11 @@ class ReservationResource extends JsonResource
             'confirmed_at' => $this->confirmed_at,
             'hold_expires_at' => $this->hold_expires_at,
             'primary_guest' => $this->whenLoaded('primaryGuest', fn () => new GuestResource($this->primaryGuest)),
+            'program' => $this->whenLoaded('program', fn () => $this->program ? [
+                'id' => $this->program->id,
+                'name' => $this->program->name,
+                'display_color' => $this->program->display_color,
+            ] : null),
             'guests' => GuestResource::collection($this->whenLoaded('guests')),
             'allocations' => $this->whenLoaded('allocations', fn () => $this->allocations->map(fn ($allocation) => [
                 'id' => $allocation->id,
@@ -42,6 +48,22 @@ class ReservationResource extends JsonResource
                     'id' => $allocation->resource->id,
                     'name' => $allocation->resource->name,
                     'code' => $allocation->resource->code,
+                ] : null,
+                'service_occurrence' => $allocation->relationLoaded('serviceOccurrence') && $allocation->serviceOccurrence ? [
+                    'id' => $allocation->serviceOccurrence->id,
+                    'program_id' => $allocation->serviceOccurrence->program_id,
+                    'starts_at' => $allocation->serviceOccurrence->starts_at,
+                    'ends_at' => $allocation->serviceOccurrence->ends_at,
+                ] : null,
+            ])),
+            'status_history' => $this->whenLoaded('statusHistory', fn () => $this->statusHistory->map(fn ($history): array => [
+                'id' => $history->id,
+                'from_status' => $history->from_status?->value,
+                'to_status' => $history->to_status->value,
+                'changed_at' => $history->changed_at,
+                'actor' => $history->relationLoaded('actor') && $history->actor ? [
+                    'id' => $history->actor->id,
+                    'name' => $history->actor->name,
                 ] : null,
             ])),
             'created_at' => $this->created_at,

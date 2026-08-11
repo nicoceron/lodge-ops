@@ -8,11 +8,17 @@ use App\Models\Communication;
 use App\Models\Deposit;
 use App\Models\OperationalTask;
 use App\Models\Outbox;
+use App\Models\Reservation;
+use App\Services\GuestPortalTokenService;
 use DomainException;
 
 class AutomationActionExecutor
 {
-    public function __construct(private readonly AutomationTemplateRenderer $renderer) {}
+    public function __construct(
+        private readonly AutomationTemplateRenderer $renderer,
+        private readonly OutboxRecorder $outbox,
+        private readonly GuestPortalTokenService $guestPortalTokens,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $action
@@ -31,6 +37,7 @@ class AutomationActionExecutor
             'task', 'create_task' => $this->createTask($message, $rule, $actionIndex, $action, $context),
             'communication', 'queue_communication' => $this->queueCommunication($message, $rule, $actionIndex, $action, $context),
             'deposit_reminder', 'send_deposit_reminder' => $this->queueDepositReminders($message, $rule, $actionIndex, $action, $context),
+            'guest_portal_invitation', 'queue_guest_portal_invitation' => $this->queueGuestPortalInvitation($message, $rule, $actionIndex, $action, $context),
             default => throw new DomainException("Unsupported automation action [{$type}]."),
         };
     }
@@ -76,7 +83,7 @@ class AutomationActionExecutor
     ): void {
         $automationKey = $this->automationKey($message, $rule, $actionIndex, 'communication');
 
-        Communication::query()->firstOrCreate(
+        $communication = Communication::query()->firstOrCreate(
             ['automation_key' => $automationKey],
             [
                 'guest_id' => data_get($context, 'reservation.primary_guest_id'),
@@ -89,6 +96,13 @@ class AutomationActionExecutor
                 'metadata' => $this->metadata($message, $rule, $actionIndex, 'communication'),
             ],
         );
+
+        if ($communication->wasRecentlyCreated) {
+            $this->outbox->record('communication', $communication->id, 'communication.queued', [
+                'communication_id' => $communication->id,
+                'channel' => $communication->channel,
+            ]);
+        }
     }
 
     /** @param array<string, mixed> $action @param array<string, mixed> $context */
@@ -123,7 +137,7 @@ class AutomationActionExecutor
             ]];
             $automationKey = $this->automationKey($message, $rule, $actionIndex, 'deposit-reminder-'.$deposit->id);
 
-            Communication::query()->firstOrCreate(
+            $communication = Communication::query()->firstOrCreate(
                 ['automation_key' => $automationKey],
                 [
                     'guest_id' => data_get($context, 'reservation.primary_guest_id'),
@@ -142,12 +156,70 @@ class AutomationActionExecutor
                     ],
                 ],
             );
+
+            if ($communication->wasRecentlyCreated) {
+                $this->outbox->record('communication', $communication->id, 'communication.queued', [
+                    'communication_id' => $communication->id,
+                    'channel' => $communication->channel,
+                ]);
+            }
         }
     }
 
     private function automationKey(Outbox $message, AutomationRule $rule, int $actionIndex, string $suffix): string
     {
         return implode(':', [$message->id, $rule->id, $actionIndex, $suffix]);
+    }
+
+    /** @param array<string, mixed> $action @param array<string, mixed> $context */
+    private function queueGuestPortalInvitation(
+        Outbox $message,
+        AutomationRule $rule,
+        int $actionIndex,
+        array $action,
+        array $context,
+    ): void {
+        $reservationId = data_get($context, 'reservation.id');
+        if (! is_string($reservationId) || $reservationId === '') {
+            throw new DomainException('Guest portal invitations require a reservation.');
+        }
+
+        $automationKey = $this->automationKey($message, $rule, $actionIndex, 'guest-portal-invitation');
+        if (Communication::query()->where('automation_key', $automationKey)->exists()) {
+            return;
+        }
+
+        $reservation = Reservation::query()->with('primaryGuest')->findOrFail($reservationId);
+        if ($reservation->primaryGuest === null || ! $reservation->primaryGuest->email) {
+            throw new DomainException('Guest portal invitations require a primary guest email address.');
+        }
+
+        $access = $this->guestPortalTokens->issue($reservation, $reservation->primaryGuest);
+        $url = rtrim((string) config('app.frontend_url'), '/')
+            .'/guest/access/'.rawurlencode($access['token']);
+        $invitationContext = [...$context, 'guest_portal' => ['url' => $url]];
+        $communication = Communication::query()->create([
+            'automation_key' => $automationKey,
+            'guest_id' => $reservation->primary_guest_id,
+            'reservation_id' => $reservation->id,
+            'channel' => 'email',
+            'direction' => 'outbound',
+            'status' => 'queued',
+            'subject' => $this->renderer->render($action['subject'] ?? 'Your private lodge stay link', $invitationContext),
+            'body' => $this->renderer->render(
+                $action['body'] ?? 'Open your secure reservation center: {{guest_portal.url}}',
+                $invitationContext,
+            ),
+            'metadata' => [
+                ...$this->metadata($message, $rule, $actionIndex, 'guest_portal_invitation'),
+                'guest_portal_access_id' => $access['access']->id,
+                'purpose' => $action['purpose'] ?? 'stay',
+            ],
+        ]);
+        $this->outbox->record('communication', $communication->id, 'communication.queued', [
+            'communication_id' => $communication->id,
+            'channel' => 'email',
+        ]);
     }
 
     /** @return array<string, mixed> */

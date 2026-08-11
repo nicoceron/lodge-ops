@@ -80,6 +80,12 @@ export type CalendarProjectionDto = {
 export type OperationsDto = {
   date: string;
   timezone: string;
+  role_scope: { role: string; visible_sections: string[] };
+  privacy: {
+    can_view_guest_identity: boolean;
+    can_view_dietary_details: boolean;
+    restricted_fields: string[];
+  };
   readiness: { complete: number; total: number; open: number };
   tasks: Array<{
     id: string;
@@ -100,19 +106,22 @@ export type OperationsDto = {
     dietary?: string[];
   }>;
   kitchen: {
+    available: boolean;
     guest_count: number;
     restrictions: Array<{ label: string; count: number; serious: boolean }>;
     identity_restricted: boolean;
+    dietary_details_restricted: boolean;
   };
   guide_assignments: Array<{
     id: string;
+    guide_resource_id: string | null;
     guide: string | null;
     program: string;
     starts_at: string;
     party_size: number;
     status: "confirmed" | "action_needed";
   }>;
-  housekeeping: { arrivals: number; turnovers: number; stayovers: number; focus: string | null };
+  housekeeping: { available: boolean; arrivals: number; turnovers: number; stayovers: number; focus: string | null };
 };
 
 export type FinanceDto = {
@@ -123,19 +132,42 @@ export type FinanceDto = {
     booked_revenue_minor: number;
     cash_collected_minor: number;
     receivables_minor: number;
+    loaded_costs_minor: number;
+    commission_accruals_minor: number;
+    margin_minor: number;
+    margin_percent: number;
     overdue_deposits_minor: number;
     collection_percent: number;
   };
   deposits: { due_count: number; due_minor: number; paid_count: number; paid_minor: number; overdue_count: number };
   folio: { charges_minor: number; payments_minor: number; refunds_minor: number; adjustments_minor: number };
   revenue_series: Array<{ label: string; value_minor: number }>;
+  programs: Array<{
+    program_id: string | null;
+    program: string;
+    bookings: number;
+    revenue_minor: number;
+    loaded_costs_minor: number;
+    commission_accruals_minor: number;
+    margin_minor: number;
+  }>;
   channels: Array<{
     channel: string;
     bookings: number;
     revenue_minor: number;
     collected_minor: number;
+    commission_accruals_minor: number;
+    net_revenue_minor: number;
     collection_percent: number;
   }>;
+  reconciliation: {
+    currency: string;
+    currency_policy: string;
+    formula: string;
+    difference_minor: number;
+    program_difference_minor: number;
+    is_balanced: boolean;
+  };
   recent_folios: Array<{
     reservation_id: string;
     confirmation_number: string;
@@ -162,6 +194,8 @@ export type ReservationDto = {
   total_minor: number;
   revision: number;
   hold_expires_at?: string | null;
+  program_id?: string | null;
+  program?: { id: string; name: string; display_color?: string | null } | null;
   primary_guest?: { id: string; first_name: string; last_name: string | null } | null;
 };
 
@@ -176,7 +210,7 @@ export class LodgeApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function staffApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const apiUrl = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
   const cookieStore = await cookies();
   const tenantId = cookieStore.get("lodgeops_tenant_id")?.value ?? process.env.LODGEOPS_TENANT_ID;
@@ -212,24 +246,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getDashboard() {
-  return request<{ data: DashboardDto }>("/dashboard");
+  return staffApiRequest<{ data: DashboardDto }>("/dashboard");
 }
 
 export async function getCalendar(from: string, to: string) {
   const query = new URLSearchParams({ start: from, end: to });
-  return request<CalendarProjectionDto>(`/calendar?${query.toString()}`);
+  return staffApiRequest<CalendarProjectionDto>(`/calendar?${query.toString()}`);
 }
 
 export async function getOperations() {
-  return request<{ data: OperationsDto }>("/operations");
+  return staffApiRequest<{ data: OperationsDto }>("/operations");
 }
 
 export async function getFinance() {
-  return request<{ data: FinanceDto }>("/finance");
+  return staffApiRequest<{ data: FinanceDto }>("/finance");
 }
 
-export async function listReservations() {
-  return request<{ data: ReservationDto[]; meta: Record<string, unknown> }>("/reservations?per_page=100");
+export async function listReservations(filters: { status?: string; propertyId?: string; from?: string; to?: string } = {}) {
+  const query = new URLSearchParams({ per_page: "100" });
+  if (filters.status) query.set("status", filters.status);
+  if (filters.propertyId) query.set("property_id", filters.propertyId);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  return staffApiRequest<{ data: ReservationDto[]; meta: Record<string, unknown> }>(`/reservations?${query}`);
 }
 
 export const demoModeEnabled = process.env.NEXT_PUBLIC_DEMO_MODE === "true";

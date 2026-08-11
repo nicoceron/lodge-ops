@@ -24,6 +24,11 @@ class OperationalTask extends TenantModel
         return $this->belongsTo(Reservation::class);
     }
 
+    public function programTaskTemplate(): BelongsTo
+    {
+        return $this->belongsTo(ProgramTaskTemplate::class);
+    }
+
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assignee_id');

@@ -14,7 +14,12 @@ class ReservationPolicy extends TenantPolicy
 
     public function view(User $user, Reservation $reservation): bool
     {
-        return $this->canView($user, $reservation);
+        return $this->canManageReservations($user, $reservation);
+    }
+
+    public function viewDirectory(User $user): bool
+    {
+        return $this->canManageReservations($user);
     }
 
     public function create(User $user): bool

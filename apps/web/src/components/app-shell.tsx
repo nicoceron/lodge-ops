@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
-import { Bell, ChevronDown, Command, Plus, Search } from "lucide-react";
+import Link from "next/link";
+import { cookies } from "next/headers";
+import { Bell, Command, Plus, Search } from "lucide-react";
 import { MobileNav, SidebarNav } from "@/components/sidebar-nav";
+import { LogoutButton } from "@/components/staff/logout-button";
+import { TenantSwitcher } from "@/components/staff/tenant-switcher";
+import { requireStaffUser, selectedTenant } from "@/data/staff-api";
 import { tenant } from "@/lib/demo-data";
 
 type AppShellProps = {
@@ -11,14 +16,26 @@ type AppShellProps = {
   action?: {
     label: string;
     shortLabel?: string;
+    href: string;
   };
 };
 
-export function AppShell({ children, eyebrow, title, description, action }: AppShellProps) {
+export async function AppShell({ children, eyebrow, title, description, action }: AppShellProps) {
   const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const user = await requireStaffUser();
+  const selectedId = (await cookies()).get("lodgeops_tenant_id")?.value;
+  const activeTenant = selectedTenant(user, selectedId);
+  const role = user.membership?.role ?? activeTenant?.role ?? "staff";
+  const canViewOperations = ["owner", "manager", "operations", "guide", "kitchen", "housekeeping"].includes(role);
+  const canSearch = ["owner", "manager", "sales", "operations"].includes(role);
   const workspace = isDemo
     ? tenant
-    : { initials: "LO", shortName: "Active lodge", location: "Tenant workspace" };
+    : {
+        initials: (activeTenant?.name ?? "Lodge").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(),
+        shortName: activeTenant?.name ?? "Active lodge",
+        location: activeTenant?.property?.name ?? "Tenant workspace",
+      };
+  const userInitials = user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
@@ -36,9 +53,9 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
             </div>
           </div>
         </div>
-        <SidebarNav />
+        <SidebarNav role={role} />
         <div className="m-3 rounded-2xl border border-white/10 bg-black/10 p-3">
-          <button className="flex w-full items-center gap-3 text-left" type="button">
+          <div className="flex w-full items-center gap-3 text-left">
             <span className="grid size-9 place-items-center rounded-lg bg-[#dbe6da] text-xs font-bold text-[var(--forest)]">
               {workspace.initials}
             </span>
@@ -46,8 +63,9 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
               <span className="block truncate text-xs font-semibold text-white">{workspace.shortName}</span>
               <span className="mt-0.5 block truncate text-[11px] text-white/45">{workspace.location}</span>
             </span>
-            <ChevronDown aria-hidden="true" className="size-4 text-white/40" />
-          </button>
+          </div>
+          {user.tenants.length > 1 && activeTenant ? <div className="mt-3"><TenantSwitcher tenants={user.tenants} selectedId={activeTenant.id} /></div> : null}
+          <div className="mt-2 border-t border-white/8 pt-2"><LogoutButton /></div>
         </div>
       </aside>
 
@@ -58,34 +76,32 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
               <div className="grid size-9 place-items-center rounded-xl bg-[var(--forest)] font-display text-lg text-white">L</div>
               <span className="font-display text-xl">LodgeOps</span>
             </div>
-            <button
-              type="button"
-              className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-xl border border-black/8 bg-white/70 px-3 py-2 text-left text-sm text-[var(--muted)] shadow-sm sm:flex lg:ml-0"
-            >
+            {canSearch ? <form action="/search" role="search" className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-xl border border-black/8 bg-white/70 px-3 py-2 text-sm text-[var(--muted)] shadow-sm sm:flex lg:ml-0">
               <Search aria-hidden="true" className="size-4" />
-              <span className="flex-1">Search guests, reservations, resources…</span>
+              <label className="min-w-0 flex-1"><span className="sr-only">Search guests, reservations, and resources</span><input name="q" placeholder="Search guests, reservations, resources…" className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted)]" /></label>
               <span className="flex items-center gap-1 rounded-md border border-black/8 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-black/45">
                 <Command aria-hidden="true" className="size-3" /> K
               </span>
-            </button>
-            <button
-              type="button"
+            </form> : <div className="ml-auto" />}
+            <Link
+              href={canViewOperations ? "/operations" : role === "finance" ? "/finance" : "/"}
               aria-label={isDemo ? "Notifications, 3 unread" : "Notifications"}
               className="relative grid size-10 place-items-center rounded-xl border border-black/8 bg-white/70 text-[var(--muted)] shadow-sm"
             >
               <Bell aria-hidden="true" className="size-[18px]" />
               {isDemo ? <span className="absolute right-2 top-2 size-2 rounded-full border-2 border-white bg-[var(--red)]" /> : null}
-            </button>
-            <button type="button" className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-black/4">
-              <span className="grid size-8 place-items-center rounded-lg bg-[var(--amber-soft)] text-xs font-bold text-[var(--amber)]">{isDemo ? "NC" : "ST"}</span>
+            </Link>
+            {user.tenants.length > 1 && activeTenant ? <div className="hidden md:block lg:hidden"><TenantSwitcher tenants={user.tenants} selectedId={activeTenant.id} variant="header" /></div> : null}
+            <div className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2">
+              <span className="grid size-8 place-items-center rounded-lg bg-[var(--amber-soft)] text-xs font-bold text-[var(--amber)]">{userInitials || "ST"}</span>
               <span className="hidden text-left sm:block">
-                <span className="block text-xs font-semibold">{isDemo ? "Nico Ceron" : "Staff member"}</span>
-                <span className="block text-[10px] text-[var(--muted)]">{isDemo ? "Administrator" : "Tenant role"}</span>
+                <span className="block text-xs font-semibold">{user.name}</span>
+                <span className="block text-[10px] capitalize text-[var(--muted)]">{role.replaceAll("_", " ")}</span>
               </span>
-              <ChevronDown aria-hidden="true" className="size-4 text-black/35" />
-            </button>
+            </div>
+            <div className="lg:hidden"><LogoutButton compact /></div>
           </div>
-          <MobileNav />
+          <MobileNav role={role} />
         </header>
 
         <main className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -99,14 +115,14 @@ export function AppShell({ children, eyebrow, title, description, action }: AppS
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">{description}</p>
               </div>
               {action ? (
-                <button
-                  type="button"
+                <Link
+                  href={action.href}
                   className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgb(23_61_46/18%)] transition-transform hover:-translate-y-0.5 sm:self-auto"
                 >
                   <Plus aria-hidden="true" className="size-4" />
                   <span className="sm:hidden">{action.shortLabel ?? action.label}</span>
                   <span className="hidden sm:inline">{action.label}</span>
-                </button>
+                </Link>
               ) : null}
             </div>
             {children}

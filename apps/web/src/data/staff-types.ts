@@ -19,6 +19,7 @@ export type CalendarLaneView = {
     span: number;
     tone: "stag" | "double" | "stay" | "activity" | "block";
     warning?: string;
+    href?: string;
   }>;
 };
 
@@ -52,10 +53,13 @@ export type DashboardView = {
 
 export type OperationsView = {
   date: string;
+  role: string;
+  visibleSections: string[];
   readiness: { complete: number; total: number; open: number };
   tasks: Array<{ id: string; title: string; meta: string; owner: string; done: boolean }>;
   restrictions: Array<{ label: string; count: number; note: string; serious: boolean }>;
   kitchenGuests: number;
+  kitchenIdentityRestricted: boolean;
   guideAssignments: Array<{
     id: string;
     guide: string;
@@ -64,7 +68,7 @@ export type OperationsView = {
     detail: string;
     status: "Confirmed" | "Action needed";
   }>;
-  housekeeping: { arrivals: number; turnovers: number; stayovers: number; focus: string | null };
+  housekeeping: { available: boolean; arrivals: number; turnovers: number; stayovers: number; focus: string | null };
 };
 
 export type FinanceView = {
@@ -74,7 +78,24 @@ export type FinanceView = {
   series: Array<{ label: string; value: number }>;
   deposits: { dueCount: number; dueMinor: number; paidCount: number; paidMinor: number; overdueCount: number };
   folio: { chargesMinor: number; paymentsMinor: number; refundsMinor: number; adjustmentsMinor: number };
-  channels: Array<{ channel: string; bookings: number; revenueMinor: number; collectionPercent: number }>;
+  programs: Array<{
+    id: string;
+    name: string;
+    bookings: number;
+    revenueMinor: number;
+    costsMinor: number;
+    commissionsMinor: number;
+    marginMinor: number;
+  }>;
+  channels: Array<{
+    channel: string;
+    bookings: number;
+    revenueMinor: number;
+    commissionsMinor: number;
+    netRevenueMinor: number;
+    collectionPercent: number;
+  }>;
+  reconciliation: { balanced: boolean; differenceMinor: number; policy: string };
   recentFolios: Array<{
     id: string;
     confirmationNumber: string;

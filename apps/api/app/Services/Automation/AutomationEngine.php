@@ -3,9 +3,11 @@
 namespace App\Services\Automation;
 
 use App\Models\AutomationRule;
+use App\Models\Communication;
 use App\Models\Outbox;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Services\CommunicationDeliveryService;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 
@@ -15,10 +17,22 @@ class AutomationEngine
         private readonly TenantContext $tenantContext,
         private readonly AutomationConditionMatcher $matcher,
         private readonly AutomationActionExecutor $executor,
+        private readonly CommunicationDeliveryService $delivery,
     ) {}
 
     public function handle(Outbox $message): void
     {
+        if ($message->event_type === 'communication.queued') {
+            $communicationId = $message->payload['communication_id'] ?? null;
+            if (! is_string($communicationId) || $communicationId === '') {
+                throw new DomainException('Communication delivery events require a communication_id.');
+            }
+
+            $this->delivery->deliver(Communication::query()->findOrFail($communicationId));
+
+            return;
+        }
+
         $context = $this->context($message);
 
         AutomationRule::query()

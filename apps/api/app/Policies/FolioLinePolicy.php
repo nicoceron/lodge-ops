@@ -9,22 +9,22 @@ class FolioLinePolicy extends TenantPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canViewGuestMoney($user);
     }
 
     public function view(User $user, FolioLine $line): bool
     {
-        return $this->canManageMoney($user, $line);
+        return $this->canViewGuestMoney($user, $line);
     }
 
     public function create(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canManageGuestMoney($user);
     }
 
     public function reverse(User $user, FolioLine $line): bool
     {
-        return $this->canManageMoney($user, $line);
+        return $this->canManageGuestMoney($user, $line);
     }
 
     public function update(User $user, FolioLine $line): bool

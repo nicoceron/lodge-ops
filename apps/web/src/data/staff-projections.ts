@@ -104,12 +104,11 @@ export async function loadDashboardProjection(): Promise<StaffLoadState<Dashboar
   }
 }
 
-export async function loadCalendarProjection(): Promise<StaffLoadState<CalendarView>> {
+export async function loadCalendarProjection(startDate = today()): Promise<StaffLoadState<CalendarView>> {
   if (demoModeEnabled) return { data: demoCalendar(), mode: "demo", error: null };
 
   try {
-    const start = today();
-    const data = mapCalendarProjection(await getCalendar(start, addDays(start, 7)));
+    const data = mapCalendarProjection(await getCalendar(startDate, addDays(startDate, 7)));
     return { data, mode: "live", error: null };
   } catch (error) {
     return { data: null, mode: "live", error: safeError(error, "master calendar") };
@@ -119,6 +118,8 @@ export async function loadCalendarProjection(): Promise<StaffLoadState<CalendarV
 function demoOperations(): OperationsView {
   return {
     date: "2026-08-10",
+    role: "operations",
+    visibleSections: ["tasks", "arrivals", "kitchen", "guide_assignments", "housekeeping"],
     readiness: { complete: 14, total: 18, open: 4 },
     tasks: operationalTasks.map((task, index) => ({ id: `demo-task-${index}`, ...task })),
     restrictions: [
@@ -128,12 +129,13 @@ function demoOperations(): OperationsView {
       { label: "No dairy", count: 1, note: "Breakfast only", serious: false },
     ],
     kitchenGuests: 20,
+    kitchenIdentityRestricted: true,
     guideAssignments: [
       { id: "demo-guide-1", guide: "Mateo Ríos", program: "Miller · Río Gallegos", time: "07:00", detail: "4 guests · 2:1", status: "Confirmed" },
       { id: "demo-guide-2", guide: "Ana Torres", program: "Alvarez · Ridge trek", time: "08:30", detail: "2 guests · ES", status: "Confirmed" },
       { id: "demo-guide-3", guide: "Unassigned", program: "Northwater · Red Stag", time: "05:45", detail: "1 guest · EN", status: "Action needed" },
     ],
-    housekeeping: { arrivals: 3, turnovers: 2, stayovers: 6, focus: "River Cabin turnover due by 14:00" },
+    housekeeping: { available: true, arrivals: 3, turnovers: 2, stayovers: 6, focus: "River Cabin turnover due by 14:00" },
   };
 }
 
@@ -155,12 +157,19 @@ function demoFinance(): FinanceView {
       { label: "Booked revenue", value: "$184k", note: "+14% vs Jul", tone: "forest" },
       { label: "Cash collected", value: "$125k", note: "68% of booked", tone: "blue" },
       { label: "Receivables", value: "$59k", note: "$9.2k overdue", tone: "red" },
-      { label: "Deposit position", value: "$21k", note: "5 still due", tone: "amber" },
+      { label: "Loaded costs", value: "$61k", note: "Actual costs", tone: "amber" },
+      { label: "Commissions", value: "$18k", note: "Accrued by channel", tone: "red" },
+      { label: "Operating margin", value: "$105k", note: "57% of booked", tone: "forest" },
     ],
     series: revenueSeries.map((value, index) => ({ label: ["Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"][index], value: value * 100_000 })),
     deposits: { dueCount: 5, dueMinor: 2_100_000, paidCount: 26, paidMinor: 12_500_000, overdueCount: 2 },
     folio: { chargesMinor: 18_400_000, paymentsMinor: 12_500_000, refundsMinor: 240_000, adjustmentsMinor: -80_000 },
-    channels: channelPerformance.map((item) => ({ channel: item.channel, bookings: item.bookings, revenueMinor: item.revenue, collectionPercent: item.margin })),
+    channels: channelPerformance.map((item) => ({ channel: item.channel, bookings: item.bookings, revenueMinor: item.revenue, commissionsMinor: Math.round(item.revenue * 0.1), netRevenueMinor: Math.round(item.revenue * 0.9), collectionPercent: item.margin })),
+    programs: [
+      { id: "red-stag", name: "Red Stag Hunting", bookings: 5, revenueMinor: 8_600_000, costsMinor: 3_100_000, commissionsMinor: 860_000, marginMinor: 4_640_000 },
+      { id: "patagonian-double", name: "The Patagonian Double", bookings: 4, revenueMinor: 6_800_000, costsMinor: 2_400_000, commissionsMinor: 680_000, marginMinor: 3_720_000 },
+    ],
+    reconciliation: { balanced: true, differenceMinor: 0, policy: "native_currency_only" },
     recentFolios: [
       { id: "demo-folio-1", confirmationNumber: "VS-2641", status: "checked_in", totalMinor: 3_280_000, paidMinor: 3_280_000, balanceMinor: 0 },
       { id: "demo-folio-2", confirmationNumber: "VS-2642", status: "confirmed", totalMinor: 1_840_000, paidMinor: 920_000, balanceMinor: 920_000 },

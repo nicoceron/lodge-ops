@@ -9,7 +9,13 @@ class Program extends TenantModel
 {
     protected function casts(): array
     {
-        return ['default_duration_minutes' => 'integer', 'capacity' => 'integer', 'is_active' => 'boolean'];
+        return [
+            'default_duration_minutes' => 'integer',
+            'capacity' => 'integer',
+            'price_minor' => 'integer',
+            'requires_accommodation' => 'boolean',
+            'is_active' => 'boolean',
+        ];
     }
 
     public function property(): BelongsTo
@@ -20,5 +26,20 @@ class Program extends TenantModel
     public function occurrences(): HasMany
     {
         return $this->hasMany(ServiceOccurrence::class);
+    }
+
+    public function requirements(): HasMany
+    {
+        return $this->hasMany(ProgramResourceRequirement::class)->orderBy('sort_order');
+    }
+
+    public function taskTemplates(): HasMany
+    {
+        return $this->hasMany(ProgramTaskTemplate::class)->orderBy('sort_order');
+    }
+
+    public function reservations(): HasMany
+    {
+        return $this->hasMany(Reservation::class);
     }
 }

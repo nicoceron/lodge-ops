@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ArrowRight, CalendarClock, Filter, Search, UserRoundCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CalendarClock, Search, UserRoundCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatusPill, type StatusTone } from "@/components/status-pill";
 import { demoModeEnabled, listReservations, type ReservationDto } from "@/data/api-client";
@@ -29,18 +30,27 @@ function shortDate(value: string) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
 }
 
-export default async function ReservationsPage() {
+export default async function ReservationsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
+  const params = await searchParams;
+  const query = params.q?.trim().toLowerCase() ?? "";
   let liveReservations: ReservationDto[] | null = null;
   let liveError = false;
   if (!demoModeEnabled) {
     try {
-      liveReservations = (await listReservations()).data;
+      liveReservations = (await listReservations({ status: params.status })).data;
     } catch {
       liveReservations = [];
       liveError = true;
     }
   }
-  const displayedReservations = demoModeEnabled ? reservations : liveReservations ?? [];
+  const allReservations = demoModeEnabled ? reservations : liveReservations ?? [];
+  const displayedReservations = query ? allReservations.filter((reservation) => {
+    const live = "confirmation_number" in reservation;
+    const haystack = live
+      ? `${reservation.confirmation_number} ${reservation.primary_guest?.first_name ?? ""} ${reservation.primary_guest?.last_name ?? ""} ${reservation.program?.name ?? ""}`
+      : `${reservation.code} ${reservation.guest} ${reservation.program}`;
+    return haystack.toLowerCase().includes(query);
+  }) : allReservations;
   const pipelineCards = demoModeEnabled ? pipeline : [
     { label: "Draft", value: liveReservations?.filter((item) => item.status === "draft").length ?? 0, note: "Live tenant", tone: "bg-[var(--blue-soft)] text-[var(--blue)]" },
     { label: "On hold", value: liveReservations?.filter((item) => item.status === "hold").length ?? 0, note: "Awaiting confirmation", tone: "bg-[var(--amber-soft)] text-[var(--amber)]" },
@@ -53,7 +63,7 @@ export default async function ReservationsPage() {
       eyebrow="Sales & stays"
       title="Reservations"
       description="Move a guest from first inquiry to a fully prepared stay without re-entering information or losing the commercial history."
-      action={{ label: "Create reservation", shortLabel: "Create" }}
+      action={{ label: "Create reservation", shortLabel: "Create", href: "/reservations/new" }}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {pipelineCards.map((item) => (
@@ -73,14 +83,15 @@ export default async function ReservationsPage() {
             <h2 id="reservation-list-heading" className="text-sm font-bold">Upcoming reservations</h2>
             <p className="mt-1 text-xs text-[var(--muted)]">Sorted by arrival and operational urgency</p>
           </div>
-          <div className="flex gap-2">
+          <form action="/reservations" className="flex gap-2">
             <label className="relative flex-1 sm:w-52">
               <span className="sr-only">Search reservations</span>
               <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" />
-              <input placeholder="Search reservations" className="h-9 w-full rounded-lg border border-black/8 bg-white/75 pl-9 pr-3 text-xs" />
+              <input name="q" defaultValue={params.q} placeholder="Search reservations" className="h-9 w-full rounded-lg border border-black/8 bg-white/75 pl-9 pr-3 text-xs" />
             </label>
-            <button type="button" aria-label="Filter reservations" className="grid size-9 place-items-center rounded-lg border border-black/8 bg-white/75 text-[var(--muted)]"><Filter aria-hidden="true" className="size-4" /></button>
-          </div>
+            <select name="status" defaultValue={params.status ?? ""} aria-label="Filter by status" className="h-9 rounded-lg border border-black/8 bg-white/75 px-3 text-xs"><option value="">All statuses</option>{Object.entries(statusPresentation).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</select>
+            <button className="h-9 rounded-lg bg-[var(--forest)] px-3 text-xs font-bold text-white">Apply</button>
+          </form>
         </div>
         <div className="scrollbar-slim overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-left">
@@ -103,6 +114,7 @@ export default async function ReservationsPage() {
                 const code = live ? reservation.confirmation_number : reservation.code;
                 const guest = live ? [reservation.primary_guest?.first_name, reservation.primary_guest?.last_name].filter(Boolean).join(" ") || "Guest details pending" : reservation.guest;
                 const party = live ? reservation.adults + reservation.children : reservation.party;
+                const href = `/reservations/${live ? reservation.id : encodeURIComponent(reservation.code)}`;
                 return (
                 <tr key={code} className="group hover:bg-[var(--forest-soft)]/25">
                   <td className="px-5 py-4">
@@ -110,12 +122,12 @@ export default async function ReservationsPage() {
                     <p className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--muted)]"><span className="font-mono">{code}</span> · {party} guests · {live ? reservation.source ?? "Direct" : reservation.channel}</p>
                   </td>
                   <td className="px-4 py-4"><p className="text-xs font-semibold">{live ? shortDate(reservation.starts_at) : reservation.arrival} → {live ? shortDate(reservation.ends_at) : reservation.departure}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Property time</p></td>
-                  <td className="px-4 py-4 text-xs font-semibold">{live ? "Lodge stay" : reservation.program}</td>
+                  <td className="px-4 py-4 text-xs font-semibold">{live ? reservation.program?.name ?? "Custom lodge stay" : reservation.program}</td>
                   <td className="px-4 py-4"><StatusPill tone={presentation.tone} label={presentation.label} compact /></td>
                   <td className="px-4 py-4"><span className={!live && reservation.payment === "Overdue" ? "text-[var(--red)]" : "text-[var(--muted)]"}><span className="text-[11px] font-semibold">{live ? "See folio" : reservation.payment}</span></span></td>
                   <td className="px-4 py-4"><StatusPill tone={live ? "attention" : reservation.readiness} label={live ? "Review" : undefined} compact /></td>
                   <td className="px-4 py-4 text-right font-mono text-xs font-semibold">{formatMoney(live ? reservation.total_minor : reservation.total, live ? reservation.currency : "USD")}</td>
-                  <td className="pr-4"><button type="button" aria-label={`Open ${code}`} className="grid size-8 place-items-center rounded-lg text-black/30 group-hover:bg-white group-hover:text-[var(--forest)]"><ArrowRight aria-hidden="true" className="size-4" /></button></td>
+                  <td className="pr-4"><Link href={href} aria-label={`Open ${code}`} className="grid size-8 place-items-center rounded-lg text-black/30 group-hover:bg-white group-hover:text-[var(--forest)]"><ArrowRight aria-hidden="true" className="size-4" /></Link></td>
                 </tr>
               );})}
               {!displayedReservations.length ? <tr><td colSpan={8} className="px-5 py-12 text-center"><p className="text-sm font-semibold">{liveError ? "Live reservations unavailable" : "No reservations found"}</p><p className="mt-1 text-xs text-[var(--muted)]">{liveError ? "No demo reservations have been substituted. Try again after checking your session and API connection." : "Create the first reservation for this tenant to begin planning."}</p></td></tr> : null}

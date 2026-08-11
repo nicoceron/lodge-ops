@@ -26,7 +26,10 @@ Requirements: Docker with Compose. Local PHP 8.5 and Node 24 are optional for fa
 ```bash
 make bootstrap
 make up
+make doctor
 ```
+
+`make up` starts the complete stack in the background and waits for the API and web health checks. Use `make logs` to follow the application, worker, and scheduler logs, and `make down` to stop containers without deleting database or upload volumes.
 
 - Staff experience: http://localhost:3000
 - Staff sign-in: http://localhost:3000/login

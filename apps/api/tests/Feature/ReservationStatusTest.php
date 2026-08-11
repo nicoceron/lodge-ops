@@ -51,7 +51,12 @@ class ReservationStatusTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-09-01T12:00:00Z'));
         [, $property] = $this->tenantEnvironment(authenticate: false);
         $resource = Resource::factory()->create(['property_id' => $property->id]);
-        $held = Reservation::factory()->create(['property_id' => $property->id, 'status' => ReservationStatus::Draft]);
+        $held = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+            'starts_at' => now()->addDay(),
+            'ends_at' => now()->addDays(2),
+        ]);
         $heldAllocation = $held->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Tentative,
@@ -59,7 +64,12 @@ class ReservationStatusTest extends TestCase
             'ends_at' => now()->addDays(2),
             'quantity' => 1,
         ]);
-        $candidate = Reservation::factory()->create(['property_id' => $property->id, 'status' => ReservationStatus::Draft]);
+        $candidate = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+            'starts_at' => now()->addDay(),
+            'ends_at' => now()->addDays(2),
+        ]);
         $candidate->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Tentative,
@@ -104,7 +114,12 @@ class ReservationStatusTest extends TestCase
             'ends_at' => now()->addDays(2),
             'quantity' => 1,
         ]);
-        $candidate = Reservation::factory()->create(['property_id' => $property->id, 'status' => ReservationStatus::Draft]);
+        $candidate = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+            'starts_at' => now()->addDay(),
+            'ends_at' => now()->addDays(2),
+        ]);
         $candidate->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Tentative,

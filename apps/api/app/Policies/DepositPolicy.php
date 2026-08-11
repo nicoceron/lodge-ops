@@ -9,26 +9,26 @@ class DepositPolicy extends TenantPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canViewGuestMoney($user);
     }
 
     public function view(User $user, Deposit $deposit): bool
     {
-        return $this->canManageMoney($user, $deposit);
+        return $this->canViewGuestMoney($user, $deposit);
     }
 
     public function create(User $user): bool
     {
-        return $this->canManageMoney($user);
+        return $this->canManageGuestMoney($user);
     }
 
     public function update(User $user, Deposit $deposit): bool
     {
-        return $this->canManageMoney($user, $deposit);
+        return $this->canManageGuestMoney($user, $deposit);
     }
 
     public function waive(User $user, Deposit $deposit): bool
     {
-        return $this->canManageMoney($user, $deposit);
+        return $this->canManageGuestMoney($user, $deposit);
     }
 }

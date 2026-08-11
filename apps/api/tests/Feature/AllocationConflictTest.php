@@ -65,7 +65,12 @@ class AllocationConflictTest extends TestCase
         [, $property] = $this->tenantEnvironment(authenticate: false);
         $resource = Resource::factory()->create(['property_id' => $property->id]);
         $start = CarbonImmutable::parse('2026-09-01T15:00:00Z');
-        $existing = Reservation::factory()->create(['property_id' => $property->id, 'status' => ReservationStatus::Confirmed]);
+        $existing = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => $start,
+            'ends_at' => $start->addDay(),
+        ]);
         $existing->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Confirmed,
@@ -73,7 +78,12 @@ class AllocationConflictTest extends TestCase
             'ends_at' => $start->addDay(),
             'quantity' => 1,
         ]);
-        $candidate = Reservation::factory()->create(['property_id' => $property->id, 'status' => ReservationStatus::Draft]);
+        $candidate = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+            'starts_at' => $start->addDay(),
+            'ends_at' => $start->addDays(2),
+        ]);
         $candidate->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Tentative,

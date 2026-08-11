@@ -17,3 +17,8 @@ Schedule::command('reservation-holds:expire --batch=100')
     ->everyMinute()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('reservation-milestones:dispatch')
+    ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer();

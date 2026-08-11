@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\AllocationStatus;
+use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
 use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Allocation;
+use App\Models\Guest;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
 use App\Models\ServiceOccurrence;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -30,9 +34,49 @@ class OperationsProjectionController extends Controller
         $end = $now->addDay()->startOfDay()->utc();
         $tomorrowEnd = $now->addDays(2)->startOfDay()->utc();
         $activeStatuses = [ReservationStatus::Confirmed, ReservationStatus::CheckedIn];
+        $role = $visibility->role();
+        abort_unless($role instanceof MembershipRole, 403);
+        $userId = (int) $request->user()->getAuthIdentifier();
+        $managerialRoles = [MembershipRole::Owner, MembershipRole::Manager, MembershipRole::Operations];
+        $canSeeKitchen = in_array($role, [...$managerialRoles, MembershipRole::Kitchen], true);
+        $canSeeGuides = in_array($role, [...$managerialRoles, MembershipRole::Guide], true);
+        $canSeeHousekeeping = in_array($role, [...$managerialRoles, MembershipRole::Housekeeping], true);
+
+        $occurrences = ServiceOccurrence::query()
+            ->with([
+                'program:id,name',
+                'allocations' => fn ($query) => $query
+                    ->where('status', '!=', AllocationStatus::Released->value)
+                    ->with([
+                        'resource:id,name,type,user_id',
+                        'reservation:id,primary_guest_id,adults,children,confirmation_number',
+                    ]),
+            ])
+            ->where('starts_at', '>=', $end)
+            ->where('starts_at', '<', $tomorrowEnd)
+            ->where('is_cancelled', false)
+            ->when($role === MembershipRole::Guide, fn (Builder $query) => $query->whereHas(
+                'allocations',
+                fn (Builder $allocation) => $allocation
+                    ->where('status', '!=', AllocationStatus::Released->value)
+                    ->whereHas('resource', fn (Builder $resource) => $resource
+                        ->where('type', ResourceType::Guide->value)
+                        ->where('user_id', $userId)),
+            ))
+            ->orderBy('starts_at')
+            ->get();
+        $guideReservationIds = $occurrences
+            ->flatMap(fn (ServiceOccurrence $occurrence) => $occurrence->allocations->pluck('reservation_id'))
+            ->filter()
+            ->unique()
+            ->values();
 
         $tasks = OperationalTask::query()
             ->with('assignee:id,name')
+            ->when(
+                ! in_array($role, $managerialRoles, true),
+                fn (Builder $query) => $this->applyTaskRoleScope($query, $role, $userId, $guideReservationIds),
+            )
             ->where(function ($query) use ($end): void {
                 $query->whereNull('due_at')->orWhere('due_at', '<', $end);
             })
@@ -41,10 +85,14 @@ class OperationsProjectionController extends Controller
             ->limit(30)
             ->get();
         $operationalReservations = Reservation::query()
-            ->with('primaryGuest:id,first_name,last_name,preferences')
+            ->with([
+                'primaryGuest:id,first_name,last_name,preferences',
+                'guests:id,first_name,last_name,preferences',
+            ])
             ->whereIn('status', $activeStatuses)
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
+            ->when($role === MembershipRole::Guide, fn (Builder $query) => $query->whereIn('id', $guideReservationIds))
             ->orderBy('starts_at')
             ->get();
         $arrivals = $operationalReservations->filter(
@@ -60,14 +108,6 @@ class OperationsProjectionController extends Controller
                 && $reservation->ends_at->greaterThan($end),
         );
 
-        $occurrences = ServiceOccurrence::query()
-            ->with(['program:id,name', 'allocations.resource:id,name,type', 'allocations.reservation:id,primary_guest_id,adults,children,confirmation_number'])
-            ->where('starts_at', '>=', $end)
-            ->where('starts_at', '<', $tomorrowEnd)
-            ->where('is_cancelled', false)
-            ->orderBy('starts_at')
-            ->get();
-
         $taskItems = $tasks->map(fn (OperationalTask $task): array => [
             'id' => $task->id,
             'title' => $task->title,
@@ -81,6 +121,24 @@ class OperationsProjectionController extends Controller
             'data' => [
                 'date' => $now->toDateString(),
                 'timezone' => $context->tenant()->timezone,
+                'role_scope' => [
+                    'role' => $role->value,
+                    'visible_sections' => array_values(array_filter([
+                        'tasks',
+                        'arrivals',
+                        $canSeeKitchen ? 'kitchen' : null,
+                        $canSeeGuides ? 'guide_assignments' : null,
+                        $canSeeHousekeeping ? 'housekeeping' : null,
+                    ])),
+                ],
+                'privacy' => [
+                    'can_view_guest_identity' => $visibility->canSeeGuestIdentity(),
+                    'can_view_dietary_details' => $visibility->canSeeDietaryDetails(),
+                    'restricted_fields' => array_values(array_filter([
+                        $visibility->canSeeGuestIdentity() ? null : 'arrivals.guest_name',
+                        $visibility->canSeeDietaryDetails() ? null : 'arrivals.dietary',
+                    ])),
+                ],
                 'readiness' => [
                     'complete' => $tasks->whereIn('status', [TaskStatus::Done, TaskStatus::Cancelled])->count(),
                     'total' => $tasks->count(),
@@ -89,17 +147,29 @@ class OperationsProjectionController extends Controller
                 'tasks' => $taskItems,
                 'arrivals' => $arrivals->map(fn (Reservation $reservation) => $this->arrival($reservation, $visibility))->values(),
                 'kitchen' => [
-                    'guest_count' => $operationalReservations->sum(fn (Reservation $reservation) => $reservation->adults + $reservation->children),
-                    'restrictions' => $this->restrictions($operationalReservations),
-                    'identity_restricted' => true,
+                    'available' => $canSeeKitchen,
+                    'guest_count' => $canSeeKitchen
+                        ? $operationalReservations->sum(fn (Reservation $reservation) => $reservation->adults + $reservation->children)
+                        : 0,
+                    'restrictions' => $canSeeKitchen ? $this->restrictions($operationalReservations) : [],
+                    'identity_restricted' => ! $visibility->canSeeGuestIdentity(),
+                    'dietary_details_restricted' => ! $visibility->canSeeDietaryDetails(),
                 ],
-                'guide_assignments' => $occurrences->map(fn (ServiceOccurrence $occurrence) => $this->guideAssignment($occurrence))->values(),
+                'guide_assignments' => $canSeeGuides
+                    ? $occurrences->map(fn (ServiceOccurrence $occurrence) => $this->guideAssignment(
+                        $occurrence,
+                        $role === MembershipRole::Guide ? $userId : null,
+                    ))->values()
+                    : [],
                 'housekeeping' => [
-                    'arrivals' => $arrivals->count(),
-                    'turnovers' => $departures->count(),
-                    'stayovers' => $stayovers->count(),
-                    'focus' => $tasks->firstWhere('priority', 'urgent')?->title
-                        ?? $tasks->firstWhere('priority', 'high')?->title,
+                    'available' => $canSeeHousekeeping,
+                    'arrivals' => $canSeeHousekeeping ? $arrivals->count() : 0,
+                    'turnovers' => $canSeeHousekeeping ? $departures->count() : 0,
+                    'stayovers' => $canSeeHousekeeping ? $stayovers->count() : 0,
+                    'focus' => $canSeeHousekeeping
+                        ? ($tasks->firstWhere('priority', 'urgent')?->title
+                            ?? $tasks->firstWhere('priority', 'high')?->title)
+                        : null,
                 ],
             ],
         ]);
@@ -124,7 +194,11 @@ class OperationsProjectionController extends Controller
         }
 
         if ($visibility->canSeeDietaryDetails()) {
-            $arrival['dietary'] = $this->dietaryLabels($reservation->primaryGuest?->preferences);
+            $arrival['dietary'] = $this->reservationGuests($reservation)
+                ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
+                ->unique(fn (string $label) => strtolower($label))
+                ->values()
+                ->all();
         }
 
         return $arrival;
@@ -134,7 +208,8 @@ class OperationsProjectionController extends Controller
     private function restrictions(Collection $reservations): array
     {
         return $reservations
-            ->flatMap(fn (Reservation $reservation) => $this->dietaryLabels($reservation->primaryGuest?->preferences))
+            ->flatMap(fn (Reservation $reservation) => $this->reservationGuests($reservation)
+                ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences)))
             ->countBy()
             ->map(fn (int $count, string $label): array => [
                 'label' => $label,
@@ -143,6 +218,16 @@ class OperationsProjectionController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /** @return Collection<int, Guest> */
+    private function reservationGuests(Reservation $reservation): Collection
+    {
+        return collect([$reservation->primaryGuest])
+            ->filter()
+            ->concat($reservation->guests)
+            ->unique('id')
+            ->values();
     }
 
     /** @param array<string, mixed>|null $preferences @return list<string> */
@@ -173,21 +258,49 @@ class OperationsProjectionController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function guideAssignment(ServiceOccurrence $occurrence): array
+    private function guideAssignment(ServiceOccurrence $occurrence, ?int $guideUserId = null): array
     {
-        $guide = $occurrence->allocations->first(
-            fn (Allocation $allocation) => $allocation->resource?->type === ResourceType::Guide,
-        )?->resource;
+        $guide = $occurrence->allocations
+            ->first(fn (Allocation $allocation) => $allocation->resource?->type === ResourceType::Guide
+                && ($guideUserId === null || (int) $allocation->resource->user_id === $guideUserId))
+            ?->resource;
         $reservations = $occurrence->allocations->pluck('reservation')->filter()->unique('id');
 
         return [
             'id' => $occurrence->id,
+            'guide_resource_id' => $guide?->id,
             'guide' => $guide?->name,
             'program' => $occurrence->program->name,
             'starts_at' => $occurrence->starts_at->toIso8601String(),
             'party_size' => $reservations->sum(fn (Reservation $reservation) => $reservation->adults + $reservation->children),
             'status' => $guide ? 'confirmed' : 'action_needed',
         ];
+    }
+
+    /** @param Collection<int, string> $guideReservationIds */
+    private function applyTaskRoleScope(
+        Builder $query,
+        MembershipRole $role,
+        int $userId,
+        Collection $guideReservationIds,
+    ): void {
+        $query->where(function (Builder $tasks) use ($role, $userId, $guideReservationIds): void {
+            $tasks->where('assignee_id', $userId)
+                ->orWhere(function (Builder $unassigned) use ($role, $guideReservationIds): void {
+                    $unassigned->whereNull('assignee_id')
+                        ->where(function (Builder $roleTasks) use ($role): void {
+                            $roleTasks
+                                ->whereHas('programTaskTemplate', fn (Builder $template) => $template->where('assignee_role', $role->value))
+                                ->orWhere('metadata->assignee_role', $role->value)
+                                ->orWhere('metadata->role', $role->value)
+                                ->orWhere('metadata->team', $role->value);
+                        });
+
+                    if ($role === MembershipRole::Guide) {
+                        $unassigned->whereIn('reservation_id', $guideReservationIds);
+                    }
+                });
+        });
     }
 
     private function initials(?string $name): string

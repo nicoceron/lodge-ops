@@ -18,7 +18,7 @@ function cookie(name: string) {
   return document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
-export function LoginForm() {
+export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
@@ -64,7 +64,7 @@ export function LoginForm() {
       const tenant = (body as AuthPayload).data.tenants[0];
       if (!tenant) throw new Error("Your account does not have an active lodge membership.");
       document.cookie = `lodgeops_tenant_id=${encodeURIComponent(tenant.id)}; Path=/; Max-Age=2592000; SameSite=Lax`;
-      router.push("/");
+      router.push(nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/");
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Sign-in failed. Please try again.");

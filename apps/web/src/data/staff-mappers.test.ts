@@ -75,27 +75,33 @@ describe("staff projection mappers", () => {
     const operationsDto: OperationsDto = {
       date: "2026-08-10",
       timezone: "UTC",
+      role_scope: { role: "kitchen", visible_sections: ["tasks", "arrivals", "kitchen"] },
+      privacy: { can_view_guest_identity: false, can_view_dietary_details: true, restricted_fields: ["arrivals.guest_name"] },
       readiness: { complete: 0, total: 1, open: 1 },
       tasks: [{ id: "task-1", title: "Prepare service", status: "todo", priority: "high", due_at: null, owner_initials: "—" }],
       arrivals: [{ id: "reservation-1", confirmation_number: "RSV-LIVE-1", starts_at: "2026-08-10T15:00:00Z", ends_at: "2026-08-12T11:00:00Z", party_size: 2, status: "confirmed", dietary: ["Gluten-free"] }],
-      kitchen: { guest_count: 2, restrictions: [{ label: "Gluten-free", count: 1, serious: false }], identity_restricted: true },
+      kitchen: { available: true, guest_count: 2, restrictions: [{ label: "Gluten-free", count: 1, serious: false }], identity_restricted: true, dietary_details_restricted: false },
       guide_assignments: [],
-      housekeeping: { arrivals: 1, turnovers: 0, stayovers: 0, focus: null },
+      housekeeping: { available: false, arrivals: 0, turnovers: 0, stayovers: 0, focus: null },
     };
     const financeDto: FinanceDto = {
       currency: "USD",
       timezone: "UTC",
       period: { start: "2026-08-01T00:00:00Z", end: "2026-09-01T00:00:00Z", label: "August 2026" },
-      summary: { booked_revenue_minor: 10000, cash_collected_minor: 4000, receivables_minor: 6000, overdue_deposits_minor: 1000, collection_percent: 40 },
+      summary: { booked_revenue_minor: 10000, cash_collected_minor: 4000, receivables_minor: 6000, loaded_costs_minor: 2000, commission_accruals_minor: 1000, margin_minor: 7000, margin_percent: 70, overdue_deposits_minor: 1000, collection_percent: 40 },
       deposits: { due_count: 1, due_minor: 1000, paid_count: 0, paid_minor: 0, overdue_count: 1 },
       folio: { charges_minor: 10000, payments_minor: 4000, refunds_minor: 0, adjustments_minor: 0 },
       revenue_series: [{ label: "Aug", value_minor: 10000 }],
-      channels: [{ channel: "Direct", bookings: 1, revenue_minor: 10000, collected_minor: 4000, collection_percent: 40 }],
+      programs: [{ program_id: "program-1", program: "Fishing", bookings: 1, revenue_minor: 10000, loaded_costs_minor: 2000, commission_accruals_minor: 1000, margin_minor: 7000 }],
+      channels: [{ channel: "Direct", bookings: 1, revenue_minor: 10000, collected_minor: 4000, commission_accruals_minor: 1000, net_revenue_minor: 9000, collection_percent: 40 }],
+      reconciliation: { currency: "USD", currency_policy: "native_currency_only", formula: "revenue - costs - commissions", difference_minor: 0, program_difference_minor: 0, is_balanced: true },
       recent_folios: [{ reservation_id: "reservation-1", confirmation_number: "RSV-LIVE-1", status: "confirmed", total_minor: 10000, paid_minor: 4000, balance_minor: 6000 }],
     };
 
     expect(mapOperationsProjection(operationsDto).restrictions[0].label).toBe("Gluten-free");
+    expect(mapOperationsProjection(operationsDto).visibleSections).toEqual(["tasks", "arrivals", "kitchen"]);
     expect(mapFinanceProjection(financeDto).recentFolios[0]).toEqual(expect.objectContaining({ confirmationNumber: "RSV-LIVE-1", balanceMinor: 6000 }));
+    expect(mapFinanceProjection(financeDto).programs[0]).toEqual(expect.objectContaining({ name: "Fishing", marginMinor: 7000 }));
     expect(JSON.stringify(mapFinanceProjection(financeDto))).not.toContain("guest");
   });
 });
