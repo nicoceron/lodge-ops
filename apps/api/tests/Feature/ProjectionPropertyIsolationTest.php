@@ -7,6 +7,7 @@ use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Enums\ResourceType;
+use App\Enums\TaskStatus;
 use App\Models\Allocation;
 use App\Models\Guest;
 use App\Models\OperationalTask;
@@ -18,6 +19,8 @@ use App\Services\Projections\DashboardProjectionService;
 use App\Services\Projections\OperationsProjectionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -103,6 +106,95 @@ class ProjectionPropertyIsolationTest extends TestCase
         $this->assertSame('attention', $projection['arrival_parties'][0]['readiness']);
     }
 
+    public function test_sales_dashboard_projection_does_not_expose_operational_tasks(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Sales);
+        OperationalTask::query()->create([
+            'property_id' => $property->id,
+            'assignee_id' => $user->id,
+            'title' => 'Private operations handoff',
+            'status' => TaskStatus::Todo,
+            'priority' => 'urgent',
+            'due_at' => now()->addHour(),
+        ]);
+
+        $projection = app(DashboardProjectionService::class)->build();
+
+        $this->assertSame(0, $projection['open_tasks']);
+        $this->assertSame(0, $projection['overdue_tasks']);
+        $this->assertSame([], $projection['tasks']);
+        $this->assertSame(array_fill(0, 14, 0), $projection['trend']['work_due']);
+    }
+
+    public function test_dashboard_counts_completed_departures_and_has_no_readiness_percentage_without_upcoming_stays(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-11 15:00:00 UTC');
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Operations);
+        $tenant->update(['timezone' => 'UTC']);
+        Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::CheckedOut,
+            'starts_at' => '2026-08-08 15:00:00',
+            'ends_at' => '2026-08-11 11:00:00',
+        ]);
+
+        $projection = app(DashboardProjectionService::class)->build();
+
+        $this->assertSame(1, $projection['departures']);
+        $this->assertSame(0, $projection['readiness']['total']);
+        $this->assertNull($projection['readiness']['percent']);
+    }
+
+    public function test_dashboard_projection_reuses_a_short_lived_role_scoped_snapshot(): void
+    {
+        $this->tenantEnvironment(MembershipRole::Operations);
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $first = app(DashboardProjectionService::class)->build();
+        $queriesAfterFirstBuild = count(DB::getQueryLog());
+        $second = app(DashboardProjectionService::class)->build();
+
+        $this->assertEquals($first, $second);
+        $this->assertSame($queriesAfterFirstBuild, count(DB::getQueryLog()));
+    }
+
+    public function test_arrival_attention_uses_every_readiness_check(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-11 15:00:00 UTC');
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Operations);
+        $tenant->update(['timezone' => 'UTC']);
+        $guest = Guest::factory()->create(['preferences' => null]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'status' => ReservationStatus::Confirmed,
+            'total_minor' => 0,
+            'starts_at' => '2026-08-12 15:00:00',
+            'ends_at' => '2026-08-14 11:00:00',
+        ]);
+        $room = Resource::factory()->create([
+            'property_id' => $property->id,
+            'type' => ResourceType::Room,
+            'is_active' => true,
+        ]);
+        Allocation::query()->create([
+            'reservation_id' => $reservation->id,
+            'resource_id' => $room->id,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+            'status' => AllocationStatus::Confirmed,
+        ]);
+
+        $projection = app(DashboardProjectionService::class)->build();
+
+        $this->assertSame(1, $projection['needs_attention']);
+        $this->assertSame(['Guide assignment', 'Kitchen brief'], $projection['attention_stays'][0]['reasons']);
+        $this->assertSame(60.0, (float) $projection['readiness']['percent']);
+    }
+
     public function test_dashboard_builds_a_bounded_property_scoped_operational_trend(): void
     {
         CarbonImmutable::setTestNow('2026-08-11 15:00:00 UTC');
@@ -180,8 +272,9 @@ class ProjectionPropertyIsolationTest extends TestCase
         $this->assertSame(1, $trend['departures'][8]);
         $this->assertSame(50.0, $trend['occupancy_percent'][6]);
         $this->assertSame(100.0, $trend['occupancy_percent'][8]);
-        $this->assertSame(1, $trend['attention'][6]);
-        $this->assertSame(1, $trend['attention'][8]);
+        $this->assertCount(8, $trend['attention']);
+        $this->assertSame(1, $trend['attention'][0]);
+        $this->assertSame(1, $trend['attention'][2]);
         $this->assertSame(1, $trend['work_due'][5]);
         $this->assertSame(1, $trend['work_due'][7]);
         $this->assertSame(2, $projection['open_tasks']);
@@ -189,7 +282,7 @@ class ProjectionPropertyIsolationTest extends TestCase
         $this->assertSame(1, $projection['occupied_rooms']);
         $this->assertSame(50.0, $projection['occupancy_percent']);
         $this->assertCount(2, $projection['attention_stays']);
-        $this->assertSame(['Guest details', 'Payment balance'], $projection['attention_stays'][0]['reasons']);
+        $this->assertSame(['Guest details', 'Guide assignment', 'Payment balance', 'Kitchen brief'], $projection['attention_stays'][0]['reasons']);
     }
 
     public function test_property_scoped_kitchen_projection_excludes_other_property_dietary_data(): void

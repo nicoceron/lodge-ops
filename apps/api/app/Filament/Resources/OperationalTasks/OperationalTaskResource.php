@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\OperationalTasks;
 
+use App\Enums\TaskStatus;
 use App\Filament\Resources\OperationalTasks\Pages\CreateOperationalTask;
 use App\Filament\Resources\OperationalTasks\Pages\EditOperationalTask;
 use App\Filament\Resources\OperationalTasks\Pages\ListOperationalTasks;
@@ -38,6 +39,30 @@ class OperationalTaskResource extends TenantResource
     protected static string $deleteCapability = 'canManageOperations';
 
     protected static ?string $viewCapability = 'canManageOperations';
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getEloquentQuery()
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $hasOverdueTasks = static::getEloquentQuery()
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->where('due_at', '<', now())
+            ->exists();
+
+        return $hasOverdueTasks ? 'danger' : 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Open operational tasks';
+    }
 
     public static function getEloquentQuery(): Builder
     {

@@ -38,6 +38,25 @@ class ReservationResource extends TenantResource
 
     protected static ?string $viewCapability = 'canManageReservations';
 
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getEloquentQuery()
+            ->whereIn('status', [ReservationStatus::Draft, ReservationStatus::Hold])
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Draft and held reservations awaiting confirmation';
+    }
+
     public static function canEdit(Model $record): bool
     {
         return parent::canEdit($record)

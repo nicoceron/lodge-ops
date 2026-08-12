@@ -9,6 +9,7 @@ use App\Enums\ReservationStatus;
 use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Filament\Pages\KitchenDashboard;
+use App\Filament\Widgets\LodgeCommandCenter;
 use App\Models\Guest;
 use App\Models\OperationalTask;
 use App\Models\Payment;
@@ -20,6 +21,7 @@ use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
 use Filament\Pages\Dashboard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -70,6 +72,11 @@ class FilamentWorkspacePagesTest extends TestCase
         $response = $this->get(Dashboard::getUrl(['tenant' => $tenant]));
         $response
             ->assertOk()
+            ->assertSee('Dashboard')
+            ->assertSee('Loading..');
+
+        $commandCenter = Livewire::test(LodgeCommandCenter::class);
+        $commandCenter
             ->assertSee('Stays needing attention')
             ->assertSee("Today's arrivals")
             ->assertSee('Dashboard Guest')
@@ -77,11 +84,11 @@ class FilamentWorkspacePagesTest extends TestCase
             ->assertSee('Confirm dashboard arrival transfer');
         $this->assertMatchesRegularExpression(
             '/<a(?=[^>]*wire:navigate)[^>]*>.*?New reservation.*?<\/a>/s',
-            $response->getContent(),
+            $commandCenter->html(),
         );
         $this->assertMatchesRegularExpression(
             '/<a(?=[^>]*wire:navigate)[^>]*>(?:(?!<\/a>).)*Confirm dashboard arrival transfer/s',
-            $response->getContent(),
+            $commandCenter->html(),
         );
     }
 

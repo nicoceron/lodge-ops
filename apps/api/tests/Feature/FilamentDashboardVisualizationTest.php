@@ -2,15 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DepositStatus;
 use App\Enums\MembershipRole;
+use App\Enums\ReservationStatus;
+use App\Enums\TaskStatus;
 use App\Filament\Pages\FinanceDashboard;
 use App\Filament\Pages\OperationsBoard;
+use App\Filament\Resources\Reservations\ReservationResource;
 use App\Filament\Widgets\FinanceOverview;
 use App\Filament\Widgets\FinanceRevenueTrend;
 use App\Filament\Widgets\LodgeCommandCenter;
 use App\Filament\Widgets\LodgeFlowTrend;
 use App\Filament\Widgets\LodgeOccupancyTrend;
 use App\Filament\Widgets\LodgeReadinessOverview;
+use App\Models\Deposit;
+use App\Models\OperationalTask;
+use App\Models\Reservation;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -28,12 +35,26 @@ class FilamentDashboardVisualizationTest extends TestCase
         Filament::setTenant($tenant);
 
         Livewire::test(LodgeReadinessOverview::class)
+            ->assertSee('Current state with recent and upcoming operating trends.')
             ->assertSee('Occupancy now')
             ->assertSee('Arrival readiness')
             ->assertSee('Arrivals today')
             ->assertSee('Work at risk')
             ->assertDontSee('Guests in house')
             ->assertDontSee('Open work');
+    }
+
+    public function test_arrival_readiness_renders_no_data_instead_of_a_false_one_hundred_percent(): void
+    {
+        [$tenant, , $user] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
+        $this->actingAs($user);
+        Filament::setTenant($tenant);
+
+        Livewire::test(LodgeReadinessOverview::class)
+            ->assertSee('Arrival readiness')
+            ->assertSee('N/A')
+            ->assertSee('No upcoming stays')
+            ->assertDontSee('100%');
     }
 
     public function test_operational_dashboard_renders_two_accessible_decision_charts(): void
@@ -83,10 +104,48 @@ class FilamentDashboardVisualizationTest extends TestCase
             ->assertDontSee('Operations board');
     }
 
+    public function test_sales_dashboard_does_not_render_operational_task_data_or_links(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Sales, authenticate: false);
+        OperationalTask::query()->create([
+            'property_id' => $property->id,
+            'assignee_id' => $user->id,
+            'title' => 'Private operations handoff',
+            'status' => TaskStatus::Todo,
+            'priority' => 'urgent',
+        ]);
+        $this->actingAs($user);
+        Filament::setTenant($tenant);
+
+        Livewire::test(LodgeReadinessOverview::class)
+            ->assertDontSee('Work at risk');
+        Livewire::test(LodgeCommandCenter::class)
+            ->assertDontSee('Private operations handoff')
+            ->assertDontSee('All tasks')
+            ->assertDontSee('Action queue');
+    }
+
     public function test_finance_widgets_prioritize_contextual_metrics_and_a_revenue_collection_trend(): void
     {
-        [$tenant, , $user] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);
         $tenant->update(['currency' => 'USD', 'locale' => 'en_US']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'USD',
+            'starts_at' => now(),
+            'ends_at' => now()->addDays(2),
+        ]);
+        foreach (['manual' => now()->subDay(), 'balance' => now()->addDay()] as $scheduleType => $dueAt) {
+            Deposit::query()->create([
+                'reservation_id' => $reservation->id,
+                'status' => DepositStatus::Due,
+                'schedule_type' => $scheduleType,
+                'currency' => 'USD',
+                'amount_minor' => 10_000,
+                'due_at' => $dueAt,
+            ]);
+        }
         $this->actingAs($user);
         Filament::setTenant($tenant);
         $parameters = [
@@ -96,11 +155,16 @@ class FilamentDashboardVisualizationTest extends TestCase
         ];
 
         Livewire::test(FinanceOverview::class, $parameters)
+            ->assertDontSeeHtml('wire:poll')
             ->assertSee('Financial pulse')
             ->assertSee('Booked revenue')
             ->assertSee('Cash collected')
             ->assertSee('Receivables')
             ->assertSee('Gross margin')
+            ->assertSee('0% cash collected vs booked arrivals')
+            ->assertSee('2 due · 1 overdue')
+            ->assertDontSee('collection rate')
+            ->assertDontSeeHtml('href="'.e(ReservationResource::getUrl()).'"')
             ->assertDontSee('Loaded costs')
             ->assertDontSee('Commission accruals');
 

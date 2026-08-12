@@ -36,6 +36,25 @@ class DepositResource extends TenantResource
 
     protected static ?string $propertyRelationship = 'reservation';
 
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getEloquentQuery()
+            ->where('status', DepositStatus::Due)
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Deposits due';
+    }
+
     public static function canEdit(Model $record): bool
     {
         return parent::canEdit($record)

@@ -17,6 +17,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class FinanceProjectionService
 {
@@ -27,6 +28,26 @@ class FinanceProjectionService
 
     /** @return array<string, mixed> */
     public function build(CarbonImmutable $start, CarbonImmutable $end, string $displayCurrency): array
+    {
+        $membership = $this->context->membership();
+        $cacheKey = hash('sha256', implode('|', [
+            $this->context->tenant()->id,
+            $membership->property_id ?? 'all-properties',
+            $membership->role->value,
+            $start->toIso8601String(),
+            $end->toIso8601String(),
+            strtoupper($displayCurrency),
+        ]));
+
+        return Cache::remember(
+            "finance-projection:{$cacheKey}",
+            15,
+            fn (): array => $this->buildFresh($start, $end, $displayCurrency),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function buildFresh(CarbonImmutable $start, CarbonImmutable $end, string $displayCurrency): array
     {
         $timezone = $this->context->tenant()->timezone;
         if ($end->lessThanOrEqualTo($start) || $start->diffInDays($end) > 366) {

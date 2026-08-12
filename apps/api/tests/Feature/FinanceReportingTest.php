@@ -18,6 +18,8 @@ use App\Services\Projections\FinanceProjectionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use NumberFormatter;
 use Tests\Concerns\CreatesTenant;
@@ -285,6 +287,23 @@ class FinanceReportingTest extends TestCase
         );
 
         $this->assertSame('2020-02-01T00:00:00+00:00', $projection['period']['end']);
+    }
+
+    public function test_finance_projection_reuses_a_short_lived_range_scoped_snapshot(): void
+    {
+        $this->tenantEnvironment(MembershipRole::Finance);
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $start = CarbonImmutable::parse('2026-08-01 00:00:00 UTC');
+        $end = CarbonImmutable::parse('2026-09-01 00:00:00 UTC');
+
+        $first = app(FinanceProjectionService::class)->build($start, $end, 'USD');
+        $queriesAfterFirstBuild = count(DB::getQueryLog());
+        $second = app(FinanceProjectionService::class)->build($start, $end, 'USD');
+
+        $this->assertEquals($first, $second);
+        $this->assertSame($queriesAfterFirstBuild, count(DB::getQueryLog()));
     }
 
     public function test_finance_revenue_series_ends_at_the_selected_reporting_period(): void

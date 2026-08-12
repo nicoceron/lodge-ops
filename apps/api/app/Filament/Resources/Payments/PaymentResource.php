@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Payments;
 
+use App\Enums\PaymentStatus;
 use App\Filament\Resources\Payments\Pages\ListPayments;
 use App\Filament\Resources\Payments\Pages\ViewPayment;
 use App\Filament\Resources\Payments\Schemas\PaymentForm;
@@ -35,6 +36,25 @@ class PaymentResource extends TenantResource
     protected static string $writeCapability = 'canManageMoney';
 
     protected static ?string $propertyRelationship = 'reservation';
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getEloquentQuery()
+            ->where('status', PaymentStatus::Pending)
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Payments pending processing';
+    }
 
     public static function canRunWorkflow(Payment $payment): bool
     {

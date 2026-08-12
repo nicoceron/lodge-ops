@@ -2,3 +2,12 @@
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
+
+@layer components {
+    /* Keep Filament's native sparkline, but give its canvas a small inset so
+     * the stroke and fill do not visually disappear into the card edge. */
+    .lodge-stat-sparkline .fi-wi-stats-overview-stat-chart > canvas {
+        height: 20px;
+        margin-block: 2px;
+    }
+}

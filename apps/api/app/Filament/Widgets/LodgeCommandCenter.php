@@ -15,7 +15,7 @@ class LodgeCommandCenter extends Widget
 {
     protected string $view = 'filament.widgets.lodge-command-center';
 
-    protected static bool $isLazy = false;
+    protected static bool $isLazy = true;
 
     protected static ?int $sort = 4;
 
@@ -47,6 +47,7 @@ class LodgeCommandCenter extends Widget
                 'tasks' => OperationalTaskResource::getUrl(),
             ],
             'canAccessOperationsBoard' => OperationsBoard::canAccess(),
+            'canAccessTasks' => OperationalTaskResource::canViewAny(),
         ];
     }
 }

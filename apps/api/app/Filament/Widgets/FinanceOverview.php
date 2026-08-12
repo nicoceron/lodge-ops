@@ -22,6 +22,8 @@ class FinanceOverview extends StatsOverviewWidget
 
     protected static bool $isDiscovered = false;
 
+    protected ?string $pollingInterval = null;
+
     public static function canView(): bool
     {
         return app(TenantContext::class)->membership()?->role?->canViewFinance() === true;
@@ -41,6 +43,7 @@ class FinanceOverview extends StatsOverviewWidget
         $format = fn (int $amount): string => $money->formatMinor($amount, $currency, $tenant->locale ?: app()->getLocale());
         $bookedTrend = array_map(fn (array $month): float => $month['booked_minor'] / 100, $projection['revenue_series']);
         $collectedTrend = array_map(fn (array $month): float => $month['collected_minor'] / 100, $projection['revenue_series']);
+        $dueDeposits = $projection['deposits']['due_count'];
         $overdueDeposits = $projection['deposits']['overdue_count'];
 
         return [
@@ -49,15 +52,15 @@ class FinanceOverview extends StatsOverviewWidget
                 ->descriptionIcon('heroicon-m-calendar-days')
                 ->chart($bookedTrend)
                 ->color('info')
-                ->url(ReservationResource::getUrl()),
+                ->url(ReservationResource::canViewAny() ? ReservationResource::getUrl() : null),
             Stat::make('Cash collected', $format($summary['cash_collected_minor']))
-                ->description($summary['collection_percent'].'% collection rate')
+                ->description($summary['collection_percent'].'% cash collected vs booked arrivals')
                 ->descriptionIcon('heroicon-m-banknotes')
                 ->chart($collectedTrend)
                 ->color($summary['cash_collected_minor'] > 0 ? 'success' : 'gray')
                 ->url(PaymentResource::getUrl()),
             Stat::make('Receivables', $format($summary['receivables_minor']))
-                ->description($overdueDeposits.' overdue '.str('deposit')->plural($overdueDeposits))
+                ->description("{$dueDeposits} due · {$overdueDeposits} overdue")
                 ->descriptionIcon($overdueDeposits > 0 ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-check-circle')
                 ->color($overdueDeposits > 0 ? 'danger' : 'success')
                 ->url(DepositResource::getUrl()),
