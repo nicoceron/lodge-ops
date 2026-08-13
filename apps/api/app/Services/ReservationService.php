@@ -73,13 +73,19 @@ class ReservationService
         }, 3);
     }
 
-    public function transition(Reservation $reservation, ReservationStatus $next, ?int $holdMinutes = null): Reservation
+    /** @param array<string, mixed> $metadata */
+    public function transition(Reservation $reservation, ReservationStatus $next, ?int $holdMinutes = null, array $metadata = []): Reservation
     {
         if ($next === ReservationStatus::Confirmed) {
             return $this->confirm($reservation);
         }
 
-        return DB::transaction(function () use ($reservation, $next, $holdMinutes): Reservation {
+        $metadata = array_filter(
+            $metadata,
+            static fn (mixed $value): bool => $value !== null && $value !== '',
+        );
+
+        return DB::transaction(function () use ($reservation, $next, $holdMinutes, $metadata): Reservation {
             $locked = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
 
             if ($locked->status === $next) {
@@ -110,14 +116,29 @@ class ReservationService
             } elseif ($locked->status === ReservationStatus::Hold) {
                 $changes['hold_expires_at'] = null;
             }
+            if ($next === ReservationStatus::CheckedIn) {
+                $changes['actual_start_at'] = now();
+            }
+            if ($next === ReservationStatus::CheckedOut) {
+                $changes['actual_end_at'] = now();
+            }
+            if (in_array($next, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
+                $reason = trim((string) ($metadata['reason'] ?? ''));
+                if ($reason === '') {
+                    throw new \DomainException('A reason is required when cancelling a reservation or recording a no-show.');
+                }
+                $changes['cancelled_at'] = now();
+                $changes['closure_reason'] = $reason;
+                $metadata['reason'] = $reason;
+            }
             $previousStatus = $locked->status;
             $locked->update($changes);
-            $this->recordStatus($locked, $previousStatus, $next);
+            $this->recordStatus($locked, $previousStatus, $next, $metadata);
             foreach ($holdAllocations as $allocation) {
                 $allocation->save();
             }
 
-            if ($next === ReservationStatus::Cancelled) {
+            if (in_array($next, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
                 $locked->allocations()->update(['status' => AllocationStatus::Released]);
             }
 
@@ -125,7 +146,11 @@ class ReservationService
                 'reservation',
                 $locked->id,
                 'reservation.status_changed',
-                ['reservation_id' => $locked->id, 'status' => $next->value],
+                [
+                    'reservation_id' => $locked->id,
+                    'status' => $next->value,
+                    'reason' => $metadata['reason'] ?? null,
+                ],
             );
 
             return $locked->fresh(['allocations.resource', 'primaryGuest', 'program']);

@@ -6,6 +6,7 @@ use App\Enums\ReservationStatus;
 use App\Models\Reservation;
 use App\Services\ReservationService;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 
 final class ReservationWorkflowActions
@@ -43,6 +44,7 @@ final class ReservationWorkflowActions
                 icon: 'heroicon-o-user-minus',
                 color: 'warning',
                 confirmation: 'This closes the stay as a no-show and cannot be undone from the console.',
+                requiresReason: true,
             ),
             self::transition(
                 name: 'cancel',
@@ -51,6 +53,7 @@ final class ReservationWorkflowActions
                 icon: 'heroicon-o-x-circle',
                 color: 'danger',
                 confirmation: 'Cancellation releases all active allocations and cannot be undone from the console.',
+                requiresReason: true,
             ),
         ];
     }
@@ -62,6 +65,7 @@ final class ReservationWorkflowActions
         string $icon,
         string $color,
         ?string $confirmation = null,
+        bool $requiresReason = false,
     ): Action {
         $action = Action::make($name)
             ->label($label)
@@ -69,14 +73,28 @@ final class ReservationWorkflowActions
             ->color($color)
             ->authorize('transition')
             ->visible(fn (Reservation $record): bool => ReservationResource::canTransition($record, $status))
-            ->action(function (Reservation $record) use ($status, $label): void {
-                app(ReservationService::class)->transition($record, $status);
+            ->action(function (Reservation $record, array $data) use ($status, $label): void {
+                app(ReservationService::class)->transition(
+                    $record,
+                    $status,
+                    metadata: ['reason' => $data['reason'] ?? null],
+                );
 
                 Notification::make()
                     ->success()
                     ->title("Reservation updated: {$label}")
                     ->send();
             });
+
+        if ($requiresReason) {
+            $action->schema([
+                Textarea::make('reason')
+                    ->label($status === ReservationStatus::NoShow ? 'No-show reason' : 'Cancellation reason')
+                    ->required()
+                    ->maxLength(500)
+                    ->rows(3),
+            ]);
+        }
 
         if ($confirmation !== null) {
             $action

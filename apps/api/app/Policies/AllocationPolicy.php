@@ -7,6 +7,16 @@ use App\Models\User;
 
 class AllocationPolicy extends TenantPolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return $this->canView($user);
+    }
+
+    public function view(User $user, Allocation $allocation): bool
+    {
+        return $this->canView($user, $allocation);
+    }
+
     public function create(User $user): bool
     {
         return $this->canManageReservations($user) || $this->canScheduleOperations($user);

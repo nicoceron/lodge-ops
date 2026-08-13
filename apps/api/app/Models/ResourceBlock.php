@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
+ * @property string $reason
  * @property-read \App\Models\Resource $resource
  */
 class ResourceBlock extends TenantModel

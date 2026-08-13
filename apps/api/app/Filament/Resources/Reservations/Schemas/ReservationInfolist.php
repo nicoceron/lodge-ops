@@ -28,6 +28,8 @@ class ReservationInfolist
                         : 'Unassigned'),
                 TextEntry::make('starts_at')->label('Arrival')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
                 TextEntry::make('ends_at')->label('Departure')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                TextEntry::make('actual_start_at')->label('Checked in')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Not checked in'),
+                TextEntry::make('actual_end_at')->label('Checked out')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Not checked out'),
                 TextEntry::make('party')->state(fn (Reservation $record): string => "{$record->adults} adults · {$record->children} children"),
                 TextEntry::make('guests')
                     ->label('Guests')
@@ -38,6 +40,7 @@ class ReservationInfolist
                     ->columnSpanFull(),
                 TextEntry::make('source')->placeholder('Direct'),
                 TextEntry::make('notes')->placeholder('No stay notes')->columnSpanFull(),
+                TextEntry::make('closure_reason')->label('Cancellation / no-show reason')->placeholder('Not applicable')->columnSpanFull(),
             ]),
             Section::make('Folio summary')->columns(3)->schema([
                 TextEntry::make('subtotal_minor')->label('Subtotal')->money(fn (Reservation $record): string => $record->currency, divideBy: 100),

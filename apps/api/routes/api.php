@@ -81,6 +81,7 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('costs', [ExtendedOperationsController::class, 'storeCost'])->middleware('idempotent');
     Route::get('integrations', [ExtendedOperationsController::class, 'integrations']);
     Route::put('integrations', [ExtendedOperationsController::class, 'configureIntegration']);
+    Route::post('integrations/{integration}/test', [ExtendedOperationsController::class, 'testIntegration'])->middleware('idempotent');
     Route::get('organizations', [ExtendedOperationsController::class, 'organizations']);
     Route::post('organizations', [ExtendedOperationsController::class, 'storeOrganization'])->middleware('idempotent');
     Route::get('opportunities', [ExtendedOperationsController::class, 'opportunities']);

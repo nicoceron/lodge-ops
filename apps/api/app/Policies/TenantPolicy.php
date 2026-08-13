@@ -92,6 +92,18 @@ abstract class TenantPolicy
             && app(TenantContext::class)->membership()?->role->canManageSales() === true;
     }
 
+    protected function canViewRetail(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canViewRetail() === true;
+    }
+
+    protected function canManageRetail(User $user, ?TenantModel $model = null): bool
+    {
+        return $this->canView($user, $model)
+            && app(TenantContext::class)->membership()?->role->canManageRetail() === true;
+    }
+
     private function belongsToMembershipProperty(TenantModel $model, ?string $propertyId): bool
     {
         if ($propertyId === null) {
@@ -104,12 +116,21 @@ abstract class TenantPolicy
             return $recordPropertyId === null || $recordPropertyId === $propertyId;
         }
 
-        foreach (['reservation', 'resource', 'stockLocation', 'program', 'opportunity'] as $relationship) {
+        foreach ([
+            'reservation.property_id',
+            'resource.property_id',
+            'stockLocation.property_id',
+            'location.property_id',
+            'program.property_id',
+            'opportunity.property_id',
+            'sale.stockLocation.property_id',
+        ] as $propertyPath) {
+            $relationship = str($propertyPath)->before('.')->toString();
             if (! method_exists($model, $relationship)) {
                 continue;
             }
 
-            $recordPropertyId = data_get($model, $relationship.'.property_id');
+            $recordPropertyId = data_get($model, $propertyPath);
             if ($recordPropertyId !== null) {
                 return $recordPropertyId === $propertyId;
             }

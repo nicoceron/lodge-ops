@@ -708,6 +708,10 @@ paths:
                   minimum: 1
                   maximum: 1440
                   description: Optional hold lifetime; the tenant default is used when omitted.
+                reason:
+                  type: string
+                  maxLength: 500
+                  description: Required when cancelling a reservation or recording a no-show.
       responses:
         '200':
           description: Reservation moved through a permitted transition.
@@ -715,6 +719,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reservations/{reservation}/folio:
     get:
       tags: [Finance]
@@ -1103,6 +1108,18 @@ paths:
       requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{integration}/test:
+    post:
+      tags: [Integrations]
+      operationId: testIntegrationConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: integration, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /organizations:
     get:
@@ -1938,6 +1955,10 @@ components:
         source: { type: [string, 'null'] }
         starts_at: { type: string, format: date-time }
         ends_at: { type: string, format: date-time }
+        actual_start_at: { type: [string, 'null'], format: date-time }
+        actual_end_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        closure_reason: { type: [string, 'null'] }
         adults: { type: integer, minimum: 0 }
         children: { type: integer, minimum: 0 }
         currency: { type: string, pattern: '^[A-Z]{3}$' }

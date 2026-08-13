@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'mews' => [
+        'client' => env('MEWS_CLIENT_NAME', 'LodgeOps Connector 1.0'),
+    ],
+
 ];

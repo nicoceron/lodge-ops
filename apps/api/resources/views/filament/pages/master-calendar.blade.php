@@ -1,7 +1,35 @@
 <x-filament-panels::page>
     <div class="space-y-6">
         <x-filament::section>
-            <div class="grid gap-4 md:grid-cols-3">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-4 dark:border-white/10">
+                <div class="flex flex-wrap items-center gap-2">
+                    <x-filament::button type="button" wire:click="previousRange" wire:loading.attr="disabled" color="gray" size="sm" icon="heroicon-m-chevron-left">
+                        Previous
+                    </x-filament::button>
+                    <x-filament::button type="button" wire:click="goToToday" wire:loading.attr="disabled" color="gray" size="sm">
+                        Today
+                    </x-filament::button>
+                    <x-filament::button type="button" wire:click="nextRange" wire:loading.attr="disabled" color="gray" size="sm" icon-position="after" icon="heroicon-m-chevron-right">
+                        Next
+                    </x-filament::button>
+                </div>
+                <div class="flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/5" aria-label="Calendar range">
+                    @foreach ([7 => 'Week', 14 => '2 weeks', 30 => '30 days'] as $rangeOption => $label)
+                        <button
+                            type="button"
+                            wire:click="setRange({{ $rangeOption }})"
+                            wire:loading.attr="disabled"
+                            @class([
+                                'rounded-md px-3 py-1.5 text-xs font-semibold transition',
+                                'bg-white text-primary-700 shadow-sm dark:bg-white/10 dark:text-primary-300' => $rangeDays === $rangeOption,
+                                'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white' => $rangeDays !== $rangeOption,
+                            ])
+                        >{{ $label }}</button>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label class="space-y-1 text-sm font-medium">
                     <span>From</span>
                     <x-filament::input.wrapper>
@@ -12,6 +40,18 @@
                     <span>Through</span>
                     <x-filament::input.wrapper>
                         <x-filament::input type="date" wire:model.live="end" />
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Lens</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="lens">
+                            <option value="all">Everything</option>
+                            <option value="stays">Reservations</option>
+                            <option value="activities">Activities</option>
+                            <option value="tasks">Tasks</option>
+                            <option value="blocks">Resource blocks</option>
+                        </x-filament::input.select>
                     </x-filament::input.wrapper>
                 </label>
                 @if ($properties->isNotEmpty())
@@ -85,7 +125,80 @@
             </x-filament::section>
         </div>
 
-        <x-filament::section heading="Calendar overview" description="A property-local day grid. Multi-day stays appear on every day they occupy.">
+        @if ($resourceRows->isNotEmpty())
+            <x-filament::section
+                heading="Resource planner"
+                description="A live occupancy board for rooms, guides, vehicles, equipment, and protected blocks. Scroll horizontally to inspect the selected window."
+            >
+                <div class="hidden overflow-x-auto rounded-xl border border-gray-200 lg:block dark:border-white/10">
+                    <div
+                        class="grid"
+                        role="grid"
+                        aria-label="Resource allocation calendar"
+                        style="grid-template-columns: minmax(13rem, 16rem) repeat({{ $days->count() }}, minmax(7rem, 1fr)); min-width: {{ max(960, 240 + ($days->count() * 112)) }}px"
+                    >
+                        <div class="sticky left-0 z-20 border-b border-r border-gray-200 bg-gray-50 p-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-gray-900 dark:text-gray-400">
+                            Resource
+                        </div>
+                        @foreach ($days as $day)
+                            <div @class([
+                                'border-b border-r border-gray-200 p-3 text-center last:border-r-0 dark:border-white/10',
+                                'bg-primary-50 dark:bg-primary-950/20' => $day['date']->toDateString() === $today,
+                                'bg-gray-50 dark:bg-gray-900' => $day['date']->toDateString() !== $today,
+                            ])>
+                                <div class="text-[0.65rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $day['date']->format('D') }}</div>
+                                <div class="mt-0.5 text-sm font-bold">{{ $day['date']->format('M j') }}</div>
+                            </div>
+                        @endforeach
+
+                        @foreach ($resourceRows as $row)
+                            <div class="sticky left-0 z-10 border-b border-r border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <div class="truncate text-sm font-semibold">{{ $row['name'] }}</div>
+                                        <div class="mt-0.5 text-xs text-gray-500">{{ $row['code'] }} · capacity {{ $row['capacity'] }}</div>
+                                    </div>
+                                    <x-filament::badge :color="$row['is_buyout'] ? 'danger' : 'gray'" size="sm">{{ str($row['type'])->headline() }}</x-filament::badge>
+                                </div>
+                            </div>
+                            @foreach ($row['days'] as $resourceDay)
+                                <div @class([
+                                    'min-h-20 border-b border-r border-gray-200 p-1.5 last:border-r-0 dark:border-white/10',
+                                    'bg-primary-50/50 dark:bg-primary-950/10' => $resourceDay['date']->toDateString() === $today,
+                                ])>
+                                    <div class="space-y-1">
+                                        @foreach ($resourceDay['items'] as $item)
+                                            @php($itemClasses = 'block truncate rounded-md border-l-4 bg-gray-50 px-2 py-1.5 text-[0.7rem] leading-tight transition hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10')
+                                            @if ($item['url'])
+                                                <a
+                                                    href="{{ $item['url'] }}"
+                                                    wire:navigate
+                                                    class="{{ $itemClasses }}"
+                                                    style="border-left-color: {{ $item['color'] }}"
+                                                    title="{{ $item['label'] }} · {{ str($item['status'])->headline() }}"
+                                                >
+                                                    <span class="font-semibold">{{ $item['label'] }}</span>
+                                                    @if ($item['quantity'] > 1)<span class="text-gray-500"> ×{{ $item['quantity'] }}</span>@endif
+                                                </a>
+                                            @else
+                                                <div class="{{ $itemClasses }}" style="border-left-color: {{ $item['color'] }}" title="{{ $item['label'] }}">
+                                                    <span class="font-semibold">{{ $item['label'] }}</span>
+                                                </div>
+                                            @endif
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endforeach
+                        @endforeach
+                    </div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4 text-sm text-gray-600 lg:hidden dark:border-white/10 dark:text-gray-300">
+                    The compact day agenda below is optimized for this screen. Open the planner on a wider display for the full resource timeline.
+                </div>
+            </x-filament::section>
+        @endif
+
+        <x-filament::section heading="Calendar overview" description="A property-local day agenda for the selected lens. Multi-day stays appear on every day they occupy.">
             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 @foreach ($days as $day)
                     <div class="min-h-48 rounded-xl border border-gray-200 p-3 dark:border-white/10">

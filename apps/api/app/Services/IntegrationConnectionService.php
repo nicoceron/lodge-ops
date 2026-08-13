@@ -10,6 +10,10 @@ class IntegrationConnectionService
     /** @param array<string, mixed> $configuration */
     public function configure(string $name, string $type, array $configuration, ?string $secretReference): IntegrationConnection
     {
+        if (! array_key_exists($type, IntegrationConnection::TYPES)) {
+            throw new DomainException('Unsupported integration type.');
+        }
+
         array_walk_recursive($configuration, function (mixed $value, string|int $key): void {
             if (is_string($key) && preg_match('/secret|password|credential|private.?key|access.?token|api.?key/i', $key) === 1) {
                 throw new DomainException('Secrets must be stored in the external secret manager.');
@@ -18,6 +22,10 @@ class IntegrationConnectionService
 
         if ($secretReference !== null && preg_match('/^(vault|aws-sm|gcp-sm|azure-kv|secret|env):\/\/[A-Za-z0-9][A-Za-z0-9._\/-]*$/', $secretReference) !== 1) {
             throw new DomainException('Secret references must use an approved secret-manager URI.');
+        }
+
+        if ($type === 'mews' && ! in_array(data_get($configuration, 'environment', 'demo'), ['demo', 'production'], true)) {
+            throw new DomainException('Mews environment must be demo or production.');
         }
 
         return IntegrationConnection::query()->updateOrCreate(

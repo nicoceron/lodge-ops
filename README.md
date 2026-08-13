@@ -58,12 +58,14 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 ## What is implemented
 
 - A responsive Filament staff workspace for the unified calendar, reservations, CRM, operations, kitchen, finance, and configuration.
+- A responsive Livewire resource planner with week, two-week, and 30-day windows; room/resource lanes; availability blocks; operational lenses; and seeded stays, activities, and tasks.
 - A public-only Next.js website that links directly to Filament for sign-in and contains no tenant session, API proxy, or protected staff routes.
 - A Laravel-rendered mobile-first guest reservation center with itinerary, pre-arrival data, consent, waivers, payment evidence, final folio, and post-stay survey flows.
 - Native Filament authentication with verified-email enforcement, password recovery, TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and Sanctum bearer tokens for explicit API integrations.
-- Transaction-safe reservation confirmation, half-open allocation checks, service capacity, holds/status transitions, optimistic revisions, minor-unit money, payments, folio credits, and retry-safe commands.
+- Transaction-safe reservation confirmation, half-open allocation checks, service capacity, holds/status transitions, actual check-in/check-out facts, reasoned cancellation/no-show closure, optimistic revisions, minor-unit money, payments, folio credits, and retry-safe commands.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
+- A credential-safe Mews Connector boundary with demo/production host allowlisting, bounded 429/5xx retry behavior, a health-check action/API, and environment-backed secret references. Reservation synchronization remains opt-in until tenant credentials and source-of-truth mapping are supplied.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, tenant isolation, the complete guest workflow, and public-site browser journeys.
 
 ## Repository map
@@ -75,3 +77,14 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - `docker`: reproducible runtime images
 
 The source scrape used for product research is deliberately outside this repository and is never copied into builds, fixtures, or Git history.
+
+## Optional Mews demo connection
+
+Keep credentials outside the database and configure the seeded Mews connection with `env://MEWS_CREDENTIALS`:
+
+```dotenv
+MEWS_CLIENT_NAME=LodgeOps
+MEWS_CREDENTIALS={"client_token":"replace-me","access_token":"replace-me"}
+```
+
+Use **Configuration → Integration connections → Test connection** after setting the values. The application stores connection health and non-sensitive enterprise metadata only; it never persists or returns the tokens.

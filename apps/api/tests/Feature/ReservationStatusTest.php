@@ -40,10 +40,66 @@ class ReservationStatusTest extends TestCase
             'quantity' => 1,
         ]);
 
-        app(ReservationService::class)->transition($reservation, ReservationStatus::Cancelled);
+        app(ReservationService::class)->transition(
+            $reservation,
+            ReservationStatus::Cancelled,
+            metadata: ['reason' => 'Guest cancelled before arrival'],
+        );
 
-        $this->assertSame(ReservationStatus::Cancelled, $reservation->fresh()->status);
+        $cancelled = $reservation->fresh();
+        $this->assertSame(ReservationStatus::Cancelled, $cancelled->status);
+        $this->assertSame('Guest cancelled before arrival', $cancelled->closure_reason);
+        $this->assertNotNull($cancelled->cancelled_at);
         $this->assertSame(AllocationStatus::Released, $allocation->fresh()->status);
+    }
+
+    public function test_check_in_and_check_out_capture_actual_operating_times(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+        ]);
+
+        $checkedIn = app(ReservationService::class)->transition($reservation, ReservationStatus::CheckedIn);
+        $this->assertNotNull($checkedIn->actual_start_at);
+
+        $checkedOut = app(ReservationService::class)->transition($checkedIn, ReservationStatus::CheckedOut);
+        $this->assertNotNull($checkedOut->actual_end_at);
+        $this->assertTrue($checkedOut->actual_end_at->greaterThanOrEqualTo($checkedOut->actual_start_at));
+    }
+
+    public function test_no_show_requires_a_reason_and_releases_allocations(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $resource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+        ]);
+        $allocation = $reservation->allocations()->create([
+            'resource_id' => $resource->id,
+            'status' => AllocationStatus::Confirmed,
+            'starts_at' => now(),
+            'ends_at' => now()->addDay(),
+            'quantity' => 1,
+        ]);
+
+        try {
+            app(ReservationService::class)->transition($reservation, ReservationStatus::NoShow);
+            $this->fail('A no-show must have an auditable reason.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('A reason is required when cancelling a reservation or recording a no-show.', $exception->getMessage());
+        }
+
+        app(ReservationService::class)->transition(
+            $reservation,
+            ReservationStatus::NoShow,
+            metadata: ['reason' => 'Guest did not arrive'],
+        );
+
+        $this->assertSame(AllocationStatus::Released, $allocation->fresh()->status);
+        $this->assertSame('Guest did not arrive', $reservation->fresh()->closure_reason);
     }
 
     public function test_a_hold_reserves_capacity_and_expiry_releases_it_idempotently(): void

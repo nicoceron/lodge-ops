@@ -12,6 +12,10 @@ use LogicException;
 /**
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
+ * @property CarbonImmutable|null $actual_start_at
+ * @property CarbonImmutable|null $actual_end_at
+ * @property CarbonImmutable|null $cancelled_at
+ * @property string|null $closure_reason
  * @property string $property_id
  * @property string $currency
  * @property int $total_minor
@@ -40,6 +44,9 @@ class Reservation extends TenantModel
             'starts_at' => 'immutable_datetime',
             'ends_at' => 'immutable_datetime',
             'confirmed_at' => 'immutable_datetime',
+            'actual_start_at' => 'immutable_datetime',
+            'actual_end_at' => 'immutable_datetime',
+            'cancelled_at' => 'immutable_datetime',
             'hold_expires_at' => 'immutable_datetime',
             'adults' => 'integer',
             'children' => 'integer',

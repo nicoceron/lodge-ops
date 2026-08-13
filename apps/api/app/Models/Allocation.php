@@ -11,7 +11,9 @@ use LogicException;
  * @property AllocationStatus $status
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
+ * @property int $quantity
  * @property-read \App\Models\Resource|null $resource
+ * @property-read Reservation|null $reservation
  */
 class Allocation extends TenantModel
 {

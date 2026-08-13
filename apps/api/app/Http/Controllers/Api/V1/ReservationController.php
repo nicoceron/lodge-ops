@@ -150,12 +150,18 @@ class ReservationController extends Controller
         $validated = $request->validate([
             'status' => ['required', Rule::enum(ReservationStatus::class)],
             'hold_minutes' => ['sometimes', 'integer', 'min:1', 'max:1440'],
+            'reason' => ['nullable', 'string', 'max:500', Rule::requiredIf(fn (): bool => in_array(
+                $request->string('status')->toString(),
+                [ReservationStatus::Cancelled->value, ReservationStatus::NoShow->value],
+                true,
+            ))],
         ]);
 
         return new ReservationResource($service->transition(
             $reservation,
             ReservationStatus::from($validated['status']),
             $validated['hold_minutes'] ?? null,
+            ['reason' => $validated['reason'] ?? null],
         ));
     }
 

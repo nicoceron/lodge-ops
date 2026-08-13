@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ResourceType;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
@@ -14,6 +15,8 @@ use LogicException;
  * @property string $property_id
  * @property bool $is_active
  * @property array<string, mixed>|null $attributes
+ * @property-read Collection<int, Allocation> $allocations
+ * @property-read Collection<int, ResourceBlock> $blocks
  */
 class Resource extends TenantModel
 {

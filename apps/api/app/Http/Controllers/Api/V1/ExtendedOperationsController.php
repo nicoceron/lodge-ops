@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\IntegrationConnectionException;
 use App\Http\Controllers\Controller;
 use App\Models\CatalogItem;
 use App\Models\CostRecord;
@@ -17,6 +18,7 @@ use App\Models\StockMovement;
 use App\Services\FinancialReportingService;
 use App\Services\GuestMergeService;
 use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\IntegrationConnectionHealthService;
 use App\Services\OpportunityService;
 use App\Services\RetailPostingService;
 use App\Support\Tenancy\TenantContext;
@@ -169,13 +171,30 @@ class ExtendedOperationsController extends Controller
         abort_unless($context->membership()?->role->canManageConfiguration(), 403);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
-            'type' => ['required', Rule::in(['email', 'calendar', 'accounting', 'payment', 'signature', 'webhook'])],
+            'type' => ['required', Rule::in(array_keys(IntegrationConnection::TYPES))],
             'configuration' => ['sometimes', 'array'],
             'secret_reference' => ['nullable', 'string', 'max:500'],
         ]);
         $connection = $service->configure($data['name'], $data['type'], $data['configuration'] ?? [], $data['secret_reference'] ?? null);
 
         return response()->json(['data' => $connection->makeHidden('secret_reference')], 200);
+    }
+
+    public function testIntegration(
+        string $integration,
+        TenantContext $context,
+        IntegrationConnectionHealthService $health,
+    ): JsonResponse {
+        abort_unless($context->membership()?->role->canManageConfiguration(), 403);
+        $connection = IntegrationConnection::query()->findOrFail($integration);
+
+        try {
+            $tested = $health->test($connection);
+        } catch (IntegrationConnectionException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $tested->makeHidden('secret_reference')]);
     }
 
     public function organizations(TenantContext $context): JsonResponse

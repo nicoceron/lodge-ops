@@ -16,4 +16,14 @@ class PropertyPolicy extends TenantPolicy
     {
         return $this->canView($user, $property);
     }
+
+    public function create(User $user): bool
+    {
+        return $this->canManageConfiguration($user);
+    }
+
+    public function update(User $user, Property $property): bool
+    {
+        return $this->canManageConfiguration($user, $property);
+    }
 }

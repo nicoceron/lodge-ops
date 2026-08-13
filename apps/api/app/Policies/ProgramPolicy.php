@@ -16,4 +16,14 @@ class ProgramPolicy extends TenantPolicy
     {
         return $this->canView($user, $program);
     }
+
+    public function create(User $user): bool
+    {
+        return $this->canManageConfiguration($user);
+    }
+
+    public function update(User $user, Program $program): bool
+    {
+        return $this->canManageConfiguration($user, $program);
+    }
 }

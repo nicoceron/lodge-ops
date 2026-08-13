@@ -13,6 +13,7 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -28,8 +29,12 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('manage')
+            ->brandName('LodgeOps')
+            ->maxContentWidth(Width::Full)
             ->spa(hasPrefetching: true)
             ->unsavedChangesAlerts()
+            ->databaseTransactions()
+            ->strictAuthorization()
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->passwordReset()
@@ -47,10 +52,10 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 NavigationGroup::make()->label('Commercial'),
                 NavigationGroup::make()->label('Operations'),
-                NavigationGroup::make()->label('Sales & CRM'),
-                NavigationGroup::make()->label('Finance'),
-                NavigationGroup::make()->label('Guest experience'),
-                NavigationGroup::make()->label('Retail & Stock'),
+                NavigationGroup::make()->label('Sales & CRM')->collapsed(),
+                NavigationGroup::make()->label('Finance')->collapsed(),
+                NavigationGroup::make()->label('Guest experience')->collapsed(),
+                NavigationGroup::make()->label('Retail & Stock')->collapsed(),
                 NavigationGroup::make()->label('Setup')->collapsed(),
                 NavigationGroup::make()->label('Templates & Integrations')->collapsed(),
             ])

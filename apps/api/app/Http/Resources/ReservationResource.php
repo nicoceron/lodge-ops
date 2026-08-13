@@ -2,9 +2,16 @@
 
 namespace App\Http\Resources;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/**
+ * @property CarbonImmutable|null $actual_start_at
+ * @property CarbonImmutable|null $actual_end_at
+ * @property CarbonImmutable|null $cancelled_at
+ * @property string|null $closure_reason
+ */
 class ReservationResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -28,6 +35,10 @@ class ReservationResource extends JsonResource
             'revision' => $this->revision,
             'notes' => $this->notes,
             'confirmed_at' => $this->confirmed_at,
+            'actual_start_at' => $this->actual_start_at,
+            'actual_end_at' => $this->actual_end_at,
+            'cancelled_at' => $this->cancelled_at,
+            'closure_reason' => $this->closure_reason,
             'hold_expires_at' => $this->hold_expires_at,
             'primary_guest' => $this->whenLoaded('primaryGuest', fn () => new GuestResource($this->primaryGuest)),
             'program' => $this->whenLoaded('program', fn () => $this->program ? [
