@@ -68,6 +68,7 @@ class KitchenDashboard extends Page
             ->with([
                 'primaryGuest:id,preferences',
                 'guests:id,preferences',
+                'guestPortalProfiles:id,reservation_id,guest_id,preferences',
                 'property:id,name',
             ])
             ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
@@ -161,6 +162,8 @@ class KitchenDashboard extends Page
             'ends_at' => $reservation->ends_at->timezone($timezone),
             'party' => $reservation->adults + $reservation->children,
             'dietary' => $guests->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
+                ->concat($reservation->guestPortalProfiles
+                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
                 ->unique(fn (string $label): string => strtolower($label))
                 ->values()
                 ->all(),
@@ -171,8 +174,7 @@ class KitchenDashboard extends Page
     private function restrictions(Collection $reservations): array
     {
         return $reservations
-            ->flatMap(fn (Reservation $reservation) => $this->reservationGuests($reservation)
-                ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences)))
+            ->flatMap(fn (Reservation $reservation) => $this->reservationRestrictionLabels($reservation))
             ->countBy()
             ->map(fn (int $count, string $label): array => [
                 'label' => $label,
@@ -181,6 +183,29 @@ class KitchenDashboard extends Page
                     || str_contains(strtolower($label), 'celiac')
                     || str_contains(strtolower($label), 'severe'),
             ])
+            ->values()
+            ->all();
+    }
+
+    /** @return list<string> */
+    private function reservationRestrictionLabels(Reservation $reservation): array
+    {
+        $guests = $this->reservationGuests($reservation);
+        $knownGuestIds = $guests->pluck('id');
+        $guestLabels = $guests->flatMap(function (Guest $guest) use ($reservation): array {
+            return collect($this->dietaryLabels($guest->preferences))
+                ->concat($reservation->guestPortalProfiles
+                    ->where('guest_id', $guest->id)
+                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
+                ->unique(fn (string $label): string => strtolower($label))
+                ->values()
+                ->all();
+        });
+
+        return $guestLabels
+            ->concat($reservation->guestPortalProfiles
+                ->whereNotIn('guest_id', $knownGuestIds)
+                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
             ->values()
             ->all();
     }
@@ -204,6 +229,7 @@ class KitchenDashboard extends Page
 
         $values = collect([
             data_get($preferences, 'dietary'),
+            data_get($preferences, 'dietary_style'),
             data_get($preferences, 'dietary_requirements'),
             data_get($preferences, 'allergies'),
         ])->filter()->flatMap(function (mixed $value): array {

@@ -7,8 +7,10 @@ use App\Models\CatalogItem;
 use App\Models\CostRecord;
 use App\Models\Guest;
 use App\Models\IntegrationConnection;
+use App\Models\Membership;
 use App\Models\Opportunity;
 use App\Models\Organization;
+use App\Models\Program;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\RetailSale;
@@ -24,6 +26,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ExtendedOperationsController extends Controller
 {
@@ -79,6 +82,7 @@ class ExtendedOperationsController extends Controller
         ]);
         $item = CatalogItem::query()->findOrFail($data['catalog_item_id']);
         $location = StockLocation::query()->findOrFail($data['stock_location_id']);
+        $this->assertPropertyScope($context, $location->property_id);
         $quantity = sprintf('%d.%03d', intdiv($data['quantity_milli'], 1000), $data['quantity_milli'] % 1000);
         $movement = StockMovement::query()->firstOrCreate(
             ['reference' => $data['reference']],
@@ -109,7 +113,16 @@ class ExtendedOperationsController extends Controller
             'lines.*.quantity_milli' => ['required', 'integer', 'min:1'],
         ]);
         $location = StockLocation::query()->findOrFail($data['stock_location_id']);
+        $this->assertPropertyScope($context, $location->property_id);
         $reservation = isset($data['reservation_id']) ? Reservation::query()->findOrFail($data['reservation_id']) : null;
+        if ($reservation !== null) {
+            $this->assertPropertyScope($context, $reservation->property_id);
+            if ($reservation->property_id !== $location->property_id) {
+                throw ValidationException::withMessages([
+                    'reservation_id' => 'The reservation and stock location must belong to the same property.',
+                ]);
+            }
+        }
         $sale = $service->post($location, $data['reference'], $data['lines'], $reservation, $data['tax_minor'] ?? 0);
 
         return response()->json(['data' => $this->saleData($sale)], $sale->wasRecentlyCreated ? 201 : 200);
@@ -150,8 +163,25 @@ class ExtendedOperationsController extends Controller
             'occurred_at' => ['required', 'date'],
             'metadata' => ['sometimes', 'array'],
         ]);
-        if (isset($data['reservation_id'])) {
-            Reservation::query()->findOrFail($data['reservation_id']);
+        $reservation = isset($data['reservation_id']) ? Reservation::query()->findOrFail($data['reservation_id']) : null;
+        $program = isset($data['program_id']) ? Program::query()->findOrFail($data['program_id']) : null;
+        $staffMembership = isset($data['staff_user_id'])
+            ? Membership::query()->where('user_id', $data['staff_user_id'])->where('is_active', true)->firstOrFail()
+            : null;
+        $propertyIds = collect([
+            $reservation?->property_id,
+            $program?->property_id,
+            $staffMembership?->property_id,
+        ])->filter()->unique()->values();
+        $propertyIds->each(fn (string $propertyId) => $this->assertPropertyScope($context, $propertyId));
+        if ($propertyIds->count() > 1) {
+            throw ValidationException::withMessages([
+                'program_id' => 'Cost references must belong to the same property.',
+                'staff_user_id' => 'Cost references must belong to the same property.',
+            ]);
+        }
+        if ($propertyIds->isEmpty() && $context->propertyScopeId() !== null) {
+            abort(403, 'A property-scoped cost must reference a reservation, program, or staff member in that property.');
         }
 
         return response()->json(['data' => CostRecord::query()->create($data)], 201);
@@ -203,7 +233,9 @@ class ExtendedOperationsController extends Controller
     public function opportunities(TenantContext $context): JsonResponse
     {
         abort_unless($context->membership()?->role->canManageReservations(), 403);
+        $propertyScopeId = $context->propertyScopeId();
         $items = Opportunity::query()->with(['guest:id,first_name,last_name', 'organization:id,name', 'proposal:id,reference,version,status'])
+            ->when($propertyScopeId, fn ($query, $propertyId) => $query->where('property_id', $propertyId))
             ->orderByRaw("case stage when 'inquiry' then 1 when 'qualified' then 2 when 'proposal' then 3 when 'won' then 4 else 5 end")
             ->orderBy('expected_close_on')
             ->get();
@@ -225,6 +257,7 @@ class ExtendedOperationsController extends Controller
             'expected_close_on' => ['nullable', 'date'],
         ]);
         Property::query()->findOrFail($data['property_id']);
+        $this->assertPropertyScope($context, $data['property_id']);
         if (isset($data['guest_id'])) {
             Guest::query()->findOrFail($data['guest_id']);
         }
@@ -240,6 +273,7 @@ class ExtendedOperationsController extends Controller
     public function transitionOpportunity(Request $request, Opportunity $opportunity, TenantContext $context, OpportunityService $service): JsonResponse
     {
         abort_unless($context->membership()?->role->canManageReservations(), 403);
+        $this->assertPropertyScope($context, $opportunity->property_id);
         $data = $request->validate([
             'stage' => ['required', Rule::in(['qualified', 'proposal', 'won', 'lost'])],
             'lost_reason' => ['nullable', 'string', 'max:2000'],
@@ -276,5 +310,10 @@ class ExtendedOperationsController extends Controller
                 'amount_minor' => $line->amount_minor,
             ]),
         ];
+    }
+
+    private function assertPropertyScope(TenantContext $context, string $propertyId): void
+    {
+        abort_unless($context->canAccessProperty($propertyId), 403);
     }
 }

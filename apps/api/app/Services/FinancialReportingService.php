@@ -93,10 +93,8 @@ class FinancialReportingService
         $reservationIds = $reservations->pluck('id');
         $payments = Payment::query()
             ->with('reservation:id,property_id')
-            ->when($propertyId, fn (Builder $query) => $query->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId)))
             ->where('status', PaymentStatus::Succeeded)
-            ->where('processed_at', '>=', $startsAt)
-            ->where('processed_at', '<', $endsAt)
+            ->whereIn('reservation_id', $reservationIds)
             ->get(['id', 'reservation_id', 'currency', 'amount_minor', 'processed_at']);
         $costs = CostRecord::query()
             ->with(['reservation:id,property_id', 'program:id,property_id'])

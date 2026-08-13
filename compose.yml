@@ -69,11 +69,23 @@ services:
       - "${MAILPIT_SMTP_PORT:-1025}:1025"
       - "${MAILPIT_UI_PORT:-8025}:8025"
 
+  migrate:
+    <<: *api-common
+    command: php artisan migrate --force
+    restart: "no"
+
   api:
     <<: *api-common
     command: sh -lc 'rm -rf public/build && mkdir -p public/build && cp -R /opt/lodgeops-public-build/. public/build/ && exec php artisan serve --host=0.0.0.0 --port=8000 --no-reload'
     ports:
       - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8000/up >/dev/null 2>&1"]
       interval: 5s
@@ -84,10 +96,24 @@ services:
   worker:
     <<: *api-common
     command: php artisan queue:work --queue=critical,automations,default,notifications,integrations,reports --tries=3 --timeout=90
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   scheduler:
     <<: *api-common
     command: php artisan schedule:work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   web:
     build:

@@ -8,6 +8,7 @@ use App\Enums\FolioLineType;
 use App\Enums\HousekeepingStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
+use App\Enums\ProposalStatus;
 use App\Enums\ReservationStatus;
 use App\Enums\ResourceKind;
 use App\Enums\TaskStatus;
@@ -16,24 +17,31 @@ use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
 use App\Models\CommissionAccrual;
 use App\Models\CostRecord;
+use App\Models\CrmActivity;
 use App\Models\Deposit;
+use App\Models\ExchangeRate;
 use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\GuestPortalAccessToken;
 use App\Models\GuestPortalDocument;
+use App\Models\GuestPortalProfile;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
+use App\Models\Opportunity;
+use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Program;
 use App\Models\ProgramResourceRequirement;
 use App\Models\ProgramTaskTemplate;
 use App\Models\Property;
+use App\Models\Proposal;
 use App\Models\Reservation;
 use App\Models\ReservationNote;
 use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Models\ServiceOccurrence;
+use App\Models\Survey;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CalendarFeedService;
@@ -44,6 +52,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -54,6 +63,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (app()->environment('production') && ! filter_var(env('ALLOW_DEMO_SEEDING', false), FILTER_VALIDATE_BOOL)) {
+            throw new LogicException('Demo data seeding is disabled in production. Set ALLOW_DEMO_SEEDING=true only for an intentional demo environment.');
+        }
+
         DB::transaction(function (): void {
             $user = User::query()->updateOrCreate(
                 ['email' => 'admin@example.com'],
@@ -136,6 +149,7 @@ class DatabaseSeeder extends Seeder
             );
             $this->seedDemoOperations($property, $programs, $resources, $staff, $today);
             $this->seedDemoTrends($property, $programs, $resources, $staff, $today);
+            $this->seedDemoSalesAndGuestExperience($property, $programs, $staff, $reservation, $guest, $today);
             GuestPortalDocument::query()->firstOrCreate(
                 ['property_id' => $property->id, 'slug' => 'outdoor-waiver', 'version' => '1.0'],
                 [
@@ -399,6 +413,7 @@ class DatabaseSeeder extends Seeder
                 'total_minor' => 2_189_600,
                 'source' => 'Direct',
                 'confirmed_at' => $today->subDays(45),
+                'actual_start_at' => $today->subDay()->addHours(15),
             ],
         );
         $inHouse->allocations()->updateOrCreate(
@@ -599,11 +614,13 @@ class DatabaseSeeder extends Seeder
         $sources = ['Direct', 'Virtuoso', 'Summit Travel'];
         $dayOffsets = [2, 11, 20];
 
-        foreach (range(6, 0) as $monthsAgo) {
+        // Historical trend rows intentionally stop before the current month. Current
+        // operations above already occupy live inventory and should remain conflict-free.
+        foreach (range(7, 1) as $monthsAgo) {
             $month = $today->subMonths($monthsAgo)->startOfMonth();
 
             foreach ($dayOffsets as $index => $dayOffset) {
-                $sequence = ((6 - $monthsAgo) * count($dayOffsets)) + $index + 1;
+                $sequence = ((7 - $monthsAgo) * count($dayOffsets)) + $index + 1;
                 $startsAt = $month->addDays($dayOffset)->addHours(15);
                 $endsAt = $startsAt->addDays(2 + ($index % 2))->subHours(4);
                 $program = $programs[$programKeys[$index]];
@@ -623,7 +640,7 @@ class DatabaseSeeder extends Seeder
                         'property_id' => $property->id,
                         'program_id' => $program->id,
                         'primary_guest_id' => $guest->id,
-                        'status' => $endsAt->isPast() ? ReservationStatus::CheckedOut : ReservationStatus::Confirmed,
+                        'status' => ReservationStatus::CheckedOut,
                         'starts_at' => $startsAt,
                         'ends_at' => $endsAt,
                         'adults' => 2 + ($index % 2),
@@ -634,6 +651,8 @@ class DatabaseSeeder extends Seeder
                         'total_minor' => (int) round($total * 1.19),
                         'source' => $sources[$index],
                         'confirmed_at' => $startsAt->subDays(30),
+                        'actual_start_at' => $startsAt,
+                        'actual_end_at' => $endsAt,
                     ],
                 );
                 $reservation->allocations()->updateOrCreate(
@@ -696,27 +715,207 @@ class DatabaseSeeder extends Seeder
         }
     }
 
+    /**
+     * Seed enough connected commercial and guest-experience data for every demo
+     * module to tell a truthful story without requiring users to manufacture rows.
+     *
+     * @param  array<string, Program>  $programs
+     * @param  array<string, User>  $staff
+     */
+    private function seedDemoSalesAndGuestExperience(
+        Property $property,
+        array $programs,
+        array $staff,
+        Reservation $reservation,
+        Guest $guest,
+        CarbonImmutable $today,
+    ): void {
+        $organization = Organization::query()->updateOrCreate(
+            ['name' => 'Andes Signature Travel', 'type' => 'agency'],
+            [
+                'email' => 'partners@andessignature.example',
+                'phone' => '+54 9 11 5555 0142',
+                'commission_basis_points' => 1_000,
+                'metadata' => ['market' => 'Latin America', 'segment' => 'luxury leisure'],
+                'is_active' => true,
+            ],
+        );
+        $proposal = Proposal::query()->updateOrCreate(
+            ['reference' => 'Q-DEMO-001', 'version' => 1],
+            [
+                'reservation_id' => null,
+                'property_id' => $property->id,
+                'primary_guest_id' => $guest->id,
+                'starts_at' => $today->addDays(45)->addHours(15),
+                'ends_at' => $today->addDays(49)->addHours(11),
+                'adults' => 2,
+                'children' => 0,
+                'status' => ProposalStatus::Draft,
+                'currency' => 'USD',
+                'total_minor' => 1_487_500,
+                'tax_minor' => 237_500,
+                'snapshot' => [
+                    'title' => 'Private Patagonia return stay',
+                    'program_id' => $programs['stag']->id,
+                    'notes' => 'Agency-requested private guide and airport transfer.',
+                    'subtotal_minor' => 1_250_000,
+                    'lines' => [[
+                        'description' => 'Red Stag Hunting package',
+                        'quantity_thousandths' => 1_000,
+                        'unit_amount_minor' => 1_250_000,
+                    ]],
+                ],
+                'expires_at' => $today->addDays(14),
+                'created_by' => $staff['sales']->id,
+            ],
+        );
+        $opportunity = Opportunity::query()->updateOrCreate(
+            ['title' => 'Sofia Martinez · private return stay'],
+            [
+                'property_id' => $property->id,
+                'guest_id' => $guest->id,
+                'organization_id' => $organization->id,
+                'proposal_id' => $proposal->id,
+                'owner_id' => $staff['sales']->id,
+                'stage' => 'proposal',
+                'source' => 'Agency referral',
+                'currency' => 'USD',
+                'value_minor' => 1_487_500,
+                'expected_close_on' => $today->addDays(10),
+                'lost_reason' => null,
+            ],
+        );
+        CrmActivity::query()->updateOrCreate(
+            ['opportunity_id' => $opportunity->id, 'subject' => 'Review private-guide proposal with agency'],
+            [
+                'guest_id' => $guest->id,
+                'actor_id' => $staff['sales']->id,
+                'type' => 'call',
+                'body' => 'Confirm guest dates, transfer window, and preferred guide before acceptance.',
+                'due_at' => $today->addDays(2)->addHours(14),
+                'completed_at' => null,
+            ],
+        );
+
+        GuestPortalProfile::query()->updateOrCreate(
+            ['reservation_id' => $reservation->id, 'guest_id' => $guest->id],
+            [
+                'profile' => ['first_name' => 'Sofia', 'last_name' => 'Martinez', 'language' => 'es'],
+                'travel' => ['arrival_method' => 'flight', 'arrival_reference' => 'AR 1890'],
+                'preferences' => [
+                    'dietary' => ['Vegetarian'],
+                    'allergies' => ['Severe nut allergy'],
+                    'dietary_style' => 'Vegetarian',
+                    'activities' => ['horseback riding'],
+                ],
+                'consented_at' => $today->subDay(),
+            ],
+        );
+        Survey::query()->updateOrCreate(
+            ['reservation_id' => $reservation->id, 'guest_id' => $guest->id, 'kind' => 'pre_arrival'],
+            [
+                'score' => 5,
+                'answers' => ['priority' => 'Quiet stay and guided horseback ride', 'contact_preference' => 'email'],
+                'sent_at' => $today->subDays(3),
+                'responded_at' => $today->subDay(),
+            ],
+        );
+
+        ExchangeRate::query()->firstOrCreate(
+            [
+                'property_id' => $property->id,
+                'base_currency' => 'ARS',
+                'quote_currency' => 'USD',
+                'effective_at' => $today->startOfYear(),
+            ],
+            ['rate' => '0.0011000000', 'source' => 'Demo accounting snapshot'],
+        );
+
+        $arsStartsAt = $today->subMonths(8)->startOfMonth()->addDays(10)->addHours(15);
+        $arsEndsAt = $arsStartsAt->addDays(3)->subHours(4);
+        $arsReservation = Reservation::query()->updateOrCreate(
+            ['confirmation_number' => 'RSV-DEMO-ARS'],
+            [
+                'property_id' => $property->id,
+                'program_id' => $programs['stay']->id,
+                'primary_guest_id' => $guest->id,
+                'status' => ReservationStatus::CheckedOut,
+                'starts_at' => $arsStartsAt,
+                'ends_at' => $arsEndsAt,
+                'adults' => 2,
+                'children' => 0,
+                'currency' => 'ARS',
+                'subtotal_minor' => 95_000_000,
+                'tax_minor' => 18_050_000,
+                'total_minor' => 113_050_000,
+                'source' => 'Direct Argentina',
+                'confirmed_at' => $arsStartsAt->subDays(30),
+                'actual_start_at' => $arsStartsAt,
+                'actual_end_at' => $arsEndsAt,
+            ],
+        );
+        $arsReservation->allocations()->updateOrCreate(
+            ['resource_id' => Resource::query()->where('code', '101')->firstOrFail()->id],
+            [
+                'status' => AllocationStatus::Confirmed,
+                'starts_at' => $arsStartsAt,
+                'ends_at' => $arsEndsAt,
+                'quantity' => 1,
+            ],
+        );
+        $arsPayment = Payment::query()->updateOrCreate(
+            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-ARS-PAID'],
+            [
+                'reservation_id' => $arsReservation->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'bank_transfer',
+                'currency' => 'ARS',
+                'amount_minor' => $arsReservation->total_minor,
+                'processed_at' => $arsEndsAt,
+                'metadata' => ['scenario' => 'multi_currency_demo'],
+            ],
+        );
+        app(FolioService::class)->postPayment($arsPayment, null);
+        app(FolioService::class)->close($arsReservation, null);
+        CostRecord::query()->updateOrCreate(
+            ['reservation_id' => $arsReservation->id, 'description' => 'ARS demo operating cost'],
+            [
+                'program_id' => $arsReservation->program_id,
+                'staff_user_id' => $staff['guide']->id,
+                'kind' => 'actual',
+                'category' => 'operations',
+                'currency' => 'ARS',
+                'amount_minor' => 28_000_000,
+                'occurred_at' => $arsEndsAt,
+            ],
+        );
+    }
+
     private function seedAutomation(): void
     {
         $rules = [
             ['name' => 'Reservation confirmation and private portal', 'trigger' => 'reservation.confirmed', 'actions' => [[
                 'type' => 'guest_portal_invitation',
+                'template_key' => 'confirmation',
                 'purpose' => 'pre_arrival',
                 'subject' => 'Your reservation {{reservation.confirmation_number}} is confirmed',
                 'body' => 'Your reservation is confirmed. Complete your travel details, documents, and payment evidence here: {{guest_portal.url}}',
             ]]],
             ['name' => 'Arrival preparation reminder', 'trigger' => 'reservation.arrival_approaching', 'actions' => [[
                 'type' => 'queue_communication',
+                'template_key' => 'arrival',
                 'subject' => 'Your lodge arrival is approaching',
                 'body' => 'Your arrival is {{payload.days_before}} day(s) away. Please review your travel details and contact us with any changes.',
             ]]],
             ['name' => 'Overdue deposit reminder', 'trigger' => 'deposit.overdue', 'actions' => [[
                 'type' => 'deposit_reminder',
+                'template_key' => 'payment',
                 'subject' => 'Reservation payment reminder',
                 'body' => 'A payment of {{deposit.amount_minor}} {{deposit.currency}} is overdue. Please reply with your bank transfer confirmation.',
             ]]],
             ['name' => 'Post-stay survey invitation', 'trigger' => 'reservation.checkout_completed', 'actions' => [[
                 'type' => 'guest_portal_invitation',
+                'template_key' => 'survey',
                 'purpose' => 'survey',
                 'subject' => 'How was your stay?',
                 'body' => 'Thank you for staying with us. Share your experience through your private reservation center: {{guest_portal.url}}',
@@ -731,20 +930,26 @@ class DatabaseSeeder extends Seeder
         }
 
         foreach ([
-            'confirmation' => ['Reservation confirmation', 'Your reservation is confirmed.'],
-            'payment' => ['Payment instructions', 'Please complete your bank transfer and upload the confirmation.'],
+            'confirmation' => ['Reservation confirmation', 'Your reservation {{reservation.confirmation_number}} is confirmed. Complete your travel details, documents, and payment evidence here: {{guest_portal.url}}'],
+            'payment' => ['Payment instructions', 'A payment of {{deposit.amount_minor}} {{deposit.currency}} is due. Please complete your bank transfer and upload the confirmation.'],
             'pre_arrival' => ['Pre-arrival recommendations', 'Review travel, clothing, and activity recommendations before departure.'],
-            'arrival' => ['Arrival instructions', 'Your transfer and check-in details are ready.'],
-            'survey' => ['Thank you and survey', 'Thank you for visiting. We would value your feedback.'],
+            'arrival' => ['Arrival instructions', 'Your arrival is {{payload.days_before}} day(s) away. Your transfer and check-in details are ready.'],
+            'survey' => ['Thank you and survey', 'Thank you for visiting. Share your feedback through your private reservation center: {{guest_portal.url}}'],
         ] as $key => [$name, $body]) {
             $template = MessageTemplate::query()->updateOrCreate(
                 ['key' => $key, 'channel' => 'email'],
                 ['name' => $name, 'is_active' => true],
             );
-            $template->versions()->updateOrCreate(
-                ['version' => 1],
-                ['language' => 'en', 'subject' => $name, 'body' => $body, 'published_at' => now()],
-            );
+            $currentVersion = $template->versions()->where('language', 'en')->latest('version')->first();
+            if ($currentVersion === null || $currentVersion->subject !== $name || $currentVersion->body !== $body) {
+                $template->versions()->create([
+                    'version' => ((int) $template->versions()->max('version')) + 1,
+                    'language' => 'en',
+                    'subject' => $name,
+                    'body' => $body,
+                    'published_at' => now(),
+                ]);
+            }
         }
     }
 }

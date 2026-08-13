@@ -22,7 +22,7 @@ class ResourceController extends Controller
     {
         $this->authorize('viewAny', Resource::class);
         $membership = app(TenantContext::class)->membership();
-        $membershipPropertyId = $membership?->property_id;
+        $membershipPropertyId = app(TenantContext::class)->propertyScopeId();
 
         $resources = Resource::query()
             ->with(['property', 'category'])
@@ -86,7 +86,6 @@ class ResourceController extends Controller
 
     private function assertMembershipProperty(string $propertyId): void
     {
-        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
-        abort_if($membershipPropertyId !== null && $membershipPropertyId !== $propertyId, 403);
+        abort_unless(app(TenantContext::class)->canAccessProperty($propertyId), 403);
     }
 }

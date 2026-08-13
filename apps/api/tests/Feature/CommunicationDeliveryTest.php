@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\PublishOutboxMessage;
 use App\Mail\CommunicationMail;
 use App\Models\Communication;
+use App\Models\CommunicationSuppression;
 use App\Models\Guest;
 use App\Models\Outbox;
 use App\Services\Automation\AutomationEngine;
@@ -72,6 +73,32 @@ class CommunicationDeliveryTest extends TestCase
         $this->expectExceptionMessage('No delivery adapter is configured');
 
         app(CommunicationDeliveryService::class)->deliver($communication);
+    }
+
+    public function test_delivery_rechecks_suppression_added_after_queueing(): void
+    {
+        $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create(['email' => 'late-suppression@example.com']);
+        $communication = Communication::query()->create([
+            'guest_id' => $guest->id,
+            'channel' => 'email',
+            'direction' => 'outbound',
+            'status' => 'queued',
+            'subject' => 'Must not send',
+            'body' => 'Must not send',
+        ]);
+        CommunicationSuppression::query()->create([
+            'channel' => 'email',
+            'recipient_hash' => hash('sha256', 'late-suppression@example.com'),
+            'reason' => 'unsubscribe',
+        ]);
+        Mail::fake();
+
+        app(CommunicationDeliveryService::class)->deliver($communication);
+
+        Mail::assertNothingSent();
+        $this->assertDatabaseHas('communications', ['id' => $communication->id, 'status' => 'suppressed']);
+        $this->assertDatabaseCount('delivery_attempts', 0);
     }
 
     public function test_communication_outbox_events_reach_the_delivery_adapter(): void

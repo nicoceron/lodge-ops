@@ -28,6 +28,22 @@ final class TenantContext
         return $this->membership;
     }
 
+    public function propertyScopeId(): ?string
+    {
+        if ($this->membership?->role->hasTenantWidePropertyAccess() === true) {
+            return null;
+        }
+
+        return $this->membership?->property_id;
+    }
+
+    public function canAccessProperty(string $propertyId): bool
+    {
+        $scopeId = $this->propertyScopeId();
+
+        return $scopeId === null || $scopeId === $propertyId;
+    }
+
     public function id(): ?string
     {
         return $this->tenant?->getKey();

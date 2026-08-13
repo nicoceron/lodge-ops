@@ -17,7 +17,7 @@ abstract class TenantPolicy
             && $membership->user_id === $user->id
             && $membership->is_active
             && ($model === null || $model->tenant_id === $context->id())
-            && ($model === null || $this->belongsToMembershipProperty($model, $membership->property_id));
+            && ($model === null || $this->belongsToMembershipProperty($model, $context->propertyScopeId()));
     }
 
     protected function canWrite(User $user, ?TenantModel $model = null): bool

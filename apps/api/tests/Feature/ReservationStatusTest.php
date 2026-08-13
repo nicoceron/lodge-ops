@@ -62,7 +62,7 @@ class ReservationStatusTest extends TestCase
             'status' => ReservationStatus::Confirmed,
         ]);
         $resource = Resource::factory()->create(['property_id' => $property->id]);
-        $reservation->allocations()->create([
+        $active = $reservation->allocations()->create([
             'resource_id' => $resource->id,
             'status' => AllocationStatus::Confirmed,
             'starts_at' => $reservation->starts_at,
@@ -196,5 +196,65 @@ class ReservationStatusTest extends TestCase
 
         $this->expectException(AllocationConflictException::class);
         app(ReservationService::class)->transition($candidate, ReservationStatus::Hold);
+    }
+
+    public function test_confirm_never_reactivates_a_released_allocation(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $activeResource = Resource::factory()->create(['property_id' => $property->id]);
+        $releasedResource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+        ]);
+        $active = $reservation->allocations()->create([
+            'resource_id' => $activeResource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+        $released = $reservation->allocations()->create([
+            'resource_id' => $releasedResource->id,
+            'status' => AllocationStatus::Released,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+
+        app(ReservationService::class)->confirm($reservation);
+
+        $this->assertSame(AllocationStatus::Confirmed, $active->fresh()->status);
+        $this->assertSame(AllocationStatus::Released, $released->fresh()->status);
+    }
+
+    public function test_hold_never_reactivates_a_released_allocation(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $activeResource = Resource::factory()->create(['property_id' => $property->id]);
+        $releasedResource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Draft,
+        ]);
+        $active = $reservation->allocations()->create([
+            'resource_id' => $activeResource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+        $released = $reservation->allocations()->create([
+            'resource_id' => $releasedResource->id,
+            'status' => AllocationStatus::Released,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+
+        app(ReservationService::class)->transition($reservation, ReservationStatus::Hold);
+
+        $this->assertSame(AllocationStatus::Tentative, $active->fresh()->status);
+        $this->assertSame(AllocationStatus::Released, $released->fresh()->status);
     }
 }

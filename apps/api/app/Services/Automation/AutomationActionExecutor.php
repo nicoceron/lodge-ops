@@ -6,10 +6,13 @@ use App\Enums\DepositStatus;
 use App\Models\AutomationRule;
 use App\Models\Communication;
 use App\Models\Deposit;
+use App\Models\Guest;
+use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
 use App\Models\Outbox;
 use App\Models\Reservation;
 use App\Services\GuestPortalTokenService;
+use App\Services\MessageTemplateService;
 use DomainException;
 
 class AutomationActionExecutor
@@ -19,6 +22,7 @@ class AutomationActionExecutor
         private readonly OutboxRecorder $outbox,
         private readonly GuestPortalTokenService $guestPortalTokens,
         private readonly InternalStaffNotificationService $internalStaffNotifications,
+        private readonly MessageTemplateService $messageTemplates,
     ) {}
 
     /**
@@ -85,12 +89,24 @@ class AutomationActionExecutor
     ): void {
         $automationKey = $this->automationKey($message, $rule, $actionIndex, 'communication');
 
+        if ($this->queueConfiguredTemplate($automationKey, $action, $context, $message, $rule, $actionIndex, 'communication')) {
+            return;
+        }
+
+        $guest = $this->guestForContext($context);
+        $channel = (string) ($action['channel'] ?? 'email');
+        if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel)) {
+            $this->recordSuppressed($automationKey, $guest, data_get($context, 'reservation.id'), $channel, $message, $rule, $actionIndex, 'communication');
+
+            return;
+        }
+
         $communication = Communication::query()->firstOrCreate(
             ['automation_key' => $automationKey],
             [
                 'guest_id' => data_get($context, 'reservation.primary_guest_id'),
                 'reservation_id' => data_get($context, 'reservation.id'),
-                'channel' => $action['channel'] ?? 'email',
+                'channel' => $channel,
                 'direction' => 'outbound',
                 'status' => 'queued',
                 'subject' => $this->renderer->render($action['subject'] ?? null, $context),
@@ -139,12 +155,26 @@ class AutomationActionExecutor
             ]];
             $automationKey = $this->automationKey($message, $rule, $actionIndex, 'deposit-reminder-'.$deposit->id);
 
+            if ($this->queueConfiguredTemplate($automationKey, $action, $depositContext, $message, $rule, $actionIndex, 'deposit_reminder')) {
+                continue;
+            }
+
+            $guest = $this->guestForContext($context);
+            $channel = (string) ($action['channel'] ?? 'email');
+            if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel)) {
+                $this->recordSuppressed($automationKey, $guest, $reservationId, $channel, $message, $rule, $actionIndex, 'deposit_reminder', [
+                    'deposit_id' => $deposit->id,
+                ]);
+
+                continue;
+            }
+
             $communication = Communication::query()->firstOrCreate(
                 ['automation_key' => $automationKey],
                 [
                     'guest_id' => data_get($context, 'reservation.primary_guest_id'),
                     'reservation_id' => $reservationId,
-                    'channel' => $action['channel'] ?? 'email',
+                    'channel' => $channel,
                     'direction' => 'outbound',
                     'status' => 'queued',
                     'subject' => $this->renderer->render($action['subject'] ?? 'Deposit reminder', $depositContext),
@@ -195,11 +225,37 @@ class AutomationActionExecutor
         if ($reservation->primaryGuest === null || ! $reservation->primaryGuest->email) {
             throw new DomainException('Guest portal invitations require a primary guest email address.');
         }
+        if ($this->messageTemplates->isSuppressed($reservation->primaryGuest, 'email')) {
+            $this->recordSuppressed(
+                $automationKey,
+                $reservation->primaryGuest,
+                $reservation->id,
+                'email',
+                $message,
+                $rule,
+                $actionIndex,
+                'guest_portal_invitation',
+            );
+
+            return;
+        }
 
         $access = $this->guestPortalTokens->issue($reservation, $reservation->primaryGuest);
         $url = rtrim((string) config('app.url'), '/')
             .'/guest/access/'.rawurlencode($access['token']);
         $invitationContext = [...$context, 'guest_portal' => ['url' => $url]];
+        if ($this->queueConfiguredTemplate(
+            $automationKey,
+            $action,
+            $invitationContext,
+            $message,
+            $rule,
+            $actionIndex,
+            'guest_portal_invitation',
+            ['guest_portal_access_id' => $access['access']->id, 'purpose' => $action['purpose'] ?? 'stay'],
+        )) {
+            return;
+        }
         $communication = Communication::query()->create([
             'automation_key' => $automationKey,
             'guest_id' => $reservation->primary_guest_id,
@@ -233,5 +289,103 @@ class AutomationActionExecutor
             'action_index' => $actionIndex,
             'action_type' => $type,
         ];
+    }
+
+    /** @param array<string, mixed> $action @param array<string, mixed> $context @param array<string, mixed> $extraMetadata */
+    private function queueConfiguredTemplate(
+        string $automationKey,
+        array $action,
+        array $context,
+        Outbox $message,
+        AutomationRule $rule,
+        int $actionIndex,
+        string $type,
+        array $extraMetadata = [],
+    ): bool {
+        $templateKey = $action['template_key'] ?? null;
+        if (! is_string($templateKey) || $templateKey === '') {
+            return false;
+        }
+
+        $channel = (string) ($action['channel'] ?? 'email');
+        $template = MessageTemplate::query()
+            ->where('key', $templateKey)
+            ->where('channel', $channel)
+            ->where('is_active', true)
+            ->firstOrFail();
+        $guest = $this->guestForContext($context);
+        if ($guest === null) {
+            throw new DomainException('Template automations require a guest recipient.');
+        }
+        $reservationId = data_get($context, 'reservation.id');
+        $reservation = is_string($reservationId) ? Reservation::query()->find($reservationId) : null;
+
+        try {
+            $communication = $this->messageTemplates->queue(
+                $template,
+                $guest,
+                (string) ($action['language'] ?? $guest->language ?? 'en'),
+                $automationKey,
+                $context,
+                $reservation,
+            );
+        } catch (DomainException $exception) {
+            if ($exception->getMessage() !== 'Communication to this recipient is suppressed.') {
+                throw $exception;
+            }
+            $this->recordSuppressed($automationKey, $guest, $reservation?->id, $channel, $message, $rule, $actionIndex, $type, $extraMetadata);
+
+            return true;
+        }
+
+        $communication->forceFill(['metadata' => [
+            ...($communication->metadata ?? []),
+            ...$this->metadata($message, $rule, $actionIndex, $type),
+            ...$extraMetadata,
+        ]])->save();
+
+        return true;
+    }
+
+    /** @param array<string, mixed> $context */
+    private function guestForContext(array $context): ?Guest
+    {
+        $guestId = data_get($context, 'reservation.primary_guest_id');
+
+        return is_string($guestId) ? Guest::query()->find($guestId) : null;
+    }
+
+    /** @param array<string, mixed> $extraMetadata */
+    private function recordSuppressed(
+        string $automationKey,
+        Guest $guest,
+        ?string $reservationId,
+        string $channel,
+        Outbox $message,
+        AutomationRule $rule,
+        int $actionIndex,
+        string $type,
+        array $extraMetadata = [],
+    ): void {
+        Communication::query()->firstOrCreate(
+            ['automation_key' => $automationKey],
+            [
+                'guest_id' => $guest->id,
+                'reservation_id' => $reservationId,
+                'channel' => $channel,
+                'direction' => 'outbound',
+                'status' => 'suppressed',
+                'subject' => null,
+                'body' => '',
+                'metadata' => [
+                    ...$this->metadata($message, $rule, $actionIndex, $type),
+                    ...$extraMetadata,
+                    'suppressed_at' => now()->toIso8601String(),
+                    'recipient_hash' => $this->messageTemplates->recipientHash(
+                        (string) $this->messageTemplates->recipient($guest, $channel),
+                    ),
+                ],
+            ],
+        );
     }
 }

@@ -21,11 +21,15 @@ logs:
 doctor:
 	docker compose config --quiet
 	docker compose ps
+	test "$$(docker compose ps --status running --services api)" = "api"
+	test "$$(docker inspect --format='{{.State.Health.Status}}' "$$(docker compose ps -q api)")" = "healthy"
+	test "$$(docker compose ps --status running --services web)" = "web"
+	test "$$(docker inspect --format='{{.State.Health.Status}}' "$$(docker compose ps -q web)")" = "healthy"
 	curl --fail --silent --show-error http://localhost:$${API_PORT:-8000}/up >/dev/null
 	curl --fail --silent --show-error http://localhost:$${API_PORT:-8000}/manage/login >/dev/null
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/css/filament/filament/app.css)" = "200"
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/js/filament/filament/app.js)" = "200"
-	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ >/dev/null
+	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | rg --quiet 'LodgeOps'
 	@echo "LodgeOps public site and Laravel/Filament application are reachable."
 
 build-api:

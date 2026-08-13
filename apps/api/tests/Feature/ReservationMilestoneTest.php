@@ -48,12 +48,19 @@ class ReservationMilestoneTest extends TestCase
         $this->artisan('reservation-milestones:dispatch', ['--at' => '2026-09-10T13:00:00Z'])
             ->expectsOutput('Dispatched 0 new reservation milestone event(s).')
             ->assertSuccessful();
+        $this->artisan('reservation-milestones:dispatch', ['--at' => '2026-09-15T16:00:00Z'])
+            ->expectsOutput('Dispatched 1 new reservation milestone event(s).')
+            ->assertSuccessful();
 
-        $this->assertSame(3, ReservationAutomationMilestone::withoutGlobalScopes()->count());
-        $this->assertSame(3, Outbox::withoutGlobalScopes()->count());
+        $this->assertSame(4, ReservationAutomationMilestone::withoutGlobalScopes()->count());
+        $this->assertSame(4, Outbox::withoutGlobalScopes()->count());
         $this->assertDatabaseHas('reservation_automation_milestones', [
             'reservation_id' => $arrival->id,
             'key' => 'arrival_7_day',
+        ]);
+        $this->assertDatabaseHas('reservation_automation_milestones', [
+            'reservation_id' => $arrival->id,
+            'key' => 'arrival_1_day',
         ]);
         $this->assertDatabaseHas('reservation_automation_milestones', [
             'reservation_id' => $departed->id,

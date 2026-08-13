@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\FolioLineType;
 use App\Enums\ProposalStatus;
 use App\Enums\ReservationStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
@@ -44,6 +45,7 @@ final class ProposalService
 
             $merged = [
                 'property_id' => $data['property_id'] ?? $locked->property_id,
+                'program_id' => $data['program_id'] ?? data_get($locked->snapshot, 'program_id'),
                 'primary_guest_id' => $data['primary_guest_id'] ?? $locked->primary_guest_id,
                 'starts_at' => $data['starts_at'] ?? $locked->starts_at,
                 'ends_at' => $data['ends_at'] ?? $locked->ends_at,
@@ -168,6 +170,7 @@ final class ProposalService
 
             $reservation = Reservation::query()->create([
                 'property_id' => $locked->property_id,
+                'program_id' => data_get($locked->snapshot, 'program_id'),
                 'primary_guest_id' => $locked->primary_guest_id,
                 'confirmation_number' => 'RSV-'.Str::upper((string) Str::ulid()),
                 'status' => ReservationStatus::Draft,
@@ -182,6 +185,48 @@ final class ProposalService
                 'total_minor' => $locked->total_minor,
                 'notes' => data_get($locked->snapshot, 'notes'),
             ]);
+
+            foreach (data_get($locked->snapshot, 'lines', []) as $index => $line) {
+                if (! is_array($line)) {
+                    continue;
+                }
+
+                app(FolioService::class)->append(
+                    reservation: $reservation,
+                    type: FolioLineType::Charge,
+                    description: (string) ($line['description'] ?? 'Proposal line'),
+                    quantityThousandths: (int) ($line['quantity_thousandths'] ?? 1000),
+                    unitAmountMinor: (int) ($line['unit_amount_minor'] ?? 0),
+                    actorId: null,
+                    metadata: [
+                        'source' => 'proposal',
+                        'proposal_id' => $locked->id,
+                        'proposal_reference' => $locked->reference,
+                        'proposal_version' => $locked->version,
+                        'proposal_line_index' => $index,
+                    ],
+                    includedInBookedTotal: true,
+                );
+            }
+            if ($locked->tax_minor > 0) {
+                app(FolioService::class)->append(
+                    reservation: $reservation,
+                    type: FolioLineType::Charge,
+                    description: 'Proposal tax',
+                    quantityThousandths: 1000,
+                    unitAmountMinor: 0,
+                    actorId: null,
+                    metadata: [
+                        'source' => 'proposal',
+                        'proposal_id' => $locked->id,
+                        'proposal_reference' => $locked->reference,
+                        'proposal_version' => $locked->version,
+                        'proposal_tax' => true,
+                    ],
+                    taxAmountMinor: $locked->tax_minor,
+                    includedInBookedTotal: true,
+                );
+            }
 
             $locked->update([
                 'reservation_id' => $reservation->id,
@@ -228,6 +273,7 @@ final class ProposalService
             'tax_minor' => $tax,
             'snapshot' => [
                 'schema_version' => 1,
+                'program_id' => $data['program_id'] ?? null,
                 'title' => $data['title'] ?? 'Lodge stay proposal',
                 'notes' => $data['notes'] ?? null,
                 'lines' => $lines->all(),

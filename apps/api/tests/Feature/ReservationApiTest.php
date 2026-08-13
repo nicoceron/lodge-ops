@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AllocationStatus;
+use App\Enums\ReservationStatus;
+use App\Models\Guest;
 use App\Models\Property;
 use App\Models\Reservation;
+use App\Models\ReservationGuest;
+use App\Models\Resource;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -91,5 +96,158 @@ class ReservationApiTest extends TestCase
         $this->assertSame($first->json('data.id'), $second->json('data.id'));
         $this->assertDatabaseCount('reservations', 1);
         $this->assertDatabaseCount('idempotency_keys', 1);
+    }
+
+    public function test_editing_primary_guest_keeps_the_guest_pivot_in_sync(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $previousPrimary = Guest::factory()->create();
+        $newPrimary = Guest::factory()->create();
+        $companion = Guest::factory()->create();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $previousPrimary->id,
+        ]);
+        foreach ([[$previousPrimary, 'primary'], [$companion, 'guest']] as [$guest, $role]) {
+            ReservationGuest::query()->create([
+                'reservation_id' => $reservation->id,
+                'guest_id' => $guest->id,
+                'role' => $role,
+            ]);
+        }
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson("/api/v1/reservations/{$reservation->id}", ['primary_guest_id' => $newPrimary->id])
+            ->assertOk();
+
+        $this->assertDatabaseHas('reservation_guests', [
+            'reservation_id' => $reservation->id,
+            'guest_id' => $newPrimary->id,
+            'role' => 'primary',
+        ]);
+        $this->assertDatabaseHas('reservation_guests', [
+            'reservation_id' => $reservation->id,
+            'guest_id' => $companion->id,
+            'role' => 'guest',
+        ]);
+        $this->assertDatabaseMissing('reservation_guests', [
+            'reservation_id' => $reservation->id,
+            'guest_id' => $previousPrimary->id,
+        ]);
+    }
+
+    public function test_editing_stay_dates_updates_full_stay_allocations_and_preserves_contained_activity_dates(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $stayResource = Resource::factory()->create(['property_id' => $property->id]);
+        $activityResource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Hold,
+            'hold_expires_at' => now()->addHour(),
+            'starts_at' => '2026-09-10T15:00:00Z',
+            'ends_at' => '2026-09-14T11:00:00Z',
+        ]);
+        $stay = $reservation->allocations()->create([
+            'resource_id' => $stayResource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+        $activity = $reservation->allocations()->create([
+            'resource_id' => $activityResource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => '2026-09-12T09:00:00Z',
+            'ends_at' => '2026-09-12T12:00:00Z',
+            'quantity' => 1,
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson("/api/v1/reservations/{$reservation->id}", [
+                'starts_at' => '2026-09-11T15:00:00Z',
+                'ends_at' => '2026-09-15T11:00:00Z',
+            ])->assertOk();
+
+        $this->assertSame('2026-09-11T15:00:00+00:00', $stay->fresh()->starts_at->toIso8601String());
+        $this->assertSame('2026-09-15T11:00:00+00:00', $stay->fresh()->ends_at->toIso8601String());
+        $this->assertSame('2026-09-12T09:00:00+00:00', $activity->fresh()->starts_at->toIso8601String());
+        $this->assertSame('2026-09-12T12:00:00+00:00', $activity->fresh()->ends_at->toIso8601String());
+    }
+
+    public function test_edit_rejects_property_changes_when_allocations_exist(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $membership->update(['property_id' => null]);
+        app(TenantContext::class)->set($tenant, $membership->fresh());
+        $otherProperty = Property::factory()->create();
+        $resource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $allocation = $reservation->allocations()->create([
+            'resource_id' => $resource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson("/api/v1/reservations/{$reservation->id}", ['property_id' => $otherProperty->id])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('property_id');
+
+        $this->assertSame($property->id, $reservation->fresh()->property_id);
+        $this->assertDatabaseHas('allocations', [
+            'id' => $allocation->id,
+            'reservation_id' => $reservation->id,
+            'resource_id' => $resource->id,
+        ]);
+    }
+
+    public function test_edit_rejects_stay_dates_that_exclude_a_dated_allocation(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $resource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'starts_at' => '2026-09-10T15:00:00Z',
+            'ends_at' => '2026-09-14T11:00:00Z',
+        ]);
+        $allocation = $reservation->allocations()->create([
+            'resource_id' => $resource->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => '2026-09-11T09:00:00Z',
+            'ends_at' => '2026-09-11T12:00:00Z',
+            'quantity' => 1,
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson("/api/v1/reservations/{$reservation->id}", [
+                'starts_at' => '2026-09-12T15:00:00Z',
+                'ends_at' => '2026-09-15T11:00:00Z',
+            ])->assertUnprocessable()
+            ->assertJsonValidationErrors('starts_at');
+
+        $this->assertSame('2026-09-10T15:00:00+00:00', $reservation->fresh()->starts_at->toIso8601String());
+        $this->assertSame('2026-09-11T09:00:00+00:00', $allocation->fresh()->starts_at->toIso8601String());
+    }
+
+    public function test_partial_date_edit_cannot_invert_the_stay_interval(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'starts_at' => '2026-09-10T15:00:00Z',
+            'ends_at' => '2026-09-14T11:00:00Z',
+        ]);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson("/api/v1/reservations/{$reservation->id}", [
+                'starts_at' => '2026-09-15T15:00:00Z',
+            ])->assertUnprocessable()
+            ->assertJsonValidationErrors('ends_at');
+
+        $this->assertSame('2026-09-10T15:00:00+00:00', $reservation->fresh()->starts_at->toIso8601String());
+        $this->assertSame('2026-09-14T11:00:00+00:00', $reservation->fresh()->ends_at->toIso8601String());
     }
 }

@@ -10,7 +10,7 @@ use Filament\Tables\Table;
 
 class StaysRelationManager extends RelationManager
 {
-    protected static string $relationship = 'companionReservations';
+    protected static string $relationship = 'stays';
 
     protected static ?string $title = 'Recurring stay history';
 

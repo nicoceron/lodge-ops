@@ -4,6 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property array<string, mixed> $profile
+ * @property array<string, mixed> $travel
+ * @property array<string, mixed> $preferences
+ */
 class GuestPortalProfile extends TenantModel
 {
     protected function casts(): array

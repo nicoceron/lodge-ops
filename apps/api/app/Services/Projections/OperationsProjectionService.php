@@ -94,6 +94,7 @@ class OperationsProjectionService
             ->with([
                 'primaryGuest:id,first_name,last_name,preferences',
                 'guests:id,first_name,last_name,preferences',
+                'guestPortalProfiles:id,reservation_id,guest_id,preferences',
             ])
             ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->whereIn('status', $activeStatuses)
@@ -220,11 +221,7 @@ class OperationsProjectionService
         }
 
         if ($this->visibility->canSeeDietaryDetails()) {
-            $arrival['dietary'] = $this->reservationGuests($reservation)
-                ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
-                ->unique(fn (string $label) => strtolower($label))
-                ->values()
-                ->all();
+            $arrival['dietary'] = $this->reservationDietaryLabels($reservation);
         }
 
         return $arrival;
@@ -234,14 +231,47 @@ class OperationsProjectionService
     private function restrictions(Collection $reservations): array
     {
         return $reservations
-            ->flatMap(fn (Reservation $reservation) => $this->reservationGuests($reservation)
-                ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences)))
+            ->flatMap(fn (Reservation $reservation) => $this->reservationRestrictionLabels($reservation))
             ->countBy()
             ->map(fn (int $count, string $label): array => [
                 'label' => $label,
                 'count' => $count,
                 'serious' => str_contains(strtolower($label), 'allerg') || str_contains(strtolower($label), 'severe'),
             ])
+            ->values()
+            ->all();
+    }
+
+    /** @return list<string> */
+    private function reservationRestrictionLabels(Reservation $reservation): array
+    {
+        $knownGuestIds = $this->reservationGuests($reservation)->pluck('id');
+        $guestLabels = $this->reservationGuests($reservation)->flatMap(function (Guest $guest) use ($reservation): array {
+            return collect($this->dietaryLabels($guest->preferences))
+                ->concat($reservation->guestPortalProfiles
+                    ->where('guest_id', $guest->id)
+                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
+                ->unique(fn (string $label) => strtolower($label))
+                ->values()
+                ->all();
+        });
+
+        return $guestLabels
+            ->concat($reservation->guestPortalProfiles
+                ->whereNotIn('guest_id', $knownGuestIds)
+                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
+            ->values()
+            ->all();
+    }
+
+    /** @return list<string> */
+    private function reservationDietaryLabels(Reservation $reservation): array
+    {
+        return $this->reservationGuests($reservation)
+            ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
+            ->concat($reservation->guestPortalProfiles
+                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
+            ->unique(fn (string $label) => strtolower($label))
             ->values()
             ->all();
     }
@@ -265,6 +295,7 @@ class OperationsProjectionService
 
         $values = collect([
             data_get($preferences, 'dietary'),
+            data_get($preferences, 'dietary_style'),
             data_get($preferences, 'dietary_requirements'),
             data_get($preferences, 'allergies'),
         ])->filter()->flatMap(function (mixed $value): array {

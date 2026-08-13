@@ -50,7 +50,10 @@ class MessageTemplateResource extends TenantResource
             Section::make('Message template')->columns(2)->schema([
                 TextInput::make('name')->required()->maxLength(160),
                 TextInput::make('key')->required()->maxLength(80)->alphaDash(),
-                Select::make('channel')->options(['email' => 'Email', 'sms' => 'SMS', 'whatsapp' => 'WhatsApp'])->required(),
+                Select::make('channel')
+                    ->options(['email' => 'Email'])
+                    ->helperText('Email is the only configured delivery channel. Add an adapter before enabling another channel.')
+                    ->required(),
                 Toggle::make('is_active')->default(true),
             ]),
         ]);

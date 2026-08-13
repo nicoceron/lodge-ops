@@ -6,6 +6,7 @@ use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
 use App\Filament\Pages\KitchenDashboard;
 use App\Models\Guest;
+use App\Models\GuestPortalProfile;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Support\Tenancy\TenantContext;
@@ -41,12 +42,23 @@ class FilamentKitchenDashboardTest extends TestCase
             'last_name' => 'Kitchen Guest',
             'preferences' => ['dietary' => ['Celiac-safe']],
         ]);
-        Reservation::factory()->create([
+        $reservation = Reservation::factory()->create([
             'property_id' => $property->id,
             'primary_guest_id' => $guest->id,
             'status' => ReservationStatus::Confirmed,
             'starts_at' => '2026-08-12 07:00:00 UTC',
             'ends_at' => '2026-08-13 07:00:00 UTC',
+        ]);
+        GuestPortalProfile::query()->create([
+            'reservation_id' => $reservation->id,
+            'guest_id' => $guest->id,
+            'profile' => [],
+            'travel' => [],
+            'preferences' => [
+                'dietary_style' => 'Vegetarian',
+                'allergies' => 'Severe nut allergy',
+            ],
+            'consented_at' => now(),
         ]);
         Reservation::factory()->create([
             'property_id' => $property->id,
@@ -63,6 +75,8 @@ class FilamentKitchenDashboardTest extends TestCase
             ->assertSee('August 13, 2026')
             ->assertSee('America/Los_Angeles')
             ->assertSee('Celiac-safe')
+            ->assertSee('Vegetarian')
+            ->assertSee('Severe nut allergy')
             ->assertDontSee('Private Kitchen Guest');
     }
 

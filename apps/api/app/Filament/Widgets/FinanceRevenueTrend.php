@@ -36,7 +36,7 @@ class FinanceRevenueTrend extends ChartWidget
             'datasets' => [
                 [
                     'label' => 'Booked revenue',
-                    'data' => array_map(fn (array $month): float => $month['booked_minor'] / 100, $series),
+                    'data' => array_map(fn (array $month): ?float => $month['booked_minor'] === null ? null : $month['booked_minor'] / 100, $series),
                     'borderColor' => 'rgb(59, 130, 246)',
                     'backgroundColor' => 'rgba(59, 130, 246, 0.14)',
                     'fill' => true,
@@ -44,7 +44,7 @@ class FinanceRevenueTrend extends ChartWidget
                 ],
                 [
                     'label' => 'Cash collected',
-                    'data' => array_map(fn (array $month): float => $month['collected_minor'] / 100, $series),
+                    'data' => array_map(fn (array $month): ?float => $month['collected_minor'] === null ? null : $month['collected_minor'] / 100, $series),
                     'borderColor' => 'rgb(34, 197, 94)',
                     'backgroundColor' => 'rgba(34, 197, 94, 0.08)',
                     'fill' => true,

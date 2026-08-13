@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\AllocationStatus;
+use App\Enums\MembershipRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreServiceOccurrenceRequest;
 use App\Http\Requests\UpdateServiceOccurrenceRequest;
@@ -21,12 +22,20 @@ class ServiceOccurrenceController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', ServiceOccurrence::class);
-        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
+        $context = app(TenantContext::class);
+        $membershipPropertyId = $context->propertyScopeId();
+        $membership = $context->membership();
 
         return ServiceOccurrenceResource::collection(ServiceOccurrence::query()
             ->with('program')
             ->withSum(['allocations as allocated_quantity' => fn ($query) => $query->where('status', '!=', AllocationStatus::Released)], 'quantity')
             ->when($membershipPropertyId, fn ($query) => $query->where('property_id', $membershipPropertyId))
+            ->when($membership?->role === MembershipRole::Guide, fn ($query) => $query->whereHas(
+                'allocations',
+                fn ($allocation) => $allocation
+                    ->where('status', '!=', AllocationStatus::Released)
+                    ->whereHas('resource', fn ($resource) => $resource->where('user_id', $request->user()->id)),
+            ))
             ->when($request->query('property_id'), fn ($query, $id) => $query->where('property_id', $id))
             ->when($request->query('program_id'), fn ($query, $id) => $query->where('program_id', $id))
             ->when($request->query('from'), fn ($query, $from) => $query->where('ends_at', '>', $from))
@@ -73,7 +82,9 @@ class ServiceOccurrenceController extends Controller
         DB::transaction(function () use ($serviceOccurrence): void {
             $locked = ServiceOccurrence::query()->lockForUpdate()->findOrFail($serviceOccurrence->id);
             $locked->update(['is_cancelled' => true]);
-            $locked->allocations()->where('status', AllocationStatus::Tentative)->update(['status' => AllocationStatus::Released]);
+            $locked->allocations()
+                ->where('status', '!=', AllocationStatus::Released)
+                ->update(['status' => AllocationStatus::Released]);
         }, 3);
 
         return response()->noContent();
@@ -88,8 +99,7 @@ class ServiceOccurrenceController extends Controller
 
     private function assertMembershipProperty(string $propertyId): void
     {
-        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
-        if ($membershipPropertyId !== null && $membershipPropertyId !== $propertyId) {
+        if (! app(TenantContext::class)->canAccessProperty($propertyId)) {
             throw ValidationException::withMessages(['property_id' => 'The property is outside your active membership scope.']);
         }
     }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\CommunicationMail;
 use App\Models\Communication;
 use App\Models\DeliveryAttempt;
+use App\Models\Guest;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -12,6 +13,8 @@ use Throwable;
 
 class CommunicationDeliveryService
 {
+    public function __construct(private readonly MessageTemplateService $templates) {}
+
     public function deliver(Communication $communication): void
     {
         $prepared = DB::transaction(function () use ($communication): ?array {
@@ -31,6 +34,18 @@ class CommunicationDeliveryService
             $recipient = $locked->guest?->email;
             if (! is_string($recipient) || trim($recipient) === '') {
                 throw new DomainException('The communication recipient has no email address.');
+            }
+            $guest = $locked->guest;
+            if ($guest instanceof Guest && $this->templates->isSuppressed($guest, $locked->channel)) {
+                $locked->forceFill([
+                    'status' => 'suppressed',
+                    'metadata' => [
+                        ...($locked->metadata ?? []),
+                        'suppressed_at' => now()->toIso8601String(),
+                    ],
+                ])->save();
+
+                return null;
             }
 
             $lastAttempt = DeliveryAttempt::query()

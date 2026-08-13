@@ -6,6 +6,7 @@ use App\Enums\FolioLineType;
 use App\Enums\MembershipRole;
 use App\Exceptions\CommercialWorkflowException;
 use App\Models\Guest;
+use App\Models\Program;
 use App\Models\Proposal;
 use App\Models\Reservation;
 use App\Services\FolioService;
@@ -23,8 +24,19 @@ class CommercialWorkflowTest extends TestCase
     {
         [$tenant, $property] = $this->tenantEnvironment();
         $guest = Guest::factory()->create();
+        $program = Program::query()->create([
+            'property_id' => $property->id,
+            'name' => 'Patagonia family program',
+            'description' => 'A proposal-backed program.',
+            'default_duration_minutes' => 240,
+            'capacity' => 8,
+            'price_minor' => 100_000,
+            'currency' => 'USD',
+            'is_active' => true,
+        ]);
         $payload = [
             'property_id' => $property->id,
+            'program_id' => $program->id,
             'primary_guest_id' => $guest->id,
             'starts_at' => now()->addMonth()->toIso8601String(),
             'ends_at' => now()->addMonth()->addDays(4)->toIso8601String(),
@@ -90,6 +102,29 @@ class CommercialWorkflowTest extends TestCase
             'status' => 'accepted',
             'reservation_id' => $reservation['id'],
         ]);
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservation['id'],
+            'program_id' => $program->id,
+        ]);
+        $this->assertDatabaseHas('folio_lines', [
+            'reservation_id' => $reservation['id'],
+            'description' => 'Suite · four nights',
+            'gross_amount_minor' => 100_000,
+        ]);
+        $this->assertDatabaseHas('folio_lines', [
+            'reservation_id' => $reservation['id'],
+            'description' => 'Private transfer',
+            'gross_amount_minor' => 15_000,
+        ]);
+        $this->assertDatabaseHas('folio_lines', [
+            'reservation_id' => $reservation['id'],
+            'description' => 'Proposal tax',
+            'gross_amount_minor' => 19_000,
+        ]);
+        app(TenantContext::class)->set($tenant);
+        $converted = Reservation::query()->findOrFail($reservation['id']);
+        $this->assertSame(134_000, app(FolioService::class)->summary($converted)['balance_minor']);
+        $this->assertSame(0, app(FolioService::class)->summary($converted)['ledger_delta_minor']);
     }
 
     public function test_manual_payment_reconciliation_deposit_and_reversals_are_append_only(): void
@@ -169,7 +204,9 @@ class CommercialWorkflowTest extends TestCase
             1000,
             5000,
             auth()->id(),
+            ['included_in_booked_total' => true],
         );
+        $this->assertSame(5000 + $reservation->total_minor, app(FolioService::class)->summary($reservation)['balance_minor']);
 
         try {
             $line->update(['description' => 'Tampered']);

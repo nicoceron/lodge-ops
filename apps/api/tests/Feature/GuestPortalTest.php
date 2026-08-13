@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
 use App\Enums\FolioLineType;
+use App\Enums\PaymentStatus;
 use App\Models\Allocation;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -17,6 +18,7 @@ use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\Survey;
+use App\Services\FolioService;
 use App\Services\GuestPortalTokenService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -195,6 +197,45 @@ class GuestPortalTest extends TestCase
         $this->portalJson('POST', '/api/v1/guest-portal/survey', $session, $survey)->assertCreated();
         $this->portalJson('POST', '/api/v1/guest-portal/survey', $session, $survey)->assertConflict();
         $this->assertSame(1, Survey::withoutGlobalScopes()->where('kind', 'post_stay')->count());
+    }
+
+    public function test_portal_payment_readiness_uses_the_final_folio_balance_including_extras(): void
+    {
+        [$tenant, , , $reservation, , $magicToken] = $this->portalEnvironment();
+        app(TenantContext::class)->set($tenant);
+        $folios = app(FolioService::class);
+        $basePayment = Payment::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'bank_transfer',
+            'currency' => $reservation->currency,
+            'amount_minor' => $reservation->total_minor,
+            'processed_at' => now(),
+        ]);
+        $folios->postPayment($basePayment, null);
+        $folios->append($reservation, FolioLineType::Charge, 'Airport transfer', 1000, 5_000, null);
+        $session = $this->exchange($magicToken);
+
+        $this->portalGet('/api/v1/guest-portal/reservation', $session)
+            ->assertOk()
+            ->assertJsonPath('data.payment.balance_minor', 5_000)
+            ->assertJsonPath('data.readiness.payment', false);
+
+        app(TenantContext::class)->set($tenant);
+        $extraPayment = Payment::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'bank_transfer',
+            'currency' => $reservation->currency,
+            'amount_minor' => 5_000,
+            'processed_at' => now(),
+        ]);
+        $folios->postPayment($extraPayment, null);
+
+        $this->portalGet('/api/v1/guest-portal/reservation', $session)
+            ->assertOk()
+            ->assertJsonPath('data.payment.balance_minor', 0)
+            ->assertJsonPath('data.readiness.payment', true);
     }
 
     public function test_payment_evidence_rejects_disguised_and_oversized_files_without_storing_them(): void

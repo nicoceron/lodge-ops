@@ -6,9 +6,11 @@ use App\Enums\MembershipRole;
 use App\Jobs\PublishOutboxMessage;
 use App\Models\AutomationRule;
 use App\Models\Communication;
+use App\Models\CommunicationSuppression;
 use App\Models\Deposit;
 use App\Models\Guest;
 use App\Models\Membership;
+use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
 use App\Models\Outbox;
 use App\Models\Property;
@@ -288,6 +290,89 @@ class OutboxAutomationTest extends TestCase
             'subject' => 'Payment received',
             'status' => 'queued',
         ]);
+    }
+
+    public function test_configured_automation_uses_the_published_template_version(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create(['email' => 'templated@example.com', 'language' => 'en']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'confirmation_number' => 'TPL-100',
+        ]);
+        $template = MessageTemplate::query()->create([
+            'key' => 'arrival',
+            'name' => 'Arrival',
+            'channel' => 'email',
+            'is_active' => true,
+        ]);
+        $template->versions()->create([
+            'version' => 1,
+            'language' => 'en',
+            'subject' => 'Published arrival {{reservation.confirmation_number}}',
+            'body' => 'Published body for {{reservation.primary_guest.first_name}}',
+            'published_at' => now(),
+        ]);
+        AutomationRule::query()->create([
+            'name' => 'Templated arrival',
+            'trigger' => 'reservation.arrival_approaching',
+            'actions' => [[
+                'type' => 'queue_communication',
+                'template_key' => 'arrival',
+                'subject' => 'Ignored fallback subject',
+                'body' => 'Ignored fallback body',
+            ]],
+        ]);
+        $message = $this->outbox($reservation, 'reservation.arrival_approaching', [
+            'reservation_id' => $reservation->id,
+            'days_before' => 1,
+        ]);
+
+        Queue::fake();
+        app(TenantContext::class)->clear();
+        $this->process($tenant->id, $message->id);
+
+        $this->assertDatabaseHas('communications', [
+            'reservation_id' => $reservation->id,
+            'subject' => 'Published arrival TPL-100',
+            'body' => 'Published body for '.$guest->first_name,
+            'status' => 'queued',
+            'metadata->template_id' => $template->id,
+        ]);
+    }
+
+    public function test_automation_records_suppression_without_queueing_delivery(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create(['email' => 'suppressed@example.com']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+        ]);
+        CommunicationSuppression::query()->create([
+            'channel' => 'email',
+            'recipient_hash' => hash('sha256', 'suppressed@example.com'),
+            'reason' => 'unsubscribe',
+        ]);
+        AutomationRule::query()->create([
+            'name' => 'Suppressed update',
+            'trigger' => 'reservation.status_changed',
+            'actions' => [['type' => 'queue_communication', 'subject' => 'Do not send', 'body' => 'Do not send']],
+        ]);
+        $message = $this->outbox($reservation, 'reservation.status_changed', [
+            'reservation_id' => $reservation->id,
+        ]);
+
+        Queue::fake();
+        app(TenantContext::class)->clear();
+        $this->process($tenant->id, $message->id);
+
+        $this->assertDatabaseHas('communications', [
+            'reservation_id' => $reservation->id,
+            'status' => 'suppressed',
+        ]);
+        $this->assertSame(0, Outbox::withoutGlobalScopes()->where('event_type', 'communication.queued')->count());
     }
 
     /** @param array<string, mixed> $payload */

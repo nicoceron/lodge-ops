@@ -15,6 +15,8 @@ use App\Filament\Resources\FolioLines\FolioLineResource;
 use App\Filament\Resources\GeneratedDocuments\GeneratedDocumentResource;
 use App\Filament\Resources\Guests\GuestResource;
 use App\Filament\Resources\Guests\Pages\CreateGuest;
+use App\Filament\Resources\Guests\Pages\ViewGuest;
+use App\Filament\Resources\Guests\RelationManagers\StaysRelationManager;
 use App\Filament\Resources\IntegrationConnections\IntegrationConnectionResource;
 use App\Filament\Resources\MessageTemplates\MessageTemplateResource;
 use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
@@ -35,13 +37,16 @@ use App\Filament\Resources\StockLocations\StockLocationResource;
 use App\Filament\Resources\TeamMembers\TeamMemberResource;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Guest;
+use App\Models\Program;
 use App\Models\Property;
+use App\Models\Proposal;
 use App\Models\Reservation;
 use App\Models\StockLocation;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -92,6 +97,75 @@ class FilamentResourcesTest extends TestCase
             'tenant' => $tenant,
             'record' => $otherGuest,
         ]))->assertNotFound();
+    }
+
+    public function test_program_and_property_edit_pages_render_under_strict_authorization(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(authenticate: false);
+        $program = Program::query()->create([
+            'property_id' => $property->id,
+            'name' => 'Editable program',
+            'default_duration_minutes' => 60,
+            'capacity' => 4,
+            'currency' => 'USD',
+            'price_minor' => 10_000,
+            'requires_accommodation' => false,
+            'is_active' => true,
+        ]);
+        $this->actingAs($user);
+
+        $this->get(ProgramResource::getUrl('edit', ['tenant' => $tenant, 'record' => $program]))
+            ->assertOk();
+        $this->get(PropertyResource::getUrl('edit', ['tenant' => $tenant, 'record' => $property]))
+            ->assertOk();
+    }
+
+    public function test_proposal_view_page_renders_the_pricing_snapshot(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(authenticate: false);
+        $proposal = Proposal::query()->create([
+            'reference' => 'Q-FILAMENT-VIEW',
+            'property_id' => $property->id,
+            'currency' => 'USD',
+            'total_minor' => 125_000,
+            'snapshot' => [
+                'title' => 'Regression proposal',
+                'subtotal_minor' => 125_000,
+            ],
+        ]);
+        $this->actingAs($user);
+
+        $this->get(ProposalResource::getUrl('view', ['tenant' => $tenant, 'record' => $proposal]))
+            ->assertOk()
+            ->assertSee('Regression proposal');
+    }
+
+    public function test_guest_stay_history_includes_primary_and_companion_reservations(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create();
+        $primaryStay = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'confirmation_number' => 'RSV-PRIMARY-STAY',
+        ]);
+        $companionStay = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'confirmation_number' => 'RSV-COMPANION-STAY',
+        ]);
+        $companionStay->guests()->attach($guest->id, [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'role' => 'companion',
+        ]);
+        $this->actingAs($user);
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        Filament::setTenant($tenant, isQuiet: true);
+
+        Livewire::test(StaysRelationManager::class, [
+            'ownerRecord' => $guest,
+            'pageClass' => ViewGuest::class,
+        ])->assertCanSeeTableRecords([$primaryStay, $companionStay]);
     }
 
     public function test_capabilities_control_each_operational_area(): void

@@ -10,6 +10,10 @@ class SingleAppArchitectureTest extends TestCase
     {
         $repository = dirname(base_path(), 2);
 
+        if (! is_dir($repository.'/apps/web')) {
+            $this->markTestSkipped('The monorepo source tree is not mounted in this runtime image.');
+        }
+
         $this->assertDirectoryExists($repository.'/apps/web');
         $this->assertFileExists($repository.'/apps/web/package.json');
         $this->assertFileExists($repository.'/docker/web.Dockerfile');

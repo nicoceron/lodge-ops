@@ -35,6 +35,7 @@ final class ProposalFormData
                 'expires_at',
             ]),
             'title' => data_get($proposal->snapshot, 'title'),
+            'program_id' => data_get($proposal->snapshot, 'program_id'),
             'notes' => data_get($proposal->snapshot, 'notes'),
             'lines' => collect(data_get($proposal->snapshot, 'lines', []))->map(fn (array $line): array => [
                 'description' => $line['description'],

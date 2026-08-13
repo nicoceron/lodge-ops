@@ -53,17 +53,12 @@ class MessageTemplateService
         array $context,
         ?Reservation $reservation = null,
     ): Communication {
-        $recipient = $template->channel === 'email' ? $guest->email : $guest->phone;
+        $recipient = $this->recipient($guest, $template->channel);
         if ($recipient === null || $recipient === '') {
             throw new DomainException('The guest has no recipient address for this channel.');
         }
-        $recipientHash = hash('sha256', mb_strtolower(trim($recipient)));
-        $suppressed = CommunicationSuppression::query()
-            ->where('channel', $template->channel)
-            ->where('recipient_hash', $recipientHash)
-            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
-            ->exists();
-        if ($suppressed) {
+        $recipientHash = $this->recipientHash($recipient);
+        if ($this->isSuppressed($guest, $template->channel)) {
             throw new DomainException('Communication to this recipient is suppressed.');
         }
 
@@ -104,5 +99,29 @@ class MessageTemplateService
 
             return $communication;
         });
+    }
+
+    public function isSuppressed(Guest $guest, string $channel): bool
+    {
+        $recipient = $this->recipient($guest, $channel);
+        if ($recipient === null || trim($recipient) === '') {
+            return false;
+        }
+
+        return CommunicationSuppression::query()
+            ->where('channel', $channel)
+            ->where('recipient_hash', $this->recipientHash($recipient))
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->exists();
+    }
+
+    public function recipient(Guest $guest, string $channel): ?string
+    {
+        return $channel === 'email' ? $guest->email : $guest->phone;
+    }
+
+    public function recipientHash(string $recipient): string
+    {
+        return hash('sha256', mb_strtolower(trim($recipient)));
     }
 }

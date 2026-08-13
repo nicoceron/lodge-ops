@@ -11,6 +11,7 @@ use App\Models\Program;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
 use App\Models\Resource;
+use App\Models\ServiceOccurrence;
 use App\Models\User;
 use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
@@ -131,6 +132,37 @@ class OperationalBookingCoreTest extends TestCase
 
         $this->withHeader('X-Tenant-ID', $tenant->id)->deleteJson("/api/v1/service-occurrences/{$occurrenceId}")->assertNoContent();
         $this->assertDatabaseHas('service_occurrences', ['id' => $occurrenceId, 'is_cancelled' => true]);
+    }
+
+    public function test_cancelling_an_occurrence_releases_every_active_allocation(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $program = $this->program($property->id);
+        $occurrence = ServiceOccurrence::query()->create([
+            'program_id' => $program->id,
+            'property_id' => $property->id,
+            'starts_at' => '2026-11-02T13:00:00Z',
+            'ends_at' => '2026-11-02T16:00:00Z',
+            'capacity' => 8,
+        ]);
+        $allocations = collect([AllocationStatus::Tentative, AllocationStatus::Confirmed, AllocationStatus::Released])
+            ->map(function (AllocationStatus $status) use ($occurrence, $property) {
+                $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+
+                return $reservation->allocations()->create([
+                    'service_occurrence_id' => $occurrence->id,
+                    'status' => $status,
+                    'starts_at' => $occurrence->starts_at,
+                    'ends_at' => $occurrence->ends_at,
+                    'quantity' => 1,
+                ]);
+            });
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->deleteJson("/api/v1/service-occurrences/{$occurrence->id}")
+            ->assertNoContent();
+
+        $allocations->each(fn ($allocation) => $this->assertSame(AllocationStatus::Released, $allocation->fresh()->status));
     }
 
     public function test_confirmation_enforces_program_ratio_and_full_stay_room_then_provisions_tasks_and_payment_schedule_once(): void

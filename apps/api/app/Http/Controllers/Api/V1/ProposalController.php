@@ -9,6 +9,7 @@ use App\Http\Resources\ProposalResource;
 use App\Http\Resources\ReservationResource;
 use App\Models\Proposal;
 use App\Services\ProposalService;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -22,6 +23,7 @@ class ProposalController extends Controller
 
         return ProposalResource::collection(Proposal::query()
             ->with(['property', 'primaryGuest', 'reservation'])
+            ->when(app(TenantContext::class)->propertyScopeId(), fn ($query, $propertyId) => $query->where('property_id', $propertyId))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('reference'), fn ($query, $reference) => $query->where('reference', $reference))
             ->latest()
@@ -31,6 +33,7 @@ class ProposalController extends Controller
     public function store(StoreProposalRequest $request): ProposalResource
     {
         $this->authorize('create', Proposal::class);
+        abort_unless(app(TenantContext::class)->canAccessProperty($request->validated('property_id')), 403);
 
         return new ProposalResource($this->service->createDraft($request->validated(), $request->user()->id));
     }
@@ -45,8 +48,10 @@ class ProposalController extends Controller
     public function update(UpdateProposalRequest $request, Proposal $proposal): ProposalResource
     {
         $this->authorize('update', $proposal);
+        $data = $request->validated();
+        abort_unless(app(TenantContext::class)->canAccessProperty($data['property_id'] ?? $proposal->property_id), 403);
 
-        return new ProposalResource($this->service->updateDraft($proposal, $request->validated()));
+        return new ProposalResource($this->service->updateDraft($proposal, $data));
     }
 
     public function send(Proposal $proposal): ProposalResource

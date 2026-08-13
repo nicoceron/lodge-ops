@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReservationRequest;
 use App\Http\Requests\UpdateReservationRequest;
 use App\Http\Resources\ReservationResource;
+use App\Models\Allocation;
 use App\Models\Program;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
 use App\Services\AllocationWorkflowService;
+use App\Services\AvailabilityService;
 use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Arr;
@@ -88,8 +92,11 @@ class ReservationController extends Controller
         return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor', 'noteTimeline.creator']));
     }
 
-    public function update(UpdateReservationRequest $request, Reservation $reservation): ReservationResource
-    {
+    public function update(
+        UpdateReservationRequest $request,
+        Reservation $reservation,
+        AvailabilityService $availability,
+    ): ReservationResource {
         $this->authorize('update', $reservation);
 
         if (! in_array($reservation->status, [ReservationStatus::Draft, ReservationStatus::Hold], true)) {
@@ -101,26 +108,96 @@ class ReservationController extends Controller
             throw ValidationException::withMessages(['If-Match' => 'The If-Match header must contain the observed numeric revision.']);
         }
 
-        $reservation = DB::transaction(function () use ($request, $reservation, $expectedRevision): Reservation {
+        $reservation = DB::transaction(function () use ($request, $reservation, $expectedRevision, $availability): Reservation {
             $locked = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if (! in_array($locked->status, [ReservationStatus::Draft, ReservationStatus::Hold], true)) {
+                throw ValidationException::withMessages(['status' => 'Only draft or held reservations may be edited.']);
+            }
             if ($expectedRevision !== null && (int) $expectedRevision !== $locked->revision) {
                 throw new ConflictHttpException('The reservation changed after it was loaded. Refresh and try again.');
             }
 
             $data = $request->validated();
             $guestIds = Arr::pull($data, 'guest_ids', null);
-            $this->assertMembershipProperty($data['property_id'] ?? $locked->property_id);
+            $originalPrimaryGuestId = $locked->primary_guest_id;
+            $originalStartsAt = $locked->starts_at;
+            $originalEndsAt = $locked->ends_at;
+            $propertyId = $data['property_id'] ?? $locked->property_id;
+            $startsAt = array_key_exists('starts_at', $data)
+                ? CarbonImmutable::parse($data['starts_at'])
+                : $originalStartsAt;
+            $endsAt = array_key_exists('ends_at', $data)
+                ? CarbonImmutable::parse($data['ends_at'])
+                : $originalEndsAt;
+            $allocations = Allocation::query()
+                ->where('reservation_id', $locked->id)
+                ->lockForUpdate()
+                ->get();
+
+            if ($startsAt->greaterThanOrEqualTo($endsAt)) {
+                throw ValidationException::withMessages([
+                    'ends_at' => 'The reservation end must be after its start.',
+                ]);
+            }
+            $this->assertMembershipProperty($propertyId);
+            if ($propertyId !== $locked->property_id && $allocations->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'property_id' => 'A reservation with allocation history cannot change property. Create a new reservation for the other property.',
+                ]);
+            }
             $this->assertProgramProperty(
                 $data['program_id'] ?? $locked->program_id,
-                $data['property_id'] ?? $locked->property_id,
+                $propertyId,
             );
+
+            $activeAllocations = $allocations->filter(
+                fn ($allocation): bool => $allocation->status !== AllocationStatus::Released,
+            );
+            $datesChanged = ! $startsAt->equalTo($originalStartsAt) || ! $endsAt->equalTo($originalEndsAt);
+            if ($datesChanged) {
+                foreach ($activeAllocations as $allocation) {
+                    $followsStayDates = $allocation->getAttribute('service_occurrence_id') === null
+                        && $allocation->starts_at->equalTo($originalStartsAt)
+                        && $allocation->ends_at->equalTo($originalEndsAt);
+                    if (! $followsStayDates && ($allocation->starts_at->lessThan($startsAt) || $allocation->ends_at->greaterThan($endsAt))) {
+                        throw ValidationException::withMessages([
+                            'starts_at' => 'The edited stay must continue to contain every dated allocation.',
+                        ]);
+                    }
+                }
+            }
             if (array_key_exists('subtotal_minor', $data) || array_key_exists('tax_minor', $data)) {
                 $data['total_minor'] = ($data['subtotal_minor'] ?? $locked->subtotal_minor) + ($data['tax_minor'] ?? $locked->tax_minor);
             }
             $data['revision'] = $locked->revision + 1;
             $locked->forceFill($data)->save();
 
-            if ($guestIds !== null) {
+            if ($datesChanged) {
+                foreach ($activeAllocations as $allocation) {
+                    if ($allocation->getAttribute('service_occurrence_id') !== null
+                        || ! $allocation->starts_at->equalTo($originalStartsAt)
+                        || ! $allocation->ends_at->equalTo($originalEndsAt)) {
+                        continue;
+                    }
+
+                    $allocation->forceFill(['starts_at' => $startsAt, 'ends_at' => $endsAt]);
+                    if ($locked->status === ReservationStatus::Hold) {
+                        $availability->assertAvailable($allocation);
+                    }
+                    $allocation->save();
+                }
+            }
+
+            $primaryGuestChanged = array_key_exists('primary_guest_id', $data)
+                && $locked->primary_guest_id !== $originalPrimaryGuestId;
+            if ($guestIds !== null || $primaryGuestChanged) {
+                if ($guestIds === null) {
+                    $guestIds = ReservationGuest::query()
+                        ->where('reservation_id', $locked->id)
+                        ->where('role', '!=', 'primary')
+                        ->pluck('guest_id')
+                        ->all();
+                }
                 $locked->guests()->detach();
                 foreach (array_values(array_unique(array_filter([...$guestIds, $locked->primary_guest_id]))) as $guestId) {
                     ReservationGuest::query()->create([

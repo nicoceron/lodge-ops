@@ -49,13 +49,22 @@ class DispatchReservationMilestones extends Command
                                 continue;
                             }
 
-                            if ($reservation->starts_at->greaterThan($now) && $reservation->starts_at->lessThanOrEqualTo($now->addDays(7))) {
-                                $daysBefore = $reservation->starts_at->lessThanOrEqualTo($now->addDay()) ? 1 : 7;
+                            if ($reservation->starts_at->greaterThan($now->addDay()) && $reservation->starts_at->lessThanOrEqualTo($now->addDays(7))) {
                                 $count += $this->record(
                                     $reservation,
-                                    "arrival_{$daysBefore}_day",
+                                    'arrival_7_day',
                                     'reservation.arrival_approaching',
-                                    ['reservation_id' => $reservation->id, 'days_before' => $daysBefore],
+                                    ['reservation_id' => $reservation->id, 'days_before' => 7],
+                                    $outbox,
+                                    $now,
+                                );
+                            }
+                            if ($reservation->starts_at->greaterThan($now) && $reservation->starts_at->lessThanOrEqualTo($now->addDay())) {
+                                $count += $this->record(
+                                    $reservation,
+                                    'arrival_1_day',
+                                    'reservation.arrival_approaching',
+                                    ['reservation_id' => $reservation->id, 'days_before' => 1],
                                     $outbox,
                                     $now,
                                 );

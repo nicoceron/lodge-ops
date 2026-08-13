@@ -42,7 +42,10 @@ class ReservationService
                 throw new InvalidStatusTransitionException($locked->status, ReservationStatus::Confirmed);
             }
 
-            $allocations = $locked->allocations()->lockForUpdate()->get();
+            $allocations = $locked->allocations()
+                ->where('status', '!=', AllocationStatus::Released)
+                ->lockForUpdate()
+                ->get();
 
             $this->programRequirements->assertSatisfied($locked);
 
@@ -101,7 +104,10 @@ class ReservationService
 
             $holdAllocations = collect();
             if ($next === ReservationStatus::Hold) {
-                $holdAllocations = $locked->allocations()->lockForUpdate()->get();
+                $holdAllocations = $locked->allocations()
+                    ->where('status', '!=', AllocationStatus::Released)
+                    ->lockForUpdate()
+                    ->get();
                 $this->programRequirements->assertSatisfied($locked);
                 foreach ($holdAllocations as $allocation) {
                     $allocation->status = AllocationStatus::Tentative;

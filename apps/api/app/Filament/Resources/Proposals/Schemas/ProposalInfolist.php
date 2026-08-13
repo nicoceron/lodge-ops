@@ -4,7 +4,6 @@ namespace App\Filament\Resources\Proposals\Schemas;
 
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\Proposal;
-use Filament\Infolists\Components\CodeEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -26,7 +25,13 @@ class ProposalInfolist
                 TextEntry::make('total_minor')->label('Total')->money(fn (Proposal $record): string => $record->currency, divideBy: 100)->weight('bold'),
             ]),
             Section::make('Immutable pricing snapshot')->description('This JSON is frozen when the proposal is sent.')->schema([
-                CodeEntry::make('snapshot')->hiddenLabel()->formatStateUsing(fn (array $state): string => json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))->language('json'),
+                TextEntry::make('snapshot')
+                    ->hiddenLabel()
+                    ->state(fn (Proposal $record): string => json_encode($record->snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
+                    ->copyable()
+                    ->extraAttributes([
+                        'style' => 'white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;',
+                    ]),
             ]),
         ]);
     }

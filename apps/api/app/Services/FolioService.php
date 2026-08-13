@@ -25,10 +25,15 @@ final class FolioService
         ?int $actorId,
         array $metadata = [],
         int $taxAmountMinor = 0,
+        bool $includedInBookedTotal = false,
     ): FolioLine {
         $this->assertOpen($reservation);
         if (! in_array($type, [FolioLineType::Charge, FolioLineType::Adjustment], true)) {
             throw new DomainException('Manual folio entries must be charges or adjustments.');
+        }
+        unset($metadata['included_in_booked_total']);
+        if ($includedInBookedTotal) {
+            $metadata['included_in_booked_total'] = true;
         }
 
         return $this->createLine(
@@ -99,8 +104,13 @@ final class FolioService
     /** @return array{status:string,booked_net_minor:int,booked_tax_minor:int,booked_total_minor:int,ledger_net_minor:int,ledger_tax_minor:int,ledger_gross_minor:int,ledger_delta_minor:int,balance_minor:int,closed_at:?string} */
     public function summary(Reservation $reservation): array
     {
-        $lines = $reservation->folioLines()->get(['net_amount_minor', 'tax_amount_minor', 'gross_amount_minor']);
+        $lines = $reservation->folioLines()->get(['net_amount_minor', 'tax_amount_minor', 'gross_amount_minor', 'metadata']);
         $gross = (int) $lines->sum('gross_amount_minor');
+        $includedInBookedTotal = (int) $lines
+            ->filter(fn ($line): bool => $line instanceof FolioLine
+                && data_get($line->metadata, 'included_in_booked_total') === true)
+            ->sum('gross_amount_minor');
+        $ledgerDelta = $gross - $includedInBookedTotal;
 
         return [
             'status' => ($reservation->folio_status ?? FolioStatus::Open)->value,
@@ -110,8 +120,8 @@ final class FolioService
             'ledger_net_minor' => (int) $lines->sum('net_amount_minor'),
             'ledger_tax_minor' => (int) $lines->sum('tax_amount_minor'),
             'ledger_gross_minor' => $gross,
-            'ledger_delta_minor' => $gross,
-            'balance_minor' => $reservation->total_minor + $gross,
+            'ledger_delta_minor' => $ledgerDelta,
+            'balance_minor' => $reservation->total_minor + $ledgerDelta,
             'closed_at' => $reservation->folio_closed_at?->toIso8601String(),
         ];
     }

@@ -33,6 +33,7 @@ use LogicException;
  * @property-read Collection<int, Allocation> $allocations
  * @property-read Collection<int, ReservationNote> $noteTimeline
  * @property-read Collection<int, ReservationStatusHistory> $statusHistory
+ * @property-read Collection<int, GuestPortalProfile> $guestPortalProfiles
  */
 class Reservation extends TenantModel
 {
@@ -147,6 +148,7 @@ class Reservation extends TenantModel
         return $this->hasMany(GuestPortalAccessToken::class);
     }
 
+    /** @return HasMany<GuestPortalProfile, $this> */
     public function guestPortalProfiles(): HasMany
     {
         return $this->hasMany(GuestPortalProfile::class);

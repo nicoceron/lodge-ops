@@ -94,4 +94,31 @@ enum MembershipRole: string
     {
         return in_array($this, [self::Administrator, self::Manager, self::Sales], true);
     }
+
+    public function hasTenantWidePropertyAccess(): bool
+    {
+        return in_array($this, [self::Administrator, self::Manager], true);
+    }
+
+    public function canViewResources(): bool
+    {
+        return in_array($this, [
+            self::Administrator,
+            self::Manager,
+            self::Sales,
+            self::Operations,
+            self::Guide,
+            self::Housekeeping,
+        ], true);
+    }
+
+    public function canViewPrograms(): bool
+    {
+        return in_array($this, [self::Administrator, self::Manager, self::Sales, self::Operations], true);
+    }
+
+    public function canViewServiceOccurrences(): bool
+    {
+        return in_array($this, [self::Administrator, self::Manager, self::Sales, self::Operations, self::Guide], true);
+    }
 }

@@ -1665,7 +1665,7 @@ components:
         links: { type: object, additionalProperties: true }
     Resource:
       type: object
-      required: [id, property_id, category_id, category_slug, name, code, kind, category, capacity, is_active]
+      required: [id, property_id, category_id, category_slug, name, code, kind, category, capacity, is_buyout, is_active]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
@@ -1683,6 +1683,8 @@ components:
             kind: { $ref: '#/components/schemas/ResourceKind' }
             counts_as_stay: { type: boolean }
         capacity: { type: integer, minimum: 1 }
+        user_id: { type: [integer, 'null'] }
+        is_buyout: { type: boolean }
         attributes: { type: [object, 'null'], additionalProperties: true }
         is_active: { type: boolean }
         housekeeping_status:
@@ -1691,15 +1693,24 @@ components:
             - type: 'null'
         housekeeping_updated_at: { type: [string, 'null'], format: date-time }
         housekeeping_updated_by: { type: [integer, 'null'] }
+        property:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     ResourceInput:
       type: object
       required: [property_id, name, code, category_id, capacity]
       properties:
         property_id: { type: string, format: uuid }
+        user_id: { type: [integer, 'null'] }
         name: { type: string }
         code: { type: string }
         category_id: { type: string, format: uuid }
         capacity: { type: integer, minimum: 1 }
+        is_buyout: { type: boolean }
         attributes: { type: [object, 'null'], additionalProperties: true }
         is_active: { type: boolean }
     ResourceEnvelope:
@@ -2349,18 +2360,28 @@ components:
         method: { type: string, enum: [bank_transfer, cash, card, other] }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
+        evidence_url: { type: [string, 'null'], format: uri }
+        evidence_note: { type: [string, 'null'] }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         amount_minor: { type: integer }
         processed_at: { type: [string, 'null'], format: date-time }
+        reconciled_at: { type: [string, 'null'], format: date-time }
+        reversed_at: { type: [string, 'null'], format: date-time }
+        reversal_reason: { type: [string, 'null'] }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+        created_at: { type: string, format: date-time }
     PaymentInput:
       type: object
       required: [reservation_id, method, amount_minor]
       properties:
         reservation_id: { type: string, format: uuid }
+        deposit_id: { type: [string, 'null'], format: uuid }
         method: { type: string, enum: [bank_transfer, cash, card, other] }
         amount_minor: { type: integer, minimum: 1 }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
+        evidence_url: { type: [string, 'null'], format: uri }
+        evidence_note: { type: [string, 'null'], maxLength: 5000 }
         captured: { type: boolean, default: false }
         metadata: { type: [object, 'null'], additionalProperties: true }
     PaymentEnvelope:

@@ -14,7 +14,7 @@ class ProgramController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Program::class);
-        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
+        $membershipPropertyId = app(TenantContext::class)->propertyScopeId();
 
         return ProgramResource::collection(Program::query()
             ->with('requirements.category')

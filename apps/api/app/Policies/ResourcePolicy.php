@@ -11,14 +11,21 @@ class ResourcePolicy extends TenantPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->canView($user);
+        return $this->canView($user)
+            && app(TenantContext::class)->membership()?->role->canViewResources() === true;
     }
 
     public function view(User $user, Resource $resource): bool
     {
-        return $this->canView($user, $resource)
+        return $this->viewAny($user)
+            && $this->canView($user, $resource)
             && (app(TenantContext::class)->membership()?->role !== MembershipRole::Guide
                 || $resource->user_id === $user->id);
+    }
+
+    public function suggest(User $user): bool
+    {
+        return $this->canManageReservations($user) || $this->canScheduleOperations($user);
     }
 
     public function create(User $user): bool

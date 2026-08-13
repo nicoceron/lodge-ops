@@ -10,6 +10,7 @@ use App\Enums\TaskStatus;
 use App\Models\CommissionAccrual;
 use App\Models\CostRecord;
 use App\Models\Guest;
+use App\Models\GuestPortalProfile;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Payment;
@@ -131,6 +132,8 @@ class ProjectionRoleAndReconciliationTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.currency', 'USD')
+            ->assertJsonPath('data.summary.available', true)
+            ->assertJsonPath('data.summary.source', 'native_fallback')
             ->assertJsonPath('data.summary.booked_revenue_minor', 100_000)
             ->assertJsonPath('data.summary.cash_collected_minor', 40_000)
             ->assertJsonPath('data.summary.receivables_minor', 60_000)
@@ -142,7 +145,14 @@ class ProjectionRoleAndReconciliationTest extends TestCase
             ->assertJsonPath('data.reconciliation.currency_policy', 'native_currency_only')
             ->assertJsonPath('data.reconciliation.difference_minor', 0)
             ->assertJsonPath('data.reconciliation.program_difference_minor', 0)
-            ->assertJsonPath('data.reconciliation.is_balanced', true);
+            ->assertJsonPath('data.reconciliation.is_balanced', true)
+            ->assertJsonPath('data.conversion.complete', false)
+            ->assertJsonPath('data.consolidated_totals.booked_revenue_minor', null)
+            ->assertJsonFragment([
+                'from_currency' => 'EUR',
+                'to_currency' => 'USD',
+                'status' => 'missing_rate',
+            ]);
 
         $programRows = collect($response->json('data.programs'));
         $this->assertSame([
@@ -192,6 +202,14 @@ class ProjectionRoleAndReconciliationTest extends TestCase
                 'updated_at' => now(),
             ]);
         }
+        GuestPortalProfile::query()->create([
+            'reservation_id' => $reservation->id,
+            'guest_id' => $primary->id,
+            'profile' => [],
+            'travel' => [],
+            'preferences' => ['allergies' => 'Severe nut allergy'],
+            'consented_at' => now(),
+        ]);
         OperationalTask::query()->create([
             'property_id' => $property->id,
             'title' => 'Prepare allergy-safe meal',
@@ -223,6 +241,7 @@ class ProjectionRoleAndReconciliationTest extends TestCase
             ->assertJsonFragment(['label' => 'Gluten-free', 'count' => 2])
             ->assertJsonFragment(['label' => 'Severe shellfish allergy', 'count' => 1, 'serious' => true])
             ->assertJsonFragment(['label' => 'Vegetarian', 'count' => 1])
+            ->assertJsonFragment(['label' => 'Severe nut allergy', 'count' => 1, 'serious' => true])
             ->assertJsonMissing(['title' => 'Turn over room'])
             ->assertDontSee('Private Primary');
     }

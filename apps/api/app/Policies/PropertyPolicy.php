@@ -26,4 +26,9 @@ class PropertyPolicy extends TenantPolicy
     {
         return $this->canManageConfiguration($user, $property);
     }
+
+    public function delete(User $user, Property $property): bool
+    {
+        return $this->canManageConfiguration($user, $property);
+    }
 }

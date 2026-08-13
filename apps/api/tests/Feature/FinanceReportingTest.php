@@ -102,6 +102,15 @@ class FinanceReportingTest extends TestCase
             'starts_at' => $periodStart->addDays(5)->utc(),
             'ends_at' => $periodStart->addDays(7)->utc(),
         ]);
+        $outsideReservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'confirmation_number' => 'FX-OUTSIDE',
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'USD',
+            'total_minor' => 99_000,
+            'starts_at' => $periodStart->addMonths(2)->utc(),
+            'ends_at' => $periodStart->addMonths(2)->addDays(2)->utc(),
+        ]);
         Payment::query()->create([
             'reservation_id' => $usdReservation->id,
             'status' => PaymentStatus::Succeeded,
@@ -118,6 +127,14 @@ class FinanceReportingTest extends TestCase
             'amount_minor' => 3_000,
             'processed_at' => $periodStart->addDays(5)->utc(),
         ]);
+        Payment::query()->create([
+            'reservation_id' => $outsideReservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'bank_transfer',
+            'currency' => 'USD',
+            'amount_minor' => 77_000,
+            'processed_at' => $periodStart->addDays(6)->utc(),
+        ]);
 
         $response = $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/finance?start=2026-08-01&end=2026-08-31&display_currency=ARS');
 
@@ -129,6 +146,12 @@ class FinanceReportingTest extends TestCase
             ->assertJsonPath('data.raw_totals.ARS.cash_collected_minor', 3_000)
             ->assertJsonPath('data.consolidated_totals.booked_revenue_minor', 10_020_000)
             ->assertJsonPath('data.consolidated_totals.cash_collected_minor', 2_003_000)
+            ->assertJsonPath('data.currency', 'ARS')
+            ->assertJsonPath('data.summary.booked_revenue_minor', 10_020_000)
+            ->assertJsonPath('data.summary.cash_collected_minor', 2_003_000)
+            ->assertJsonPath('data.summary.source', 'consolidated')
+            ->assertJsonPath('data.programs_by_currency.0.currency', 'ARS')
+            ->assertJsonPath('data.channels_by_currency.0.currency', 'ARS')
             ->assertJsonPath('data.conversion.complete', true)
             ->assertJsonFragment([
                 'from_currency' => 'USD',
@@ -306,7 +329,7 @@ class FinanceReportingTest extends TestCase
         $this->assertSame($queriesAfterFirstBuild, count(DB::getQueryLog()));
     }
 
-    public function test_finance_revenue_series_ends_at_the_selected_reporting_period(): void
+    public function test_finance_revenue_series_uses_the_same_stay_cohort_for_bookings_and_all_collections(): void
     {
         [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
         $tenant->update(['currency' => 'USD', 'timezone' => 'UTC']);
@@ -339,7 +362,7 @@ class FinanceReportingTest extends TestCase
 
         $this->assertSame(['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'], array_column($projection['revenue_series'], 'label'));
         $this->assertSame(100_000, $projection['revenue_series'][6]['booked_minor']);
-        $this->assertSame(40_000, $projection['revenue_series'][6]['collected_minor']);
+        $this->assertSame(100_000, $projection['revenue_series'][6]['collected_minor']);
 
         CarbonImmutable::setTestNow();
     }

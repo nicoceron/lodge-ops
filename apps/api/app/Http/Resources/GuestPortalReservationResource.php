@@ -4,9 +4,9 @@ namespace App\Http\Resources;
 
 use App\Enums\AllocationStatus;
 use App\Enums\FolioStatus;
-use App\Enums\PaymentStatus;
 use App\Models\Allocation;
 use App\Models\GuestPortalAccessToken;
+use App\Services\FolioService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -29,10 +29,7 @@ class GuestPortalReservationResource extends JsonResource
         $survey = $this->surveys
             ->where('guest_id', $access->guest_id)
             ->firstWhere('kind', 'post_stay');
-        $paymentsReceived = $this->payments
-            ->filter(fn ($payment): bool => $payment->status === PaymentStatus::Succeeded)
-            ->sum('amount_minor');
-        $balanceMinor = max(0, $this->total_minor - $paymentsReceived);
+        $balanceMinor = max(0, app(FolioService::class)->summary($this->resource)['balance_minor']);
         $stayAssignments = $this->allocations
             ->filter(fn ($allocation): bool => $allocation->status !== AllocationStatus::Released
                 && ($allocation->requestedCategory?->counts_as_stay === true || $allocation->resource?->countsAsStay() === true))

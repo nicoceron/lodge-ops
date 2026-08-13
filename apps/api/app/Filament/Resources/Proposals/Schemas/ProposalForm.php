@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Proposals\Schemas;
 
 use App\Filament\Support\LodgeOpsPresentation;
+use App\Models\Program;
 use App\Support\Tenancy\TenantContext;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Repeater;
@@ -10,6 +11,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class ProposalForm
@@ -30,6 +32,16 @@ class ProposalForm
                         ->label('Primary guest')
                         ->relationship('primaryGuest', 'first_name')
                         ->searchable(['first_name', 'last_name', 'email'])
+                        ->preload(),
+                    Select::make('program_id')
+                        ->label('Program')
+                        ->options(fn (Get $get): array => Program::query()
+                            ->when($get('property_id'), fn ($query, string $propertyId) => $query->where('property_id', $propertyId))
+                            ->where('is_active', true)
+                            ->orderBy('name')
+                            ->pluck('name', 'id')
+                            ->all())
+                        ->searchable()
                         ->preload(),
                     DateTimePicker::make('starts_at')
                         ->label('Arrival')

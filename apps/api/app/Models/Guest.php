@@ -26,6 +26,14 @@ class Guest extends TenantModel
             ->withTimestamps();
     }
 
+    public function stays(): HasMany
+    {
+        $guestId = $this->getKey();
+
+        return $this->hasMany(Reservation::class, 'primary_guest_id')
+            ->orWhereHas('guests', fn ($query) => $query->whereKey($guestId));
+    }
+
     public function communications(): HasMany
     {
         return $this->hasMany(Communication::class);
