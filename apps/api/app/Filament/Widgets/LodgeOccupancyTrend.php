@@ -9,9 +9,9 @@ use Filament\Widgets\ChartWidget;
 
 class LodgeOccupancyTrend extends ChartWidget
 {
-    protected ?string $heading = 'Room occupancy';
+    protected ?string $heading = 'Stay-place occupancy';
 
-    protected ?string $description = 'Rooms in use by day across the current 14-day operating window.';
+    protected ?string $description = 'Bookable stay places in use by day across the current 14-day operating window.';
 
     protected static ?int $sort = 3;
 

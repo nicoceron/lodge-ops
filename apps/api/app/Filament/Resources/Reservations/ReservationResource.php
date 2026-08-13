@@ -8,6 +8,7 @@ use App\Filament\Resources\Reservations\Pages\EditReservation;
 use App\Filament\Resources\Reservations\Pages\ListReservations;
 use App\Filament\Resources\Reservations\Pages\ViewReservation;
 use App\Filament\Resources\Reservations\RelationManagers\AllocationsRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\StatusHistoryRelationManager;
 use App\Filament\Resources\Reservations\Schemas\ReservationForm;
 use App\Filament\Resources\Reservations\Schemas\ReservationInfolist;
@@ -90,6 +91,7 @@ class ReservationResource extends TenantResource
     {
         return [
             AllocationsRelationManager::class,
+            NotesRelationManager::class,
             StatusHistoryRelationManager::class,
         ];
     }

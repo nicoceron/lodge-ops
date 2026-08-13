@@ -6,7 +6,6 @@ use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Models\CommissionAccrual;
 use App\Models\CostRecord;
@@ -263,13 +262,13 @@ class ProjectionRoleAndReconciliationTest extends TestCase
             'property_id' => $property->id,
             'user_id' => $guideUser->id,
             'name' => 'Linked Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
         ]);
         $otherResource = Resource::factory()->create([
             'property_id' => $property->id,
             'user_id' => $otherGuide->id,
             'name' => 'Other Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
         ]);
         $occurrenceStart = CarbonImmutable::now($tenant->timezone)->addDay()->startOfDay()->addHours(8)->utc();
         $linkedOccurrence = ServiceOccurrence::query()->create([

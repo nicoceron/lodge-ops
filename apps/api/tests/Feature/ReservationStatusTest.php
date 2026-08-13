@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
+use App\Enums\HousekeepingStatus;
 use App\Enums\ReservationStatus;
 use App\Exceptions\AllocationConflictException;
 use App\Exceptions\InvalidStatusTransitionException;
@@ -60,6 +61,14 @@ class ReservationStatusTest extends TestCase
             'property_id' => $property->id,
             'status' => ReservationStatus::Confirmed,
         ]);
+        $resource = Resource::factory()->create(['property_id' => $property->id]);
+        $reservation->allocations()->create([
+            'resource_id' => $resource->id,
+            'status' => AllocationStatus::Confirmed,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'quantity' => 1,
+        ]);
 
         $checkedIn = app(ReservationService::class)->transition($reservation, ReservationStatus::CheckedIn);
         $this->assertNotNull($checkedIn->actual_start_at);
@@ -67,6 +76,7 @@ class ReservationStatusTest extends TestCase
         $checkedOut = app(ReservationService::class)->transition($checkedIn, ReservationStatus::CheckedOut);
         $this->assertNotNull($checkedOut->actual_end_at);
         $this->assertTrue($checkedOut->actual_end_at->greaterThanOrEqualTo($checkedOut->actual_start_at));
+        $this->assertSame(HousekeepingStatus::Dirty, $resource->refresh()->housekeeping_status);
     }
 
     public function test_no_show_requires_a_reason_and_releases_allocations(): void

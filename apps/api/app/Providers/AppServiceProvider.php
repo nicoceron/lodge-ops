@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Allocation;
 use App\Models\AutomationRule;
+use App\Models\CalendarFeed;
 use App\Models\CatalogItem;
 use App\Models\CommissionAccrual;
 use App\Models\Communication;
@@ -30,8 +31,10 @@ use App\Models\Program;
 use App\Models\Property;
 use App\Models\ReportExport;
 use App\Models\Reservation;
+use App\Models\ReservationNote;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
+use App\Models\ResourceCategory;
 use App\Models\RetailSale;
 use App\Models\RetailSaleLine;
 use App\Models\StockLocation;
@@ -65,6 +68,7 @@ class AppServiceProvider extends ServiceProvider
             Allocation::class,
             AutomationRule::class,
             CatalogItem::class,
+            CalendarFeed::class,
             CommissionAccrual::class,
             Communication::class,
             CommunicationSuppression::class,
@@ -90,8 +94,10 @@ class AppServiceProvider extends ServiceProvider
             Property::class,
             ReportExport::class,
             Reservation::class,
+            ReservationNote::class,
             Resource::class,
             ResourceBlock::class,
+            ResourceCategory::class,
             RetailSale::class,
             RetailSaleLine::class,
             StockLocation::class,

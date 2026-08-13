@@ -54,6 +54,17 @@
                         </x-filament::input.select>
                     </x-filament::input.wrapper>
                 </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Kind</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="kind">
+                            <option value="all">All kinds</option>
+                            <option value="place">Places</option>
+                            <option value="asset">Assets</option>
+                            <option value="crew">Crew</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
                 @if ($properties->isNotEmpty())
                     <label class="space-y-1 text-sm font-medium">
                         <span>Property</span>
@@ -125,10 +136,10 @@
             </x-filament::section>
         </div>
 
-        @if ($resourceRows->isNotEmpty())
+        @if ($resourceGroups->isNotEmpty())
             <x-filament::section
                 heading="Resource planner"
-                description="A live occupancy board for rooms, guides, vehicles, equipment, and protected blocks. Scroll horizontally to inspect the selected window."
+                description="A live occupancy board grouped by place, asset, and crew. Category names come from this property’s catalog."
             >
                 <div class="hidden overflow-x-auto rounded-xl border border-gray-200 lg:block dark:border-white/10">
                     <div
@@ -151,14 +162,21 @@
                             </div>
                         @endforeach
 
-                        @foreach ($resourceRows as $row)
+                        @foreach ($resourceGroups as $group)
+                            <div class="sticky left-0 z-10 border-b border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-gray-900 dark:text-gray-400">
+                                {{ $group['label'] }}
+                            </div>
+                            <div class="border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-gray-900 dark:text-gray-400" style="grid-column: 2 / -1">
+                                {{ $group['rows']->count() }} {{ \Illuminate\Support\Str::plural('lane', $group['rows']->count()) }}
+                            </div>
+                            @foreach ($group['rows'] as $row)
                             <div class="sticky left-0 z-10 border-b border-r border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-gray-950">
                                 <div class="flex items-start justify-between gap-2">
                                     <div class="min-w-0">
                                         <div class="truncate text-sm font-semibold">{{ $row['name'] }}</div>
                                         <div class="mt-0.5 text-xs text-gray-500">{{ $row['code'] }} · capacity {{ $row['capacity'] }}</div>
                                     </div>
-                                    <x-filament::badge :color="$row['is_buyout'] ? 'danger' : 'gray'" size="sm">{{ str($row['type'])->headline() }}</x-filament::badge>
+                                    <x-filament::badge :color="$row['is_buyout'] ? 'danger' : 'gray'" size="sm">{{ $row['category'] }}</x-filament::badge>
                                 </div>
                             </div>
                             @foreach ($row['days'] as $resourceDay)
@@ -189,6 +207,7 @@
                                     </div>
                                 </div>
                             @endforeach
+                        @endforeach
                         @endforeach
                     </div>
                 </div>
@@ -228,7 +247,7 @@
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     @foreach ($resources as $resource)
                         <div class="rounded-lg border border-gray-200 p-3 dark:border-white/10">
-                            <div class="flex items-center justify-between gap-2"><span class="font-semibold">{{ $resource['name'] }}</span><x-filament::badge color="gray">{{ str($resource['type'])->headline() }}</x-filament::badge></div>
+                            <div class="flex items-center justify-between gap-2"><span class="font-semibold">{{ $resource['name'] }}</span><x-filament::badge color="gray">{{ $resource['category'] }}</x-filament::badge></div>
                             <progress class="mt-3 h-2 w-full accent-primary-500" max="100" value="{{ $resource['utilization_percent'] }}">{{ $resource['utilization_percent'] }}%</progress>
                             <div class="mt-1 text-xs text-gray-500">{{ $resource['utilization_percent'] }}% utilized · capacity {{ $resource['capacity'] }}</div>
                         </div>

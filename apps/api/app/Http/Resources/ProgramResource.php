@@ -23,7 +23,10 @@ class ProgramResource extends JsonResource
             'is_active' => $this->is_active,
             'requirements' => $this->whenLoaded('requirements', fn () => $this->requirements->map(fn ($requirement): array => [
                 'id' => $requirement->id,
-                'resource_type' => $requirement->resource_type->value,
+                'resource_category_id' => $requirement->resource_category_id,
+                'category_slug' => $requirement->category->slug,
+                'kind' => $requirement->category->kind->value,
+                'category' => $requirement->category->name,
                 'capabilities' => $requirement->capabilities ?? [],
                 'languages' => $requirement->languages ?? [],
                 'quantity' => $requirement->minimum_quantity,

@@ -2,14 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Enums\FolioStatus;
 use App\Enums\MembershipRole;
 use App\Models\Allocation;
+use App\Models\CalendarFeed;
 use App\Models\Deposit;
+use App\Models\FolioLine;
 use App\Models\GuestPortalAccessToken;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Models\ReservationNote;
+use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\Tenant;
 use App\Services\Projections\FinanceProjectionService;
@@ -69,6 +74,12 @@ class DatabaseSeederTest extends TestCase
         $this->assertTrue(Allocation::query()->whereHas('resource', fn ($query) => $query->where('is_buyout', true))->exists());
         $this->assertSame(7, Reservation::query()->get('starts_at')->pluck('starts_at')->map->format('Y-m')->unique()->count());
         $this->assertGreaterThanOrEqual(3, Reservation::query()->whereNotNull('source')->distinct('source')->count('source'));
+        $this->assertTrue(Allocation::query()->whereNotNull('requested_category_id')->whereNull('resource_id')->exists());
+        $this->assertTrue(ReservationNote::query()->exists());
+        $this->assertGreaterThanOrEqual(15, FolioLine::query()->count());
+        $this->assertGreaterThanOrEqual(6, Reservation::query()->where('folio_status', FolioStatus::Closed)->count());
+        $this->assertGreaterThanOrEqual(3, Resource::query()->whereNotNull('housekeeping_status')->count());
+        $this->assertTrue(CalendarFeed::query()->where('is_active', true)->exists());
 
         $finance = app(FinanceProjectionService::class)->build(
             CarbonImmutable::now($tenant->timezone)->startOfMonth()->utc(),

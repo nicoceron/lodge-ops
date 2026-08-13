@@ -10,7 +10,7 @@ class UpdateResourceRequest extends StoreResourceRequest
     public function rules(): array
     {
         $rules = parent::rules();
-        foreach (['property_id', 'name', 'code', 'type', 'capacity'] as $field) {
+        foreach (['property_id', 'name', 'code', 'category_id', 'capacity'] as $field) {
             $rules[$field][0] = 'sometimes';
         }
         $rules['code'] = [

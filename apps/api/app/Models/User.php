@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\DatabaseNotification;
@@ -30,7 +31,8 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, InteractsWithAppAuthentication, InteractsWithAppAuthenticationRecovery, Notifiable;
 
-    public function memberships()
+    /** @return HasMany<Membership, $this> */
+    public function memberships(): HasMany
     {
         return $this->hasMany(Membership::class);
     }

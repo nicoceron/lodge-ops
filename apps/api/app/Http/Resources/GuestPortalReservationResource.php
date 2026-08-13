@@ -2,12 +2,15 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\AllocationStatus;
+use App\Enums\FolioStatus;
 use App\Enums\PaymentStatus;
-use App\Enums\ResourceType;
+use App\Models\Allocation;
 use App\Models\GuestPortalAccessToken;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/** @property FolioStatus $folio_status */
 class GuestPortalReservationResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -30,10 +33,17 @@ class GuestPortalReservationResource extends JsonResource
             ->filter(fn ($payment): bool => $payment->status === PaymentStatus::Succeeded)
             ->sum('amount_minor');
         $balanceMinor = max(0, $this->total_minor - $paymentsReceived);
-        $room = $this->allocations
-            ->pluck('resource')
-            ->filter()
-            ->first(fn ($resource): bool => $resource->type === ResourceType::Room);
+        $stayAssignments = $this->allocations
+            ->filter(fn ($allocation): bool => $allocation->status !== AllocationStatus::Released
+                && ($allocation->requestedCategory?->counts_as_stay === true || $allocation->resource?->countsAsStay() === true))
+            ->map(function (Allocation $allocation): array {
+                return [
+                    'category' => $allocation->requestedCategoryName(),
+                    'instance' => $allocation->assignedInstanceName(),
+                    'label' => $allocation->assignmentLabel(),
+                ];
+            })
+            ->values();
         $itinerary = $this->allocations
             ->pluck('serviceOccurrence')
             ->filter()
@@ -53,7 +63,7 @@ class GuestPortalReservationResource extends JsonResource
         $preArrivalComplete = $profile !== null;
         $waiverComplete = $acknowledgement !== null;
         $paymentComplete = $balanceMinor === 0;
-        $folioFinal = $this->ends_at->isPast();
+        $folioFinal = $this->folio_status === FolioStatus::Closed;
         $surveyComplete = $survey !== null;
 
         return [
@@ -78,7 +88,8 @@ class GuestPortalReservationResource extends JsonResource
                     'email' => data_get($profile?->profile, 'email', $guest?->email),
                     'mobile' => data_get($profile?->profile, 'mobile', $guest?->phone),
                 ],
-                'room' => $room?->name,
+                'stay_assignments' => $stayAssignments,
+                'stay_assignment' => $stayAssignments->pluck('label')->join(', ') ?: null,
             ],
             'itinerary' => $itinerary,
             'readiness' => [

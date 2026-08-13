@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Enums\AllocationStatus;
+use App\Enums\HousekeepingStatus;
 use App\Enums\ReservationStatus;
+use App\Enums\ResourceKind;
 use App\Exceptions\InvalidStatusTransitionException;
 use App\Models\Reservation;
 use App\Models\ReservationStatusHistory;
@@ -19,6 +21,7 @@ class ReservationService
         private OutboxRecorder $outbox,
         private ProgramRequirementService $programRequirements,
         private ReservationConfirmationProvisioner $provisioner,
+        private HousekeepingService $housekeeping,
     ) {}
 
     public function confirm(Reservation $reservation): Reservation
@@ -29,7 +32,7 @@ class ReservationService
             if ($locked->status === ReservationStatus::Confirmed) {
                 $this->provisioner->provision($locked);
 
-                return $locked->load(['allocations.resource', 'primaryGuest', 'program']);
+                return $locked->load(['allocations.requestedCategory', 'allocations.resource', 'primaryGuest', 'program']);
             }
 
             if (! $locked->status->canTransitionTo(ReservationStatus::Confirmed)) {
@@ -69,7 +72,7 @@ class ReservationService
                 ['reservation_id' => $locked->id, 'confirmation_number' => $locked->confirmation_number],
             );
 
-            return $locked->fresh(['allocations.resource', 'primaryGuest', 'program']);
+            return $locked->fresh(['allocations.requestedCategory', 'allocations.resource', 'primaryGuest', 'program']);
         }, 3);
     }
 
@@ -141,6 +144,16 @@ class ReservationService
             if (in_array($next, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
                 $locked->allocations()->update(['status' => AllocationStatus::Released]);
             }
+            if ($next === ReservationStatus::CheckedOut) {
+                $locked->allocations()
+                    ->where('status', '!=', AllocationStatus::Released)
+                    ->with('resource.category')
+                    ->get()
+                    ->pluck('resource')
+                    ->filter(fn ($resource): bool => $resource?->category?->kind === ResourceKind::Place)
+                    ->unique('id')
+                    ->each(fn ($resource) => $this->housekeeping->update($resource, HousekeepingStatus::Dirty, auth()->id()));
+            }
 
             $this->outbox->record(
                 'reservation',
@@ -153,7 +166,7 @@ class ReservationService
                 ],
             );
 
-            return $locked->fresh(['allocations.resource', 'primaryGuest', 'program']);
+            return $locked->fresh(['allocations.requestedCategory', 'allocations.resource', 'primaryGuest', 'program']);
         }, 3);
     }
 

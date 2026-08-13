@@ -3,17 +3,16 @@
 namespace App\Services;
 
 use App\Enums\AllocationStatus;
-use App\Enums\ResourceType;
+use App\Models\Allocation;
 use App\Models\ProgramResourceRequirement;
 use App\Models\Reservation;
-use App\Models\Resource;
 use Illuminate\Validation\ValidationException;
 
 class ProgramRequirementService
 {
     public function assertSatisfied(Reservation $reservation): void
     {
-        $reservation->loadMissing(['program.requirements', 'allocations.resource']);
+        $reservation->loadMissing(['program.requirements.category', 'allocations.requestedCategory', 'allocations.resource.category']);
         if ($reservation->program_id !== null && ($reservation->program === null || $reservation->program->property_id !== $reservation->property_id || ! $reservation->program->is_active)) {
             throw ValidationException::withMessages([
                 'program_id' => 'The selected program must be active and belong to the reservation property.',
@@ -22,38 +21,57 @@ class ProgramRequirementService
 
         $allocations = $reservation->allocations
             ->where('status', '!==', AllocationStatus::Released)
-            ->filter(fn ($allocation): bool => $allocation->resource !== null);
+            ->filter(fn (Allocation $allocation): bool => $allocation->requestedCategory !== null || $allocation->resource !== null);
 
         $requiresAccommodation = $reservation->program_id === null
             || data_get($reservation, 'program.requires_accommodation') === true;
         if ($requiresAccommodation && ! $allocations->contains(
-            fn ($allocation): bool => $allocation->resource->type === ResourceType::Room
+            fn (Allocation $allocation): bool => ($allocation->requestedCategory?->counts_as_stay === true || $allocation->resource?->countsAsStay() === true)
                 && $allocation->starts_at <= $reservation->starts_at
                 && $allocation->ends_at >= $reservation->ends_at,
         )) {
             throw ValidationException::withMessages([
-                'allocations' => 'This program requires a room allocation covering the full stay.',
+                'allocations' => 'This program requires a stay-place allocation covering the full stay.',
             ]);
         }
 
         $partySize = max(1, $reservation->adults + $reservation->children);
         foreach ($reservation->program?->requirements ?? [] as $requirement) {
             $required = $requirement->quantityForParty($partySize);
-            $assigned = $allocations
-                ->filter(fn ($allocation): bool => $this->matches($allocation->resource, $requirement))
-                ->sum('quantity');
+            $assigned = $this->assignedQuantity($reservation, $requirement);
 
             if ($assigned < $required) {
+                $label = $requirement->category->name;
                 throw ValidationException::withMessages([
-                    'allocations' => "Program requirement not met: {$required} {$requirement->resource_type->value} resource(s) required; {$assigned} assigned.",
+                    'allocations' => "Program requirement not met: {$required} {$label} resource(s) required; {$assigned} assigned.",
                 ]);
             }
         }
     }
 
-    private function matches(Resource $resource, ProgramResourceRequirement $requirement): bool
+    public function assignedQuantity(Reservation $reservation, ProgramResourceRequirement $requirement): int
     {
-        if ($resource->type !== $requirement->resource_type || ! $resource->is_active) {
+        $reservation->loadMissing(['allocations.requestedCategory', 'allocations.resource.category']);
+
+        return (int) $reservation->allocations
+            ->where('status', '!==', AllocationStatus::Released)
+            ->filter(fn (Allocation $allocation): bool => $this->matches($allocation, $requirement))
+            ->sum('quantity');
+    }
+
+    private function matches(Allocation $allocation, ProgramResourceRequirement $requirement): bool
+    {
+        $categoryId = $allocation->requested_category_id ?? $allocation->resource?->category_id;
+        if ($categoryId !== $requirement->resource_category_id) {
+            return false;
+        }
+
+        $resource = $allocation->resource;
+        if ($resource === null) {
+            return $this->values($requirement->capabilities ?? []) === []
+                && $this->values($requirement->languages ?? []) === [];
+        }
+        if (! $resource->is_active) {
             return false;
         }
 

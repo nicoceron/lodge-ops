@@ -30,7 +30,8 @@ class GuestPortalService
 
         $reservation->load([
             'property.guestPortalDocuments' => fn ($query) => $query->where('is_active', true)->latest('created_at'),
-            'allocations.resource',
+            'allocations.requestedCategory',
+            'allocations.resource.category',
             'allocations.serviceOccurrence.program',
             'guestPortalProfiles' => fn ($query) => $query->where('guest_id', $access->guest_id),
             'guestPortalAcknowledgements' => fn ($query) => $query->where('guest_id', $access->guest_id),

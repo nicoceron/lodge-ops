@@ -6,7 +6,6 @@ use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Filament\Pages\KitchenDashboard;
 use App\Filament\Widgets\LodgeCommandCenter;
@@ -164,7 +163,7 @@ class FilamentWorkspacePagesTest extends TestCase
             'property_id' => $property->id,
             'name' => 'Full lodge buyout',
             'code' => 'BUYOUT-TEST',
-            'type' => ResourceType::Venue,
+            'category_id' => $this->category($property, 'venue')->id,
             'capacity' => 1,
             'is_buyout' => true,
         ]);

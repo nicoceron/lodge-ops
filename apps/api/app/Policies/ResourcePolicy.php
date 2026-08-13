@@ -35,4 +35,10 @@ class ResourcePolicy extends TenantPolicy
     {
         return $this->canManageConfiguration($user, $resource);
     }
+
+    public function updateHousekeeping(User $user, Resource $resource): bool
+    {
+        return $this->canView($user, $resource)
+            && app(TenantContext::class)->membership()?->role?->canManageHousekeeping() === true;
+    }
 }

@@ -5,12 +5,14 @@ namespace App\Services\Projections;
 use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
+use App\Enums\ResourceKind;
 use App\Enums\TaskStatus;
 use App\Models\Allocation;
 use App\Models\Guest;
+use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
+use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
 use App\Support\Projections\StaffProjectionVisibility;
@@ -49,7 +51,8 @@ class OperationsProjectionService
                 'allocations' => fn ($query) => $query
                     ->where('status', '!=', AllocationStatus::Released->value)
                     ->with([
-                        'resource:id,name,type,user_id',
+                        'resource.category',
+                        'resource.user.memberships',
                         'reservation:id,primary_guest_id,adults,children,confirmation_number',
                     ]),
             ])
@@ -62,8 +65,8 @@ class OperationsProjectionService
                 fn (Builder $allocation) => $allocation
                     ->where('status', '!=', AllocationStatus::Released->value)
                     ->whereHas('resource', fn (Builder $resource) => $resource
-                        ->where('type', ResourceType::Guide->value)
-                        ->where('user_id', $userId)),
+                        ->where('user_id', $userId)
+                        ->whereHas('category', fn (Builder $category) => $category->where('kind', ResourceKind::Crew))),
             ))
             ->orderBy('starts_at')
             ->get();
@@ -111,6 +114,23 @@ class OperationsProjectionService
             fn (Reservation $reservation) => $reservation->starts_at->lessThan($start)
                 && $reservation->ends_at->greaterThan($end),
         );
+        $places = $canSeeHousekeeping
+            ? Resource::query()
+                ->with('category:id,kind,name')
+                ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
+                ->where('is_active', true)
+                ->whereHas('category', fn (Builder $query) => $query->where('kind', ResourceKind::Place))
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Resource $resource): array => [
+                    'id' => $resource->id,
+                    'name' => $resource->name,
+                    'category' => $resource->category->name,
+                    'status' => $resource->housekeeping_status === null ? 'untracked' : $resource->housekeeping_status->value,
+                    'updated_at' => $resource->housekeeping_updated_at?->toIso8601String(),
+                ])
+                ->values()
+            : collect();
 
         $taskItems = $tasks->map(fn (OperationalTask $task): array => [
             'id' => $task->id,
@@ -169,6 +189,10 @@ class OperationsProjectionService
                 'arrivals' => $canSeeHousekeeping ? $arrivals->count() : 0,
                 'turnovers' => $canSeeHousekeeping ? $departures->count() : 0,
                 'stayovers' => $canSeeHousekeeping ? $stayovers->count() : 0,
+                'places' => $places->all(),
+                'needs_attention' => $canSeeHousekeeping
+                    ? $places->whereIn('status', ['dirty', 'in_progress', 'out_of_service', 'untracked'])->count()
+                    : 0,
                 'focus' => $canSeeHousekeeping
                     ? ($tasks->firstWhere('priority', 'urgent')?->title
                         ?? $tasks->firstWhere('priority', 'high')?->title)
@@ -263,7 +287,10 @@ class OperationsProjectionService
     private function guideAssignment(ServiceOccurrence $occurrence, ?int $guideUserId = null): array
     {
         $guide = $occurrence->allocations
-            ->first(fn (Allocation $allocation) => $allocation->resource?->type === ResourceType::Guide
+            ->first(fn (Allocation $allocation) => $allocation->resource?->category->kind === ResourceKind::Crew
+                && $allocation->resource->user?->memberships->contains(
+                    fn (Membership $membership): bool => $membership->role === MembershipRole::Guide && $membership->is_active,
+                ) === true
                 && ($guideUserId === null || (int) $allocation->resource->user_id === $guideUserId))
             ?->resource;
         $reservations = $occurrence->allocations->pluck('reservation')->filter()->unique('id');

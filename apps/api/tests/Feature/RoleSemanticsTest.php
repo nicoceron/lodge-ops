@@ -138,7 +138,7 @@ class RoleSemanticsTest extends TestCase
         $this->assertTrue(OperationalTaskResource::canEdit($kitchenTask));
         $this->assertFalse(OperationalTaskResource::canCreate());
         $this->assertTrue(KitchenDashboard::canAccess());
-        $this->assertFalse(OperationsBoard::canAccess());
+        $this->assertTrue(OperationsBoard::canAccess());
         $this->assertFalse(ReservationResource::canViewAny());
     }
 

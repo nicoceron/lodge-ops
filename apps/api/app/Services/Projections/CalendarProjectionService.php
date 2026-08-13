@@ -4,7 +4,7 @@ namespace App\Services\Projections;
 
 use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
-use App\Enums\ResourceType;
+use App\Enums\ResourceKind;
 use App\Models\Allocation;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
@@ -46,20 +46,22 @@ class CalendarProjectionService
         $guideResourceIds = $isGuide
             ? Resource::query()
                 ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-                ->where('type', ResourceType::Guide)
+                ->whereHas('category', fn ($query) => $query->where('kind', ResourceKind::Crew))
                 ->where('user_id', $user->id)
                 ->where('is_active', true)
                 ->pluck('id')
             : collect();
         $resources = Resource::query()
+            ->with('category')
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->when($isGuide, fn ($query) => $query->whereIn('id', $guideResourceIds))
             ->where('is_active', true)
-            ->orderBy('type')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->sortBy(fn (Resource $resource): array => [$resource->kind()->value, $resource->categoryName(), $resource->name])
+            ->values();
         $allocations = Allocation::query()
-            ->with(['resource:id,property_id,user_id,name,type,capacity,is_buyout,attributes', 'reservation:id,confirmation_number'])
+            ->with(['resource.category', 'reservation:id,confirmation_number'])
             ->where('status', '!=', AllocationStatus::Released)
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
@@ -191,7 +193,9 @@ class CalendarProjectionService
                 'property_id' => $resource->property_id,
                 'name' => $resource->name,
                 'code' => $resource->code,
-                'type' => $resource->type->value,
+                'kind' => $resource->kind()->value,
+                'category_slug' => $resource->categorySlug(),
+                'category' => $resource->categoryName(),
                 'capacity' => $resource->capacity,
                 'user_id' => $resource->user_id,
                 'is_buyout' => $resource->isBuyout(),

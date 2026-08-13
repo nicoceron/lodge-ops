@@ -6,7 +6,6 @@ use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Models\Allocation;
 use App\Models\Guest;
@@ -58,13 +57,13 @@ class ProjectionPropertyIsolationTest extends TestCase
         ]);
         $room = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($property, 'room')->id,
             'capacity' => 1,
             'is_active' => true,
         ]);
         Resource::factory()->create([
             'property_id' => $otherProperty->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($otherProperty, 'room')->id,
             'capacity' => 1,
             'is_active' => true,
         ]);
@@ -101,7 +100,7 @@ class ProjectionPropertyIsolationTest extends TestCase
         $projection = app(DashboardProjectionService::class)->build();
 
         $this->assertSame(1, $projection['arrivals']);
-        $this->assertSame(1, $projection['active_rooms']);
+        $this->assertSame(1, $projection['active_stay_places']);
         $this->assertSame(['Own property task'], collect($projection['tasks'])->pluck('title')->all());
         $this->assertSame('attention', $projection['arrival_parties'][0]['readiness']);
     }
@@ -176,7 +175,7 @@ class ProjectionPropertyIsolationTest extends TestCase
         ]);
         $room = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($property, 'room')->id,
             'is_active' => true,
         ]);
         Allocation::query()->create([
@@ -191,8 +190,8 @@ class ProjectionPropertyIsolationTest extends TestCase
         $projection = app(DashboardProjectionService::class)->build();
 
         $this->assertSame(1, $projection['needs_attention']);
-        $this->assertSame(['Guide assignment', 'Kitchen brief'], $projection['attention_stays'][0]['reasons']);
-        $this->assertSame(60.0, (float) $projection['readiness']['percent']);
+        $this->assertSame(['Kitchen brief'], $projection['attention_stays'][0]['reasons']);
+        $this->assertSame(75.0, (float) $projection['readiness']['percent']);
     }
 
     public function test_dashboard_builds_a_bounded_property_scoped_operational_trend(): void
@@ -204,12 +203,12 @@ class ProjectionPropertyIsolationTest extends TestCase
         $today = CarbonImmutable::now('UTC')->startOfDay();
         $rooms = collect(range(1, 2))->map(fn () => Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($property, 'room')->id,
             'is_active' => true,
         ]));
         Resource::factory()->create([
             'property_id' => $otherProperty->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($otherProperty, 'room')->id,
             'is_active' => true,
         ]);
 
@@ -233,7 +232,7 @@ class ProjectionPropertyIsolationTest extends TestCase
         }
         $inactiveRoom = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Room,
+            'category_id' => $this->category($property, 'room')->id,
             'is_active' => false,
         ]);
         Allocation::query()->create([
@@ -279,10 +278,10 @@ class ProjectionPropertyIsolationTest extends TestCase
         $this->assertSame(1, $trend['work_due'][7]);
         $this->assertSame(2, $projection['open_tasks']);
         $this->assertSame(1, $projection['overdue_tasks']);
-        $this->assertSame(1, $projection['occupied_rooms']);
+        $this->assertSame(1, $projection['occupied_stay_places']);
         $this->assertSame(50.0, $projection['occupancy_percent']);
         $this->assertCount(2, $projection['attention_stays']);
-        $this->assertSame(['Guest details', 'Guide assignment', 'Payment balance', 'Kitchen brief'], $projection['attention_stays'][0]['reasons']);
+        $this->assertSame(['Guest details', 'Payment balance', 'Kitchen brief'], $projection['attention_stays'][0]['reasons']);
     }
 
     public function test_property_scoped_kitchen_projection_excludes_other_property_dietary_data(): void

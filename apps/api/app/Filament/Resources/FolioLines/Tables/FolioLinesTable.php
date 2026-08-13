@@ -27,7 +27,11 @@ class FolioLinesTable
                         default => 'gray',
                     }),
                 TextColumn::make('description')->searchable()->wrap(),
-                TextColumn::make('amount_minor')->label('Amount')
+                TextColumn::make('net_amount_minor')->label('Net')
+                    ->money(fn (FolioLine $record): string => $record->currency, divideBy: 100)->sortable(),
+                TextColumn::make('tax_amount_minor')->label('Tax')
+                    ->money(fn (FolioLine $record): string => $record->currency, divideBy: 100)->toggleable(),
+                TextColumn::make('gross_amount_minor')->label('Gross')
                     ->money(fn (FolioLine $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('creator.name')->label('Posted by')->placeholder('System'),
             ])

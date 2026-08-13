@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Exceptions\AllocationConflictException;
 use App\Models\Allocation;
 use App\Models\Reservation;
@@ -25,19 +24,19 @@ class ResourceSuggestionTest extends TestCase
         $preferred = Resource::factory()->create([
             'property_id' => $property->id,
             'name' => 'Ana Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'attributes' => ['capabilities' => ['fly fishing'], 'languages' => ['Spanish', 'English']],
         ]);
         Resource::factory()->create([
             'property_id' => $property->id,
             'name' => 'Unqualified Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'attributes' => ['capabilities' => ['hunting'], 'languages' => ['English']],
         ]);
         $busy = Resource::factory()->create([
             'property_id' => $property->id,
             'name' => 'Busy Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'attributes' => ['capabilities' => ['fly fishing'], 'languages' => ['Spanish']],
         ]);
         $reservation = Reservation::factory()->create(['property_id' => $property->id]);
@@ -51,7 +50,7 @@ class ResourceSuggestionTest extends TestCase
         ]);
 
         $suggestions = app(ResourceSuggestionService::class)->suggest(
-            ResourceType::Guide,
+            $this->category($property, 'guide'),
             now()->addDay(),
             now()->addDays(2),
             capabilities: ['fly fishing'],
@@ -65,10 +64,10 @@ class ResourceSuggestionTest extends TestCase
     public function test_property_buyout_conflicts_with_an_existing_resource_allocation(): void
     {
         [, $property] = $this->tenantEnvironment();
-        $room = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Room]);
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $this->category($property, 'room')->id]);
         $buyout = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Venue,
+            'category_id' => $this->category($property, 'venue')->id,
             'attributes' => ['buyout' => true],
         ]);
         $reservationA = Reservation::factory()->create(['property_id' => $property->id]);
@@ -97,10 +96,10 @@ class ResourceSuggestionTest extends TestCase
     public function test_resource_allocation_conflicts_with_an_existing_property_buyout(): void
     {
         [, $property] = $this->tenantEnvironment();
-        $room = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Room]);
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $this->category($property, 'room')->id]);
         $buyout = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Venue,
+            'category_id' => $this->category($property, 'venue')->id,
             'attributes' => ['buyout' => true],
         ]);
         $reservationA = Reservation::factory()->create(['property_id' => $property->id]);
@@ -129,10 +128,10 @@ class ResourceSuggestionTest extends TestCase
     public function test_suggestions_respect_active_holds_and_property_buyouts(): void
     {
         [, $property] = $this->tenantEnvironment();
-        $guide = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Guide]);
+        $guide = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $this->category($property, 'guide')->id]);
         $buyout = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Venue,
+            'category_id' => $this->category($property, 'venue')->id,
             'attributes' => ['buyout' => true],
         ]);
         $reservation = Reservation::factory()->create([
@@ -150,7 +149,7 @@ class ResourceSuggestionTest extends TestCase
         ]);
 
         $suggestions = app(ResourceSuggestionService::class)->suggest(
-            ResourceType::Guide,
+            $this->category($property, 'guide'),
             now()->addDay(),
             now()->addDays(2),
         );
@@ -161,10 +160,10 @@ class ResourceSuggestionTest extends TestCase
     public function test_suggestions_honor_the_buyout_column_used_by_the_resource_model(): void
     {
         [, $property] = $this->tenantEnvironment();
-        $guide = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Guide]);
+        $guide = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $this->category($property, 'guide')->id]);
         $buyout = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Venue,
+            'category_id' => $this->category($property, 'venue')->id,
             'is_buyout' => true,
             'attributes' => [],
         ]);
@@ -179,7 +178,7 @@ class ResourceSuggestionTest extends TestCase
         ]);
 
         $suggestions = app(ResourceSuggestionService::class)->suggest(
-            ResourceType::Guide,
+            $this->category($property, 'guide'),
             now()->addDay(),
             now()->addDays(2),
         );

@@ -2,22 +2,21 @@
 
 namespace App\Models;
 
-use App\Enums\ResourceType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property ResourceType $resource_type
+ * @property string $resource_category_id
  * @property int $minimum_quantity
  * @property int|null $guests_per_resource
  * @property array<int, string>|null $capabilities
  * @property array<int, string>|null $languages
+ * @property-read ResourceCategory $category
  */
 class ProgramResourceRequirement extends TenantModel
 {
     protected function casts(): array
     {
         return [
-            'resource_type' => ResourceType::class,
             'minimum_quantity' => 'integer',
             'guests_per_resource' => 'integer',
             'capabilities' => 'array',
@@ -29,6 +28,11 @@ class ProgramResourceRequirement extends TenantModel
     public function program(): BelongsTo
     {
         return $this->belongsTo(Program::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ResourceCategory::class, 'resource_category_id');
     }
 
     public function quantityForParty(int $partySize): int

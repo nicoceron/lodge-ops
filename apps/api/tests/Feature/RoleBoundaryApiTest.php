@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\Reservation;
@@ -74,13 +73,13 @@ class RoleBoundaryApiTest extends TestCase
         $ownResource = Resource::factory()->create([
             'property_id' => $property->id,
             'user_id' => $guide->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'name' => 'Own Guide Resource',
         ]);
         $otherResource = Resource::factory()->create([
             'property_id' => $property->id,
             'user_id' => $otherGuide->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'name' => 'Other Guide Resource',
         ]);
         $start = now()->addDay()->startOfHour();

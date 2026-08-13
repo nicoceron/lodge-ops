@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\ResourceType;
 use App\Filament\Resources\Reservations\Pages\ViewReservation;
 use App\Filament\Resources\Reservations\RelationManagers\AllocationsRelationManager;
 use App\Models\Property;
@@ -33,14 +32,14 @@ class ResourceSuggestionFilamentTest extends TestCase
         Resource::factory()->create([
             'property_id' => $property->id,
             'name' => 'Recommended Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'capacity' => 2,
         ]);
         $otherProperty = Property::factory()->create(['tenant_id' => $tenant->id]);
         Resource::factory()->create([
             'property_id' => $otherProperty->id,
             'name' => 'Other Property Guide',
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($otherProperty, 'guide')->id,
             'capacity' => 2,
         ]);
         $reservation = Reservation::factory()->create([
@@ -58,7 +57,7 @@ class ResourceSuggestionFilamentTest extends TestCase
         ])
             ->assertTableActionExists('suggestResource')
             ->callTableAction('suggestResource', data: [
-                'type' => ResourceType::Guide->value,
+                'category_id' => $this->category($property, 'guide')->id,
                 'starts_at' => $reservation->starts_at,
                 'ends_at' => $reservation->ends_at,
                 'quantity' => 1,

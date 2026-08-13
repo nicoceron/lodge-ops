@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\Programs\Schemas;
 
 use App\Enums\MembershipRole;
-use App\Enums\ResourceType;
 use App\Filament\Support\LodgeOpsPresentation;
+use App\Models\ResourceCategory;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -40,8 +40,8 @@ class ProgramForm
                         ->default('#2563EB')
                         ->required(),
                     Toggle::make('requires_accommodation')
-                        ->label('Requires a full-stay room')
-                        ->helperText('Confirmation is blocked until a room covers arrival through departure.')
+                        ->label('Requires a stay place')
+                        ->helperText('Confirmation is blocked until a place marked as stay inventory covers arrival through departure.')
                         ->default(false),
                     TextInput::make('default_duration_minutes')
                         ->label('Default duration')
@@ -77,8 +77,17 @@ class ProgramForm
                         ->columns(2)
                         ->defaultItems(0)
                         ->schema([
-                            Select::make('resource_type')
-                                ->options(LodgeOpsPresentation::enumOptions(ResourceType::cases()))
+                            Select::make('resource_category_id')
+                                ->label('Category')
+                                ->options(fn (): array => ResourceCategory::query()
+                                    ->where('is_active', true)
+                                    ->orderBy('sort_order')
+                                    ->orderBy('name')
+                                    ->get()
+                                    ->mapWithKeys(fn (ResourceCategory $category): array => [
+                                        $category->id => "{$category->name} · {$category->kind->singular()}",
+                                    ])->all())
+                                ->searchable()
                                 ->required(),
                             TextInput::make('minimum_quantity')
                                 ->label('Minimum quantity')

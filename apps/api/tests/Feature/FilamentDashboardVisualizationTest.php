@@ -70,10 +70,10 @@ class FilamentDashboardVisualizationTest extends TestCase
             ->assertSeeHtml('aria-label="Arrivals and departures. Daily guest flow across the current 14-day operating window."');
 
         Livewire::test(LodgeOccupancyTrend::class)
-            ->assertSee('Room occupancy')
-            ->assertSee('Rooms in use by day across the current 14-day operating window.')
+            ->assertSee('Stay-place occupancy')
+            ->assertSee('Bookable stay places in use by day across the current 14-day operating window.')
             ->assertSeeHtml('role="img"')
-            ->assertSeeHtml('aria-label="Room occupancy. Rooms in use by day across the current 14-day operating window."');
+            ->assertSeeHtml('aria-label="Stay-place occupancy. Bookable stay places in use by day across the current 14-day operating window."');
     }
 
     public function test_command_center_surfaces_records_needing_action_instead_of_repeating_readiness_totals(): void

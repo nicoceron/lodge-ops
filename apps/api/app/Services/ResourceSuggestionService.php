@@ -4,10 +4,10 @@ namespace App\Services;
 
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Models\Allocation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
+use App\Models\ResourceCategory;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -16,10 +16,10 @@ class ResourceSuggestionService
     /**
      * @param  list<string>  $capabilities
      * @param  list<string>  $languages
-     * @return Collection<int, array{id:string,name:string,capacity:int,reasons:list<string>,recent_assignments:int}>
+     * @return Collection<int, array{id:string,name:string,capacity:int,category:string,kind:'asset'|'crew'|'place',reasons:list<string>,recent_assignments:int}>
      */
     public function suggest(
-        ResourceType $type,
+        ResourceCategory $category,
         CarbonInterface $startsAt,
         CarbonInterface $endsAt,
         int $quantity = 1,
@@ -27,9 +27,12 @@ class ResourceSuggestionService
         array $languages = [],
         ?string $propertyId = null,
     ): Collection {
+        $propertyId ??= $category->property_id;
+
         return Resource::query()
+            ->with('category')
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->where('type', $type)
+            ->where('category_id', $category->id)
             ->where('is_active', true)
             ->where('capacity', '>=', $quantity)
             ->withCount(['allocations as recent_assignments' => fn ($query) => $query
@@ -91,6 +94,8 @@ class ResourceSuggestionService
                     'id' => $resource->id,
                     'name' => $resource->name,
                     'capacity' => $resource->capacity,
+                    'category' => $resource->categoryName(),
+                    'kind' => $resource->kind()->value,
                     'reasons' => $reasons,
                     'recent_assignments' => $resource->recent_assignments,
                 ];

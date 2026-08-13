@@ -5,7 +5,6 @@ namespace App\Services\Projections;
 use App\Enums\AllocationStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Enums\TaskStatus;
 use App\Models\Allocation;
 use App\Models\OperationalTask;
@@ -13,6 +12,7 @@ use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\User;
 use App\Services\OperationalTaskAccess;
+use App\Services\ProgramRequirementService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -26,6 +26,7 @@ class DashboardProjectionService
         private readonly TenantContext $context,
         private readonly StaffProjectionVisibility $visibility,
         private readonly OperationalTaskAccess $taskAccess,
+        private readonly ProgramRequirementService $programRequirements,
     ) {}
 
     /** @return array<string, mixed> */
@@ -57,7 +58,7 @@ class DashboardProjectionService
         $propertyId = $this->context->membership()?->property_id;
 
         $arrivals = Reservation::query()
-            ->with(['primaryGuest', 'allocations.resource', 'payments'])
+            ->with(['primaryGuest', 'program.requirements.category', 'allocations.requestedCategory', 'allocations.resource.category', 'payments'])
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
             ->where('starts_at', '>=', $start)
@@ -65,23 +66,23 @@ class DashboardProjectionService
             ->orderBy('starts_at')
             ->get();
         $upcoming = Reservation::query()
-            ->with(['primaryGuest', 'allocations.resource', 'payments'])
+            ->with(['primaryGuest', 'program.requirements.category', 'allocations.requestedCategory', 'allocations.resource.category', 'payments'])
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->whereIn('status', [ReservationStatus::Confirmed, ReservationStatus::CheckedIn])
             ->where('starts_at', '>=', $start)
             ->where('starts_at', '<=', $readinessEnd)
             ->get();
-        $activeRooms = Resource::query()
+        $activeStayPlaces = Resource::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->where('type', ResourceType::Room)
+            ->whereHas('category', fn ($query) => $query->where('counts_as_stay', true))
             ->where('is_active', true)
             ->count();
-        $occupiedRooms = Allocation::query()
+        $occupiedStayPlaces = Allocation::query()
             ->where('status', AllocationStatus::Confirmed)
             ->where('starts_at', '<=', $now->utc())
             ->where('ends_at', '>', $now->utc())
             ->whereHas('resource', fn ($query) => $query
-                ->where('type', ResourceType::Room)
+                ->whereHas('category', fn ($category) => $category->where('counts_as_stay', true))
                 ->where('is_active', true)
                 ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId)))
             ->distinct()
@@ -127,11 +128,9 @@ class DashboardProjectionService
 
         $readiness = collect([
             $this->readinessItem('guest_details', 'Guest details', $upcoming, fn (Reservation $reservation) => $reservation->primary_guest_id !== null),
-            $this->readinessItem('room_assignments', 'Room assignments', $upcoming, fn (Reservation $reservation) => $this->hasResourceType($reservation, ResourceType::Room)),
-            $this->readinessItem('guide_assignments', 'Guide assignments', $upcoming, fn (Reservation $reservation) => $this->hasResourceType($reservation, ResourceType::Guide)),
             $this->readinessItem('payments', 'Payments', $upcoming, fn (Reservation $reservation) => $this->balance($reservation) <= 0),
             $this->readinessItem('kitchen_brief', 'Kitchen brief', $upcoming, fn (Reservation $reservation) => $reservation->primaryGuest?->preferences !== null),
-        ]);
+        ])->concat($this->resourceReadinessItems($upcoming));
         $readinessComplete = (int) $readiness->sum('complete');
         $readinessTotal = (int) $readiness->sum('total');
         $attentionStays = $upcoming
@@ -147,12 +146,12 @@ class DashboardProjectionService
             'arrivals' => $arrivals->count(),
             'departures' => $departures,
             'in_house' => $inHouse,
-            'active_resources' => $activeRooms,
-            'active_rooms' => $activeRooms,
-            'occupied_rooms' => $occupiedRooms,
+            'active_resources' => $activeStayPlaces,
+            'active_stay_places' => $activeStayPlaces,
+            'occupied_stay_places' => $occupiedStayPlaces,
             'open_tasks' => $openTasks,
             'overdue_tasks' => $overdueTasks,
-            'occupancy_percent' => $activeRooms > 0 ? round(($occupiedRooms / $activeRooms) * 100, 1) : 0.0,
+            'occupancy_percent' => $activeStayPlaces > 0 ? round(($occupiedStayPlaces / $activeStayPlaces) * 100, 1) : 0.0,
             'needs_attention' => $upcoming->filter(fn (Reservation $reservation) => $this->needsAttention($reservation))->count(),
             'arrival_parties' => $arrivals
                 ->map(fn (Reservation $reservation): array => $this->arrival($reservation))
@@ -166,7 +165,7 @@ class DashboardProjectionService
                 'items' => $readiness->values()->all(),
             ],
             'tasks' => $tasks->values()->all(),
-            'trend' => $this->operationalTrend($now, $propertyId, $activeRooms, $upcoming),
+            'trend' => $this->operationalTrend($now, $propertyId, $activeStayPlaces, $upcoming),
         ];
     }
 
@@ -174,7 +173,7 @@ class DashboardProjectionService
      * @param  Collection<int, Reservation>  $upcoming
      * @return array{labels: list<string>, arrivals: list<int>, departures: list<int>, occupancy_percent: list<float>, attention: list<int>, work_due: list<int>}
      */
-    private function operationalTrend(CarbonImmutable $now, ?string $propertyId, int $activeRooms, Collection $upcoming): array
+    private function operationalTrend(CarbonImmutable $now, ?string $propertyId, int $activeStayPlaces, Collection $upcoming): array
     {
         $timezone = $this->context->tenant()->timezone;
         $rangeStart = $now->startOfDay()->subDays(6);
@@ -198,7 +197,7 @@ class DashboardProjectionService
             ->where('starts_at', '<', $rangeEndUtc)
             ->where('ends_at', '>', $rangeStartUtc)
             ->whereHas('resource', fn (Builder $query) => $query
-                ->where('type', ResourceType::Room)
+                ->whereHas('category', fn (Builder $category) => $category->where('counts_as_stay', true))
                 ->where('is_active', true)
                 ->when($propertyId, fn (Builder $scope) => $scope->where('property_id', $propertyId)))
             ->get(['resource_id', 'starts_at', 'ends_at']);
@@ -218,8 +217,8 @@ class DashboardProjectionService
             'departures' => $days->map(fn (CarbonImmutable $day): int => $reservations
                 ->filter(fn (Reservation $reservation): bool => $reservation->ends_at->timezone($timezone)->isSameDay($day))
                 ->count())->all(),
-            'occupancy_percent' => $days->map(function (CarbonImmutable $day) use ($activeRooms, $allocations): float {
-                if ($activeRooms === 0) {
+            'occupancy_percent' => $days->map(function (CarbonImmutable $day) use ($activeStayPlaces, $allocations): float {
+                if ($activeStayPlaces === 0) {
                     return 0.0;
                 }
 
@@ -231,7 +230,7 @@ class DashboardProjectionService
                     ->unique()
                     ->count();
 
-                return round(($occupied / $activeRooms) * 100, 1);
+                return round(($occupied / $activeStayPlaces) * 100, 1);
             })->all(),
             'attention' => $attentionDays->map(fn (CarbonImmutable $day): int => $upcoming
                 ->filter(fn (Reservation $reservation): bool => $reservation->starts_at->timezone($timezone)->isSameDay($day) && $this->needsAttention($reservation))
@@ -266,11 +265,12 @@ class DashboardProjectionService
         return $this->taskAccess->scope(OperationalTask::query(), $user, $membership->role);
     }
 
-    private function hasResourceType(Reservation $reservation, ResourceType $type): bool
+    private function hasStayPlace(Reservation $reservation): bool
     {
         return $reservation->allocations->contains(
             fn (Allocation $allocation) => $allocation->status !== AllocationStatus::Released
-                && $allocation->resource?->type === $type,
+                && ($allocation->resource?->countsAsStay() === true
+                    || $allocation->requestedCategory?->counts_as_stay === true),
         );
     }
 
@@ -284,8 +284,7 @@ class DashboardProjectionService
     {
         return array_values(array_filter([
             $reservation->primary_guest_id === null ? 'Guest details' : null,
-            ! $this->hasResourceType($reservation, ResourceType::Room) ? 'Room assignment' : null,
-            ! $this->hasResourceType($reservation, ResourceType::Guide) ? 'Guide assignment' : null,
+            ...$this->missingResourceReasons($reservation),
             $this->balance($reservation) > 0 ? 'Payment balance' : null,
             $reservation->primaryGuest?->preferences === null ? 'Kitchen brief' : null,
         ]));
@@ -316,8 +315,8 @@ class DashboardProjectionService
     /** @return array<string, mixed> */
     private function arrival(Reservation $reservation): array
     {
-        $hasRoom = $this->hasResourceType($reservation, ResourceType::Room);
-        $readiness = ! $hasRoom ? 'blocked' : ($this->needsAttention($reservation) ? 'attention' : 'ready');
+        $hasStayPlace = $this->hasStayPlace($reservation);
+        $readiness = ! $hasStayPlace ? 'blocked' : ($this->needsAttention($reservation) ? 'attention' : 'ready');
         $arrival = [
             'id' => $reservation->id,
             'confirmation_number' => $reservation->confirmation_number,
@@ -329,9 +328,10 @@ class DashboardProjectionService
                 ->startOfDay()
                 ->diffInDays($reservation->ends_at->timezone($this->context->tenant()->timezone)->startOfDay())),
             'readiness' => $readiness,
-            'room_names' => $reservation->allocations
-                ->filter(fn (Allocation $allocation) => $allocation->resource?->type === ResourceType::Room)
-                ->pluck('resource.name')
+            'stay_place_names' => $reservation->allocations
+                ->filter(fn (Allocation $allocation): bool => $allocation->status !== AllocationStatus::Released
+                    && ($allocation->requestedCategory?->counts_as_stay === true || $allocation->resource?->countsAsStay() === true))
+                ->map(fn (Allocation $allocation): string => $allocation->assignmentLabel())
                 ->filter()
                 ->values()
                 ->all(),
@@ -344,5 +344,48 @@ class DashboardProjectionService
         }
 
         return $arrival;
+    }
+
+    /** @param Collection<int, Reservation> $reservations */
+    private function resourceReadinessItems(Collection $reservations): Collection
+    {
+        $items = [];
+        foreach ($reservations as $reservation) {
+            if ($reservation->program_id === null || $reservation->program?->requires_accommodation === true) {
+                $key = 'stay_assignments';
+                $items[$key] ??= ['key' => $key, 'label' => 'Stay assignments', 'complete' => 0, 'total' => 0];
+                $items[$key]['total']++;
+                $items[$key]['complete'] += $this->hasStayPlace($reservation) ? 1 : 0;
+            }
+            $requirements = $reservation->program_id === null ? collect() : $reservation->program->requirements;
+            foreach ($requirements as $requirement) {
+                $key = 'category_'.$requirement->resource_category_id;
+                $items[$key] ??= ['key' => $key, 'label' => $requirement->category->name.' assignments', 'complete' => 0, 'total' => 0];
+                $items[$key]['total']++;
+                $required = $requirement->quantityForParty(max(1, $reservation->adults + $reservation->children));
+                $items[$key]['complete'] += $this->programRequirements->assignedQuantity($reservation, $requirement) >= $required ? 1 : 0;
+            }
+        }
+
+        return collect(array_values($items));
+    }
+
+    /** @return list<string> */
+    private function missingResourceReasons(Reservation $reservation): array
+    {
+        $reasons = [];
+        if (($reservation->program_id === null || $reservation->program?->requires_accommodation === true) && ! $this->hasStayPlace($reservation)) {
+            $reasons[] = 'Stay assignment';
+        }
+        $requirements = $reservation->program_id === null ? collect() : $reservation->program->requirements;
+        foreach ($requirements as $requirement) {
+            $required = $requirement->quantityForParty(max(1, $reservation->adults + $reservation->children));
+            $assigned = $this->programRequirements->assignedQuantity($reservation, $requirement);
+            if ($assigned < $required) {
+                $reasons[] = $requirement->category->name." assignment ({$assigned}/{$required})";
+            }
+        }
+
+        return $reasons;
     }
 }

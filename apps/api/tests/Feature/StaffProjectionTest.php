@@ -8,7 +8,6 @@ use App\Enums\FolioLineType;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Models\Deposit;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -79,7 +78,7 @@ class StaffProjectionTest extends TestCase
             'starts_at' => $arrival,
             'ends_at' => $arrival->addDays(2),
         ]);
-        $room = Resource::factory()->create(['property_id' => $property->id, 'type' => ResourceType::Room]);
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $this->category($property, 'room')->id]);
         $reservation->allocations()->create([
             'resource_id' => $room->id,
             'status' => AllocationStatus::Confirmed,

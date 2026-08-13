@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
 use App\Enums\FolioLineType;
-use App\Enums\ResourceType;
 use App\Models\Allocation;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -188,7 +187,7 @@ class GuestPortalTest extends TestCase
 
         $this->portalGet('/api/v1/guest-portal/folio', $session)
             ->assertOk()
-            ->assertJsonPath('data.is_final', true)
+            ->assertJsonPath('data.is_final', false)
             ->assertJsonPath('data.lines.0.description', 'Patagonian Explorer')
             ->assertJsonMissingPath('data.lines.0.metadata');
 
@@ -270,7 +269,7 @@ class GuestPortalTest extends TestCase
         ]);
         $guide = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'capacity' => 8,
         ]);
         Allocation::query()->create([

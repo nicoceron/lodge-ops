@@ -39,6 +39,12 @@ final class FolioWorkflowActions
                     ->helperText('Use a negative amount for a credit adjustment.')
                     ->integer()
                     ->required(),
+                TextInput::make('tax_amount_minor')
+                    ->label('Tax total (minor units)')
+                    ->helperText('Enter the tax for this whole line; use a negative value when reversing tax in a credit adjustment.')
+                    ->integer()
+                    ->default(0)
+                    ->required(),
             ])
             ->action(function (array $data): void {
                 app(FolioService::class)->append(
@@ -48,6 +54,7 @@ final class FolioWorkflowActions
                     (int) round(((float) $data['quantity']) * 1000),
                     (int) $data['unit_amount_minor'],
                     auth()->id(),
+                    taxAmountMinor: (int) $data['tax_amount_minor'],
                 );
                 Notification::make()->success()->title('Append-only folio entry posted')->send();
             });

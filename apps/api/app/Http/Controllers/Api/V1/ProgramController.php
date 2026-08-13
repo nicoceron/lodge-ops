@@ -17,7 +17,7 @@ class ProgramController extends Controller
         $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
 
         return ProgramResource::collection(Program::query()
-            ->with('requirements')
+            ->with('requirements.category')
             ->when($membershipPropertyId, fn ($query) => $query->where('property_id', $membershipPropertyId))
             ->when($request->query('property_id'), fn ($query, $id) => $query->where('property_id', $id))
             ->when($request->has('active'), fn ($query) => $query->where('is_active', $request->boolean('active')))
@@ -29,6 +29,6 @@ class ProgramController extends Controller
     {
         $this->authorize('view', $program);
 
-        return new ProgramResource($program->load('requirements'));
+        return new ProgramResource($program->load('requirements.category'));
     }
 }

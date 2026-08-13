@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
 use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\Program;
@@ -30,7 +29,7 @@ class OperationalBookingCoreTest extends TestCase
         [$tenant, $property, $user] = $this->tenantEnvironment();
         $program = $this->program($property->id, ['display_color' => '#0F766E', 'requires_accommodation' => true]);
         $program->requirements()->create([
-            'resource_type' => ResourceType::Guide,
+            'resource_category_id' => $this->category($property, 'guide')->id,
             'minimum_quantity' => 1,
             'guests_per_resource' => 4,
             'capabilities' => ['first aid'],
@@ -47,7 +46,7 @@ class OperationalBookingCoreTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.display_color', '#0F766E')
             ->assertJsonPath('data.0.requires_accommodation', true)
-            ->assertJsonPath('data.0.requirements.0.resource_type', 'guide')
+            ->assertJsonPath('data.0.requirements.0.category_slug', 'guide')
             ->assertJsonPath('data.0.requirements.0.quantity', 1)
             ->assertJsonPath('data.0.requirements.0.guests_per_resource', 4);
 
@@ -140,7 +139,7 @@ class OperationalBookingCoreTest extends TestCase
         [, $property] = $this->tenantEnvironment(authenticate: false);
         $program = $this->program($property->id, ['requires_accommodation' => true]);
         $program->requirements()->create([
-            'resource_type' => ResourceType::Guide,
+            'resource_category_id' => $this->category($property, 'guide')->id,
             'minimum_quantity' => 1,
             'guests_per_resource' => 2,
             'capabilities' => ['first aid'],
@@ -156,7 +155,7 @@ class OperationalBookingCoreTest extends TestCase
         $room = Resource::factory()->create(['property_id' => $property->id, 'capacity' => 2]);
         $guide = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'capacity' => 3,
             'attributes' => ['capabilities' => ['first aid'], 'languages' => ['spanish', 'english']],
         ]);
@@ -231,7 +230,7 @@ class OperationalBookingCoreTest extends TestCase
             'quantity' => 1,
         ]);
 
-        $this->expectExceptionMessage('requires a room allocation covering the full stay');
+        $this->expectExceptionMessage('requires a stay-place allocation covering the full stay');
         app(ReservationService::class)->transition($reservation, ReservationStatus::Hold);
     }
 
@@ -284,12 +283,12 @@ class OperationalBookingCoreTest extends TestCase
         ]);
         $ownGuide = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'user_id' => $guideUser->id,
         ]);
         $otherGuide = Resource::factory()->create([
             'property_id' => $property->id,
-            'type' => ResourceType::Guide,
+            'category_id' => $this->category($property, 'guide')->id,
             'user_id' => null,
         ]);
         app(TenantContext::class)->set($tenant, $guideMembership);

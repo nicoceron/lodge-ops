@@ -69,7 +69,7 @@ class ResourceBlockResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('resource.name')->label('Resource')->searchable()->weight('medium'),
-                TextColumn::make('resource.type')->label('Type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('resource.category.name')->label('Category')->badge(),
                 TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
                 TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
                 TextColumn::make('reason')->searchable()->wrap(),
@@ -93,7 +93,7 @@ class ResourceBlockResource extends TenantResource
             ->when($membership?->role === MembershipRole::Guide, fn (Builder $query): Builder => $query->where('user_id', auth()->id()))
             ->orderBy('name')
             ->get()
-            ->mapWithKeys(fn (Resource $resource): array => [$resource->id => "{$resource->name} · {$resource->type->value}"])
+            ->mapWithKeys(fn (Resource $resource): array => [$resource->id => "{$resource->name} · {$resource->categoryName()}"])
             ->all();
     }
 }

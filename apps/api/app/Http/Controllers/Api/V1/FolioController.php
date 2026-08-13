@@ -41,6 +41,7 @@ class FolioController extends Controller
             unitAmountMinor: $data['unit_amount_minor'],
             actorId: $request->user()->id,
             metadata: $data['metadata'] ?? [],
+            taxAmountMinor: $data['tax_amount_minor'] ?? 0,
         ));
     }
 
@@ -50,5 +51,23 @@ class FolioController extends Controller
         $validated = $request->validate(['reason' => ['required', 'string', 'max:5000']]);
 
         return new FolioLineResource($this->service->reverse($folioLine, $validated['reason'], $request->user()->id));
+    }
+
+    public function close(Request $request, Reservation $reservation): JsonResponse
+    {
+        $this->authorize('create', FolioLine::class);
+        $this->authorize('view', $reservation);
+        $reservation = $this->service->close($reservation, $request->user()->id);
+
+        return response()->json(['data' => $this->service->summary($reservation)]);
+    }
+
+    public function reopen(Reservation $reservation): JsonResponse
+    {
+        $this->authorize('create', FolioLine::class);
+        $this->authorize('view', $reservation);
+        $reservation = $this->service->reopen($reservation);
+
+        return response()->json(['data' => $this->service->summary($reservation)]);
     }
 }

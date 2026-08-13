@@ -2,10 +2,16 @@
 
 namespace App\Filament\Resources\Resources\Tables;
 
-use App\Enums\ResourceType;
+use App\Enums\HousekeepingStatus;
+use App\Enums\ResourceKind;
 use App\Filament\Support\LodgeOpsPresentation;
+use App\Models\Resource;
+use App\Models\ResourceCategory;
+use App\Services\HousekeepingService;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -19,18 +25,14 @@ class ResourcesTable
         return $table
             ->columns([
                 TextColumn::make('name')
-                    ->description(fn ($record): string => $record->code)
+                    ->description(fn (Resource $record): string => $record->code)
                     ->searchable(['name', 'code'])
                     ->sortable(),
-                TextColumn::make('type')
+                TextColumn::make('category.name')
+                    ->label('Category')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => match ($state instanceof ResourceType ? $state : ResourceType::tryFrom((string) $state)) {
-                        ResourceType::Room => 'success',
-                        ResourceType::Guide, ResourceType::Staff => 'info',
-                        ResourceType::Vehicle, ResourceType::Boat => 'warning',
-                        default => 'gray',
-                    })
+                    ->color(fn (Resource $record): string => $record->category->kind->color())
+                    ->description(fn (Resource $record): string => $record->category->kind->singular())
                     ->sortable(),
                 TextColumn::make('property.name')
                     ->label('Property')
@@ -40,6 +42,12 @@ class ResourcesTable
                     ->alignCenter()
                     ->numeric()
                     ->sortable(),
+                TextColumn::make('housekeeping_status')
+                    ->label('Housekeeping')
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => $state?->label() ?? 'Not tracked')
+                    ->color(fn ($state): string => $state?->color() ?? 'gray')
+                    ->placeholder('—'),
                 IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),
@@ -49,21 +57,46 @@ class ResourcesTable
                     ->relationship('property', 'name')
                     ->searchable()
                     ->preload(),
-                SelectFilter::make('type')
-                    ->options(LodgeOpsPresentation::enumOptions(ResourceType::cases()))
+                SelectFilter::make('kind')
+                    ->label('Kind')
+                    ->options(LodgeOpsPresentation::enumOptions(ResourceKind::cases()))
+                    ->query(fn ($query, array $data) => filled($data['value'] ?? null)
+                        ? $query->whereHas('category', fn ($category) => $category->where('kind', $data['value']))
+                        : $query),
+                SelectFilter::make('category_id')
+                    ->label('Category')
+                    ->options(fn (): array => ResourceCategory::query()
+                        ->orderBy('sort_order')
+                        ->orderBy('name')
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->searchable()
                     ->multiple(),
                 TernaryFilter::make('is_active')
                     ->label('Active resources')
                     ->native(false),
+                SelectFilter::make('housekeeping_status')
+                    ->options(collect(HousekeepingStatus::cases())->mapWithKeys(fn (HousekeepingStatus $status): array => [$status->value => $status->label()])->all()),
             ])
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
+                Action::make('housekeeping')
+                    ->label('Housekeeping')
+                    ->icon('heroicon-o-sparkles')
+                    ->visible(fn (Resource $record): bool => $record->category->kind === ResourceKind::Place)
+                    ->schema([
+                        Select::make('status')
+                            ->options(collect(HousekeepingStatus::cases())->mapWithKeys(fn (HousekeepingStatus $status): array => [$status->value => $status->label()])->all())
+                            ->default(fn (Resource $record): ?string => $record->housekeeping_status?->value)
+                            ->required(),
+                    ])
+                    ->action(fn (Resource $record, array $data) => app(HousekeepingService::class)->update($record, HousekeepingStatus::from($data['status']), auth()->id())),
             ])
             ->defaultSort('name')
             ->striped()
             ->emptyStateHeading('No resources configured')
-            ->emptyStateDescription('Add rooms, guides, equipment or vehicles to make them bookable.')
+            ->emptyStateDescription('Add places, assets or crew to make them bookable.')
             ->emptyStateIcon('heroicon-o-rectangle-group');
     }
 }

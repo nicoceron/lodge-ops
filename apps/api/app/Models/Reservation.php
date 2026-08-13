@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\FolioStatus;
 use App\Enums\ReservationStatus;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,14 +19,27 @@ use LogicException;
  * @property CarbonImmutable|null $cancelled_at
  * @property string|null $closure_reason
  * @property string $property_id
+ * @property string|null $program_id
  * @property string $currency
+ * @property int $adults
+ * @property int $children
  * @property int $total_minor
+ * @property FolioStatus $folio_status
+ * @property CarbonImmutable|null $folio_closed_at
+ * @property int|null $folio_closed_by
  * @property ReservationStatus $status
  * @property-read Program|null $program
  * @property-read Guest|null $primaryGuest
+ * @property-read Collection<int, Allocation> $allocations
+ * @property-read Collection<int, ReservationNote> $noteTimeline
+ * @property-read Collection<int, ReservationStatusHistory> $statusHistory
  */
 class Reservation extends TenantModel
 {
+    protected $attributes = [
+        'folio_status' => FolioStatus::Open->value,
+    ];
+
     protected static function booted(): void
     {
         static::saving(function (Reservation $reservation): void {
@@ -53,6 +68,8 @@ class Reservation extends TenantModel
             'subtotal_minor' => 'integer',
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
+            'folio_status' => FolioStatus::class,
+            'folio_closed_at' => 'immutable_datetime',
             'revision' => 'integer',
         ];
     }
@@ -113,6 +130,16 @@ class Reservation extends TenantModel
     public function statusHistory(): HasMany
     {
         return $this->hasMany(ReservationStatusHistory::class)->orderByDesc('changed_at');
+    }
+
+    public function noteTimeline(): HasMany
+    {
+        return $this->hasMany(ReservationNote::class)->orderByDesc('occurred_at');
+    }
+
+    public function folioClosedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'folio_closed_by');
     }
 
     public function guestPortalAccessTokens(): HasMany

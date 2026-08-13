@@ -35,7 +35,7 @@
         <div @class(['grid gap-6', 'xl:grid-cols-3' => $canAccessTasks, 'xl:grid-cols-2' => ! $canAccessTasks])>
             <x-filament::section
                 heading="Stays needing attention"
-                description="Specific upcoming reservations blocked by missing guest, room, guide, payment or kitchen details."
+                description="Specific upcoming reservations blocked by missing guest, requested resource, payment, or kitchen details."
             >
                 <div class="space-y-3">
                     @forelse ($dashboard['attention_stays'] as $stay)
@@ -58,7 +58,7 @@
                     @empty
                         <div class="py-8 text-center">
                             <div class="font-medium">Upcoming stays are ready</div>
-                            <div class="mt-1 text-sm text-gray-500">No guest, room, guide, payment or kitchen blockers in the next seven days.</div>
+                            <div class="mt-1 text-sm text-gray-500">No guest, resource, payment, or kitchen blockers in the next seven days.</div>
                         </div>
                     @endforelse
                 </div>
@@ -84,7 +84,7 @@
                             </div>
                             <div class="mt-2 text-xs text-gray-500">
                                 {{ \Carbon\CarbonImmutable::parse($arrival['starts_at'])->timezone($timezone)->format('H:i') }}
-                                · {{ count($arrival['room_names']) ? collect($arrival['room_names'])->join(', ') : 'Room needed' }}
+                                · {{ count($arrival['stay_place_names']) ? collect($arrival['stay_place_names'])->join(', ') : 'Stay place needed' }}
                             </div>
                         </div>
                     @empty

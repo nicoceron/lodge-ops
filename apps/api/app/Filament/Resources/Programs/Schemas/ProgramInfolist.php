@@ -27,7 +27,8 @@ class ProgramInfolist
             ]),
             Section::make('Resource requirements')->schema([
                 RepeatableEntry::make('requirements')->schema([
-                    TextEntry::make('resource_type')->badge()->formatStateUsing(fn ($state): string => $state->value),
+                    TextEntry::make('category.name')->label('Category')->badge(),
+                    TextEntry::make('category.kind')->label('Kind')->badge()->formatStateUsing(fn ($state): string => is_object($state) && method_exists($state, 'singular') ? $state->singular() : (string) $state),
                     TextEntry::make('minimum_quantity')->label('Minimum')->numeric(),
                     TextEntry::make('guests_per_resource')->label('Guests per resource')->placeholder('Fixed quantity'),
                     TextEntry::make('capabilities')->badge()->placeholder('Any capability'),

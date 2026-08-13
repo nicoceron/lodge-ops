@@ -7,6 +7,7 @@ use App\Enums\ReservationStatus;
 use App\Models\Allocation;
 use App\Models\Reservation;
 use App\Models\Resource;
+use App\Models\ResourceCategory;
 use App\Models\ServiceOccurrence;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ class AllocationWorkflowService
             $this->assertTargetsBelongToReservation($reservation, $data);
 
             $allocation = $reservation->allocations()->create([
-                ...Arr::only($data, ['resource_id', 'service_occurrence_id', 'starts_at', 'ends_at', 'quantity']),
+                ...Arr::only($data, ['requested_category_id', 'resource_id', 'service_occurrence_id', 'starts_at', 'ends_at', 'quantity']),
                 'quantity' => $data['quantity'] ?? 1,
                 'status' => $reservation->status === ReservationStatus::Confirmed
                     ? AllocationStatus::Confirmed
@@ -34,7 +35,7 @@ class AllocationWorkflowService
                 $this->availability->assertAvailable($allocation);
             }
 
-            return $allocation->load(['resource', 'serviceOccurrence']);
+            return $allocation->load(['requestedCategory', 'resource.category', 'serviceOccurrence']);
         }, 3);
     }
 
@@ -46,7 +47,7 @@ class AllocationWorkflowService
                 ->lockForUpdate()->findOrFail($allocation->id);
 
             $candidate = [...$allocation->only([
-                'resource_id', 'service_occurrence_id', 'starts_at', 'ends_at', 'quantity', 'status',
+                'requested_category_id', 'resource_id', 'service_occurrence_id', 'starts_at', 'ends_at', 'quantity', 'status',
             ]), ...$data];
             $this->assertTargetsBelongToReservation($reservation, $candidate);
 
@@ -64,7 +65,7 @@ class AllocationWorkflowService
             }
             $allocation->save();
 
-            return $allocation->load(['resource', 'serviceOccurrence']);
+            return $allocation->load(['requestedCategory', 'resource.category', 'serviceOccurrence']);
         }, 3);
     }
 
@@ -79,10 +80,20 @@ class AllocationWorkflowService
 
     private function assertTargetsBelongToReservation(Reservation $reservation, array $data): void
     {
-        if (empty($data['resource_id']) && empty($data['service_occurrence_id'])) {
+        if (empty($data['requested_category_id']) && empty($data['resource_id']) && empty($data['service_occurrence_id'])) {
             throw ValidationException::withMessages([
-                'resource_id' => 'An allocation must target a resource or service occurrence.',
+                'requested_category_id' => 'An allocation must request a category, assign a resource, or target a service occurrence.',
             ]);
+        }
+
+        $category = null;
+        if (! empty($data['requested_category_id'])) {
+            $category = ResourceCategory::query()->whereKey($data['requested_category_id'])->where('is_active', true)->first();
+            if ($category === null || $category->property_id !== $reservation->property_id) {
+                throw ValidationException::withMessages([
+                    'requested_category_id' => 'The requested category must be active and belong to the reservation property.',
+                ]);
+            }
         }
 
         if (! empty($data['resource_id'])) {
@@ -92,6 +103,12 @@ class AllocationWorkflowService
                     'resource_id' => 'The resource must be active and belong to the reservation property.',
                 ]);
             }
+            if ($category !== null && $resource->category_id !== $category->id) {
+                throw ValidationException::withMessages([
+                    'resource_id' => 'The assigned resource must belong to the requested category.',
+                ]);
+            }
+            $data['requested_category_id'] = $resource->category_id;
         }
 
         if (! empty($data['service_occurrence_id'])) {

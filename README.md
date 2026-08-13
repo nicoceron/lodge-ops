@@ -5,7 +5,7 @@ LodgeOps is a multi-tenant operating system for lodges and outfitters. It coordi
 The product intentionally improves on the legacy LodgeRunner workflow instead of reproducing its duplicate room/group/guide booking variants:
 
 - one reservation composer;
-- one constraint-aware allocation engine for rooms, guides, horses, boats, vehicles, and equipment;
+- one constraint-aware allocation engine for property-defined places, assets, and crew;
 - one unified calendar with role-specific lenses;
 - separate sales, reservation, payment, and fulfillment states;
 - secure tenant-scoped API and opaque public links;
@@ -39,7 +39,7 @@ make doctor
 
 The deterministic development seed creates `admin@example.com` / `password` for tenant `11111111-1111-4111-8111-111111111111` and a resettable, one-time guest preview link. Filament never pre-fills credentials; normal local Compose runs use persisted PostgreSQL data.
 
-The seed also includes a bounded seven-month history of bookings, collections, unpaid balances, programs, and channels so the operational and finance dashboard trends are meaningful instead of empty demo charts.
+The seed also includes a bounded seven-month history of bookings, collections, unpaid balances, programs, category-only requests, assigned instances, housekeeping states, closed folios, note timelines, and a private channel calendar feed so every major workflow is demonstrable instead of appearing as an empty shell.
 
 Run the complete formatter, contract, HTTP, Filament, domain, public build, and browser suite with:
 
@@ -58,11 +58,11 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 ## What is implemented
 
 - A responsive Filament staff workspace for the unified calendar, reservations, CRM, operations, kitchen, finance, and configuration.
-- A responsive Livewire resource planner with week, two-week, and 30-day windows; room/resource lanes; availability blocks; operational lenses; and seeded stays, activities, and tasks.
+- A responsive Livewire resource planner with week, two-week, and 30-day windows; place/asset/crew lanes; category-level requests; exact assignments; availability blocks; operational lenses; and seeded stays, activities, and tasks.
 - A public-only Next.js website that links directly to Filament for sign-in and contains no tenant session, API proxy, or protected staff routes.
 - A Laravel-rendered mobile-first guest reservation center with itinerary, pre-arrival data, consent, waivers, payment evidence, final folio, and post-stay survey flows.
 - Native Filament authentication with verified-email enforcement, password recovery, TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and Sanctum bearer tokens for explicit API integrations.
-- Transaction-safe reservation confirmation, half-open allocation checks, service capacity, holds/status transitions, actual check-in/check-out facts, reasoned cancellation/no-show closure, optimistic revisions, minor-unit money, payments, folio credits, and retry-safe commands.
+- Transaction-safe reservation confirmation, category and instance capacity checks, half-open intervals, holds/status transitions, actual check-in/check-out facts, housekeeping handoff, reasoned cancellation/no-show closure, optimistic revisions, minor-unit money, net/tax/gross folios, close/reopen controls, and retry-safe commands.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, tenant isolation, the complete guest workflow, and public-site browser journeys.

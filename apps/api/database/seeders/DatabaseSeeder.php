@@ -5,12 +5,15 @@ namespace Database\Seeders;
 use App\Enums\AllocationStatus;
 use App\Enums\DepositStatus;
 use App\Enums\FolioLineType;
+use App\Enums\HousekeepingStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
-use App\Enums\ResourceType;
+use App\Enums\ResourceKind;
 use App\Enums\TaskStatus;
+use App\Models\Allocation;
 use App\Models\AutomationRule;
+use App\Models\CalendarFeed;
 use App\Models\CommissionAccrual;
 use App\Models\CostRecord;
 use App\Models\Deposit;
@@ -27,13 +30,19 @@ use App\Models\ProgramResourceRequirement;
 use App\Models\ProgramTaskTemplate;
 use App\Models\Property;
 use App\Models\Reservation;
+use App\Models\ReservationNote;
 use App\Models\Resource;
+use App\Models\ResourceCategory;
 use App\Models\ServiceOccurrence;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\CalendarFeedService;
+use App\Services\FolioService;
+use App\Services\ResourceCatalog;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
@@ -76,8 +85,9 @@ class DatabaseSeeder extends Seeder
             $context->set($tenant, $membership);
 
             $staff = $this->seedTeam($tenant->id, $property->id);
-            $programs = $this->seedPrograms($property->id);
-            $resources = $this->seedResources($property->id, $staff);
+            $catalog = app(ResourceCatalog::class)->ensure($property, $this->demoResourceCategories());
+            $programs = $this->seedPrograms($property->id, $catalog);
+            $resources = $this->seedResources($property->id, $staff, $catalog);
             $this->seedAutomation();
 
             $guest = Guest::query()->firstOrCreate(
@@ -102,10 +112,24 @@ class DatabaseSeeder extends Seeder
                     'confirmed_at' => now(),
                 ],
             );
-            $reservation->allocations()->firstOrCreate(
-                ['resource_id' => $room->id],
-                ['status' => AllocationStatus::Confirmed, 'starts_at' => $reservation->starts_at, 'ends_at' => $reservation->ends_at, 'quantity' => 1],
+            $requestedStay = $reservation->allocations()->whereNull('service_occurrence_id')->oldest()->first()
+                ?? new Allocation(['reservation_id' => $reservation->id]);
+            $requestedStay->fill([
+                'requested_category_id' => $catalog['room']->id,
+                'resource_id' => null,
+                'service_occurrence_id' => null,
+                'status' => AllocationStatus::Confirmed,
+                'starts_at' => $reservation->starts_at,
+                'ends_at' => $reservation->ends_at,
+                'quantity' => 1,
+            ])->save();
+            ReservationNote::query()->firstOrCreate(
+                ['reservation_id' => $reservation->id, 'body' => 'Guest prefers a quiet cabin away from the service path.'],
+                ['kind' => 'guest_request', 'created_by' => $staff['operations']->id, 'occurred_at' => $today->subDays(2)],
             );
+            if (! CalendarFeed::query()->where('resource_id', $room->id)->where('name', 'Demo channel · Coihue Suite')->exists()) {
+                app(CalendarFeedService::class)->create($property->id, $room->id, 'Demo channel · Coihue Suite');
+            }
             OperationalTask::query()->firstOrCreate(
                 ['reservation_id' => $reservation->id, 'title' => 'Preparar habitacion'],
                 ['property_id' => $property->id, 'status' => TaskStatus::Todo, 'priority' => 'high', 'due_at' => $reservation->starts_at->subHours(2)],
@@ -138,6 +162,25 @@ class DatabaseSeeder extends Seeder
         });
     }
 
+    /**
+     * Patagonia is a complete demo catalog, not a platform-level type system.
+     *
+     * @return list<array{kind: ResourceKind, slug: string, name: string, counts_as_stay: bool, default_capacity: int, sort_order: int}>
+     */
+    private function demoResourceCategories(): array
+    {
+        return [
+            ['kind' => ResourceKind::Place, 'slug' => 'room', 'name' => 'Cabin', 'counts_as_stay' => true, 'default_capacity' => 2, 'sort_order' => 10],
+            ['kind' => ResourceKind::Place, 'slug' => 'venue', 'name' => 'Full property', 'counts_as_stay' => true, 'default_capacity' => 1, 'sort_order' => 20],
+            ['kind' => ResourceKind::Asset, 'slug' => 'horse', 'name' => 'Horse', 'counts_as_stay' => false, 'default_capacity' => 1, 'sort_order' => 30],
+            ['kind' => ResourceKind::Asset, 'slug' => 'boat', 'name' => 'Boat', 'counts_as_stay' => false, 'default_capacity' => 3, 'sort_order' => 40],
+            ['kind' => ResourceKind::Asset, 'slug' => 'vehicle', 'name' => 'Vehicle', 'counts_as_stay' => false, 'default_capacity' => 4, 'sort_order' => 50],
+            ['kind' => ResourceKind::Asset, 'slug' => 'equipment', 'name' => 'Equipment', 'counts_as_stay' => false, 'default_capacity' => 1, 'sort_order' => 60],
+            ['kind' => ResourceKind::Crew, 'slug' => 'guide', 'name' => 'Guide', 'counts_as_stay' => false, 'default_capacity' => 1, 'sort_order' => 70],
+            ['kind' => ResourceKind::Crew, 'slug' => 'staff', 'name' => 'Staff', 'counts_as_stay' => false, 'default_capacity' => 1, 'sort_order' => 80],
+        ];
+    }
+
     /** @return array<string, User> */
     private function seedTeam(string $tenantId, string $propertyId): array
     {
@@ -167,8 +210,11 @@ class DatabaseSeeder extends Seeder
         })->all();
     }
 
-    /** @return array<string, Program> */
-    private function seedPrograms(string $propertyId): array
+    /**
+     * @param  Collection<string, ResourceCategory>  $catalog
+     * @return array<string, Program>
+     */
+    private function seedPrograms(string $propertyId, $catalog): array
     {
         $definitions = [
             'stay' => ['name' => 'Lodge stay', 'color' => '#4F6F52', 'accommodation' => true, 'duration' => 1440, 'capacity' => 20, 'price' => 300000],
@@ -196,14 +242,14 @@ class DatabaseSeeder extends Seeder
         })->all();
 
         foreach ([
-            ['program' => 'stag', 'type' => ResourceType::Guide, 'minimum' => 1, 'ratio' => 1, 'capabilities' => ['hunting'], 'languages' => ['en']],
-            ['program' => 'double', 'type' => ResourceType::Guide, 'minimum' => 1, 'ratio' => 2, 'capabilities' => ['fishing'], 'languages' => ['en']],
-            ['program' => 'fishing', 'type' => ResourceType::Guide, 'minimum' => 1, 'ratio' => 2, 'capabilities' => ['fishing'], 'languages' => []],
-            ['program' => 'horseback', 'type' => ResourceType::Horse, 'minimum' => 1, 'ratio' => 1, 'capabilities' => [], 'languages' => []],
-            ['program' => 'trekking', 'type' => ResourceType::Guide, 'minimum' => 1, 'ratio' => 6, 'capabilities' => ['trekking'], 'languages' => []],
+            ['program' => 'stag', 'category' => 'guide', 'minimum' => 1, 'ratio' => 1, 'capabilities' => ['hunting'], 'languages' => ['en']],
+            ['program' => 'double', 'category' => 'guide', 'minimum' => 1, 'ratio' => 2, 'capabilities' => ['fishing'], 'languages' => ['en']],
+            ['program' => 'fishing', 'category' => 'guide', 'minimum' => 1, 'ratio' => 2, 'capabilities' => ['fishing'], 'languages' => []],
+            ['program' => 'horseback', 'category' => 'horse', 'minimum' => 1, 'ratio' => 1, 'capabilities' => [], 'languages' => []],
+            ['program' => 'trekking', 'category' => 'guide', 'minimum' => 1, 'ratio' => 6, 'capabilities' => ['trekking'], 'languages' => []],
         ] as $index => $requirement) {
             ProgramResourceRequirement::query()->updateOrCreate(
-                ['program_id' => $programs[$requirement['program']]->id, 'resource_type' => $requirement['type'], 'sort_order' => $index],
+                ['program_id' => $programs[$requirement['program']]->id, 'resource_category_id' => $catalog[$requirement['category']]->id, 'sort_order' => $index],
                 [
                     'minimum_quantity' => $requirement['minimum'],
                     'guests_per_resource' => $requirement['ratio'],
@@ -237,19 +283,20 @@ class DatabaseSeeder extends Seeder
 
     /**
      * @param  array<string, User>  $staff
+     * @param  Collection<string, ResourceCategory>  $catalog
      * @return array<string, \App\Models\Resource>
      */
-    private function seedResources(string $propertyId, array $staff): array
+    private function seedResources(string $propertyId, array $staff, $catalog): array
     {
         $resources = [
-            ['code' => '101', 'name' => 'Coihue Suite', 'type' => ResourceType::Room, 'capacity' => 2],
-            ['code' => '102', 'name' => 'Lenga Suite', 'type' => ResourceType::Room, 'capacity' => 2],
-            ['code' => 'CABIN', 'name' => 'River Cabin', 'type' => ResourceType::Room, 'capacity' => 4],
-            ['code' => 'GUIDE-MATEO', 'name' => 'Mateo Rios', 'type' => ResourceType::Guide, 'capacity' => 2, 'user_id' => $staff['guide']->id, 'attributes' => ['capabilities' => ['hunting', 'fishing'], 'languages' => ['es', 'en']]],
-            ['code' => 'HORSES', 'name' => 'Horse pool', 'type' => ResourceType::Horse, 'capacity' => 8, 'attributes' => ['capabilities' => ['trail', 'hunting']]],
-            ['code' => 'BOAT-01', 'name' => 'Drift boat', 'type' => ResourceType::Boat, 'capacity' => 3],
-            ['code' => 'TRANSFER-01', 'name' => 'Transfer 4x4', 'type' => ResourceType::Vehicle, 'capacity' => 6],
-            ['code' => 'BUYOUT', 'name' => 'Full lodge buyout', 'type' => ResourceType::Venue, 'capacity' => 1, 'is_buyout' => true],
+            ['code' => '101', 'name' => 'Coihue Suite', 'category' => 'room', 'capacity' => 2, 'housekeeping_status' => HousekeepingStatus::Inspected],
+            ['code' => '102', 'name' => 'Lenga Suite', 'category' => 'room', 'capacity' => 2, 'housekeeping_status' => HousekeepingStatus::Clean],
+            ['code' => 'CABIN', 'name' => 'River Cabin', 'category' => 'room', 'capacity' => 4, 'housekeeping_status' => HousekeepingStatus::InProgress],
+            ['code' => 'GUIDE-MATEO', 'name' => 'Mateo Rios', 'category' => 'guide', 'capacity' => 2, 'user_id' => $staff['guide']->id, 'attributes' => ['capabilities' => ['hunting', 'fishing'], 'languages' => ['es', 'en']]],
+            ['code' => 'HORSES', 'name' => 'Horse pool', 'category' => 'horse', 'capacity' => 8, 'attributes' => ['capabilities' => ['trail', 'hunting']]],
+            ['code' => 'BOAT-01', 'name' => 'Drift boat', 'category' => 'boat', 'capacity' => 3],
+            ['code' => 'TRANSFER-01', 'name' => 'Transfer 4x4', 'category' => 'vehicle', 'capacity' => 6],
+            ['code' => 'BUYOUT', 'name' => 'Full lodge buyout', 'category' => 'venue', 'capacity' => 1, 'is_buyout' => true],
         ];
 
         $created = [];
@@ -258,12 +305,14 @@ class DatabaseSeeder extends Seeder
                 ['code' => $resource['code']],
                 [
                     'property_id' => $propertyId,
+                    'category_id' => $catalog[$resource['category']]->id,
                     'name' => $resource['name'],
-                    'type' => $resource['type'],
                     'capacity' => $resource['capacity'],
                     'user_id' => $resource['user_id'] ?? null,
                     'attributes' => $resource['attributes'] ?? null,
                     'is_buyout' => $resource['is_buyout'] ?? false,
+                    'housekeeping_status' => $resource['housekeeping_status'] ?? null,
+                    'housekeeping_updated_at' => isset($resource['housekeeping_status']) ? now() : null,
                     'is_active' => true,
                 ],
             );
@@ -291,7 +340,7 @@ class DatabaseSeeder extends Seeder
                 'last_name' => 'Walker',
                 'phone' => '+1 555 0101',
                 'language' => 'en',
-                'preferences' => ['dietary' => ['Gluten-free', 'Severe shellfish allergy'], 'room' => 'Quiet room'],
+                'preferences' => ['dietary' => ['Gluten-free', 'Severe shellfish allergy'], 'stay_place' => 'Quiet cabin'],
             ],
         );
         $inHouseGuest = Guest::query()->updateOrCreate(
@@ -439,6 +488,8 @@ class DatabaseSeeder extends Seeder
                 'metadata' => ['evidence' => 'demo-paid-in-full.pdf'],
             ],
         );
+        app(FolioService::class)->postPayment($arrivalPayment, null);
+        app(FolioService::class)->postPayment($inHousePayment, null);
         Deposit::query()->updateOrCreate(
             ['reservation_id' => $arrival->id, 'schedule_type' => 'deposit'],
             [
@@ -478,6 +529,9 @@ class DatabaseSeeder extends Seeder
                 'type' => FolioLineType::Charge,
                 'quantity' => 1,
                 'unit_amount_minor' => 185_000,
+                'net_amount_minor' => 185_000,
+                'tax_amount_minor' => 0,
+                'gross_amount_minor' => 185_000,
                 'amount_minor' => 185_000,
                 'currency' => 'USD',
                 'posted_at' => $today->addHours(18),
@@ -594,7 +648,7 @@ class DatabaseSeeder extends Seeder
 
                 $paymentRatio = [1.0, 0.6, 0.0][$index];
                 if ($paymentRatio > 0) {
-                    Payment::query()->updateOrCreate(
+                    $payment = Payment::query()->updateOrCreate(
                         ['provider' => 'manual_seed', 'provider_reference' => sprintf('TREND-PAYMENT-%02d', $sequence)],
                         [
                             'reservation_id' => $reservation->id,
@@ -606,6 +660,10 @@ class DatabaseSeeder extends Seeder
                             'metadata' => ['scenario' => 'dashboard_trend'],
                         ],
                     );
+                    app(FolioService::class)->postPayment($payment, null);
+                    if ($paymentRatio === 1.0 && $reservation->status === ReservationStatus::CheckedOut) {
+                        app(FolioService::class)->close($reservation, null);
+                    }
                 }
 
                 CostRecord::query()->updateOrCreate(

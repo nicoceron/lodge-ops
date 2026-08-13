@@ -43,7 +43,7 @@ class LodgeReadinessOverview extends StatsOverviewWidget
             : (ReservationResource::canViewAny() ? ReservationResource::getUrl() : null);
 
         $stats = [
-            Stat::make('Occupancy now', "{$dashboard['occupied_rooms']} of {$dashboard['active_rooms']} rooms")
+            Stat::make('Occupancy now', "{$dashboard['occupied_stay_places']} of {$dashboard['active_stay_places']} stay places")
                 ->description("{$dashboard['in_house']} in-house ".str('stay')->plural($dashboard['in_house']))
                 ->icon('heroicon-m-home-modern')
                 ->chart(array_map('floatval', $trend['occupancy_percent']))

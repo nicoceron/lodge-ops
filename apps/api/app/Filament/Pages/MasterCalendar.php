@@ -4,7 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
-use App\Enums\ResourceType;
+use App\Enums\ResourceKind;
 use App\Filament\Resources\Reservations\ReservationResource;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
@@ -39,6 +39,8 @@ class MasterCalendar extends Page
     public ?string $propertyId = null;
 
     public string $lens = 'all';
+
+    public string $kind = 'all';
 
     public int $rangeDays = 14;
 
@@ -115,7 +117,7 @@ class MasterCalendar extends Page
         $guideResourceIds = $isGuide
             ? Resource::query()
                 ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-                ->where('type', ResourceType::Guide)
+                ->whereHas('category', fn ($query) => $query->where('kind', ResourceKind::Crew))
                 ->where('user_id', auth()->id())
                 ->where('is_active', true)
                 ->pluck('id')
@@ -179,7 +181,7 @@ class MasterCalendar extends Page
             'buyouts' => $allEvents->where('is_buyout', true)->values(),
             'allocationSummary' => $projection['summary'],
             'resources' => collect($projection['resources']),
-            'resourceRows' => $this->resourceRows($days, $propertyId, $isGuide, $guideResourceIds),
+            'resourceGroups' => $this->resourceRows($days, $propertyId, $isGuide, $guideResourceIds),
             'today' => CarbonImmutable::now($timezone)->toDateString(),
         ];
     }
@@ -232,7 +234,7 @@ class MasterCalendar extends Page
                 'starts_at' => $block->starts_at,
                 'ends_at' => $block->ends_at,
                 'status' => 'blocked',
-                'property' => $block->resource->property?->name ?? '',
+                'property' => $block->resource->property->name,
                 'program' => null,
                 'color' => null,
                 'is_buyout' => false,
@@ -290,7 +292,6 @@ class MasterCalendar extends Page
     /**
      * @param  Collection<int, array{date: CarbonImmutable, events: Collection<int, array<string, mixed>>}>  $days
      * @param  Collection<int, string>  $guideResourceIds
-     * @return Collection<int, array{id: string, name: string, code: string, type: 'boat'|'equipment'|'guide'|'horse'|'room'|'staff'|'vehicle'|'venue', capacity: int, is_buyout: bool, days: Collection<int, array{date: CarbonImmutable, items: Collection<int|string, mixed>}>}>
      */
     private function resourceRows(Collection $days, ?string $propertyId, bool $isGuide, Collection $guideResourceIds): Collection
     {
@@ -313,62 +314,76 @@ class MasterCalendar extends Page
                     ->where('starts_at', '<', $end)
                     ->where('ends_at', '>', $start),
             ])
+            ->with('category')
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->when($isGuide, fn ($query) => $query->whereIn('id', $guideResourceIds))
+            ->when($this->kind !== 'all', fn ($query) => $query->whereHas('category', fn ($category) => $category->where('kind', $this->kind)))
             ->where('is_active', true)
-            ->orderBy('type')
             ->orderBy('name')
             ->get()
-            ->map(function (Resource $resource) use ($days, $visibility): array {
+            ->groupBy(fn (Resource $resource): string => $resource->kind()->value)
+            ->sortKeysUsing(fn (string $left, string $right): int => array_search($left, ResourceKind::values(), true) <=> array_search($right, ResourceKind::values(), true))
+            ->map(function (Collection $resources, string $kind) use ($days, $visibility): array {
+                $kindEnum = ResourceKind::from($kind);
+
                 return [
-                    'id' => $resource->id,
-                    'name' => $resource->name,
-                    'code' => $resource->code,
-                    'type' => $resource->type->value,
-                    'capacity' => $resource->capacity,
-                    'is_buyout' => $resource->isBuyout(),
-                    'days' => $days->map(function (array $day) use ($resource, $visibility): array {
-                        $dayStart = $day['date']->startOfDay()->utc();
-                        $dayEnd = $day['date']->addDay()->startOfDay()->utc();
-                        $items = collect();
+                    'kind' => $kindEnum,
+                    'label' => $kindEnum->label(),
+                    'rows' => $resources->sortBy(fn (Resource $resource): array => [$resource->categoryName(), $resource->name])->values()->map(function (Resource $resource) use ($days, $visibility): array {
+                        return [
+                            'id' => $resource->id,
+                            'name' => $resource->name,
+                            'code' => $resource->code,
+                            'kind' => $resource->kind()->value,
+                            'category_slug' => $resource->categorySlug(),
+                            'category' => $resource->categoryName(),
+                            'capacity' => $resource->capacity,
+                            'is_buyout' => $resource->isBuyout(),
+                            'days' => $days->map(function (array $day) use ($resource, $visibility): array {
+                                $dayStart = $day['date']->startOfDay()->utc();
+                                $dayEnd = $day['date']->addDay()->startOfDay()->utc();
+                                $items = collect();
 
-                        foreach ($resource->allocations as $allocation) {
-                            if (! $allocation->starts_at->lessThan($dayEnd) || ! $allocation->ends_at->greaterThan($dayStart)) {
-                                continue;
-                            }
-                            $reservation = $allocation->reservation;
-                            $guestName = $visibility->canSeeGuestIdentity() && $reservation?->primaryGuest
-                                ? trim("{$reservation->primaryGuest->first_name} {$reservation->primaryGuest->last_name}")
-                                : $reservation?->confirmation_number;
-                            $items->push([
-                                'type' => 'allocation',
-                                'label' => $guestName ?: 'Reserved',
-                                'reference' => $reservation?->confirmation_number,
-                                'quantity' => $allocation->quantity,
-                                'status' => $allocation->status->value,
-                                'color' => $this->calendarColor($reservation?->program?->display_color) ?? '#D97706',
-                                'url' => $reservation ? ReservationResource::getUrl('view', ['record' => $reservation]) : null,
-                            ]);
-                        }
+                                foreach ($resource->allocations as $allocation) {
+                                    if (! $allocation->starts_at->lessThan($dayEnd) || ! $allocation->ends_at->greaterThan($dayStart)) {
+                                        continue;
+                                    }
+                                    $reservation = $allocation->reservation;
+                                    $guestName = $visibility->canSeeGuestIdentity() && $reservation?->primaryGuest
+                                        ? trim("{$reservation->primaryGuest->first_name} {$reservation->primaryGuest->last_name}")
+                                        : $reservation?->confirmation_number;
+                                    $items->push([
+                                        'type' => 'allocation',
+                                        'label' => $guestName ?: 'Reserved',
+                                        'reference' => $reservation?->confirmation_number,
+                                        'quantity' => $allocation->quantity,
+                                        'status' => $allocation->status->value,
+                                        'color' => $this->calendarColor($reservation?->program?->display_color) ?? '#D97706',
+                                        'url' => $reservation ? ReservationResource::getUrl('view', ['record' => $reservation]) : null,
+                                    ]);
+                                }
 
-                        foreach ($resource->blocks as $block) {
-                            if ($block->starts_at->lessThan($dayEnd) && $block->ends_at->greaterThan($dayStart)) {
-                                $items->push([
-                                    'type' => 'block',
-                                    'label' => $block->reason,
-                                    'reference' => 'Unavailable',
-                                    'quantity' => $resource->capacity,
-                                    'status' => 'blocked',
-                                    'color' => '#6B7280',
-                                    'url' => null,
-                                ]);
-                            }
-                        }
+                                foreach ($resource->blocks as $block) {
+                                    if ($block->starts_at->lessThan($dayEnd) && $block->ends_at->greaterThan($dayStart)) {
+                                        $items->push([
+                                            'type' => 'block',
+                                            'label' => $block->reason,
+                                            'reference' => 'Unavailable',
+                                            'quantity' => $resource->capacity,
+                                            'status' => 'blocked',
+                                            'color' => '#6B7280',
+                                            'url' => null,
+                                        ]);
+                                    }
+                                }
 
-                        return ['date' => $day['date'], 'items' => $items];
+                                return ['date' => $day['date'], 'items' => $items];
+                            }),
+                        ];
                     }),
                 ];
-            });
+            })
+            ->values();
     }
 
     private function calendarColor(?string $color): ?string

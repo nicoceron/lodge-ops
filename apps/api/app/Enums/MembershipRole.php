@@ -65,6 +65,11 @@ enum MembershipRole: string
         return in_array($this, [self::Administrator, self::Manager, self::Operations, self::Guide], true);
     }
 
+    public function canManageHousekeeping(): bool
+    {
+        return in_array($this, [self::Administrator, self::Manager, self::Operations, self::Housekeeping], true);
+    }
+
     public function canScheduleOperations(): bool
     {
         return in_array($this, [self::Administrator, self::Manager, self::Operations], true);

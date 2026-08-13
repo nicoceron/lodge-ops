@@ -69,6 +69,24 @@ paths:
               schema: { $ref: '#/components/schemas/CalendarProjection' }
         '422':
           $ref: '#/components/responses/ValidationError'
+  /calendar-feeds/{token}.ics:
+    get:
+      tags: [Calendar]
+      operationId: getPrivateCalendarFeed
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Secret 64-character token shown only when the feed is created.
+          schema: { type: string, pattern: '^[A-Za-z0-9]{64}$' }
+      responses:
+        '200':
+          description: Private iCalendar export of confirmed allocations, active holds, and resource blocks.
+          content:
+            text/calendar:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
   /operations:
     get:
       tags: [Operations]
@@ -267,9 +285,15 @@ paths:
       operationId: listResources
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - name: type
+        - name: category_slug
           in: query
-          schema: { $ref: '#/components/schemas/ResourceType' }
+          schema: { $ref: '#/components/schemas/ResourceCategorySlug' }
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/ResourceKind' }
+        - name: category_id
+          in: query
+          schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/Page'
       responses:
         '200':
@@ -306,7 +330,8 @@ paths:
       operationId: suggestResources
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - { name: type, in: query, required: true, schema: { $ref: '#/components/schemas/ResourceType' } }
+        - { name: category_slug, in: query, schema: { $ref: '#/components/schemas/ResourceCategorySlug' } }
+        - { name: category_id, in: query, schema: { type: string, format: uuid } }
         - { name: starts_at, in: query, required: true, schema: { type: string, format: date-time } }
         - { name: ends_at, in: query, required: true, schema: { type: string, format: date-time } }
         - { name: quantity, in: query, schema: { type: integer, minimum: 1, default: 1 } }
@@ -363,6 +388,30 @@ paths:
       operationId: archiveResource
       responses:
         '204': { description: Resource archived. }
+  /resources/{resource}/housekeeping:
+    patch:
+      tags: [Resources, Operations]
+      operationId: updateResourceHousekeeping
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/HousekeepingStatus' }
+      responses:
+        '200':
+          description: Place housekeeping state updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceEnvelope' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /resource-blocks:
     get:
       tags: [Resources]
@@ -720,6 +769,38 @@ paths:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/notes:
+    get:
+      tags: [Reservations]
+      operationId: listReservationNotes
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Append-only reservation note timeline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationNoteCollection' }
+    post:
+      tags: [Reservations]
+      operationId: createReservationNote
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationNoteInput' }
+      responses:
+        '201':
+          description: Timeline note appended.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationNoteEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reservations/{reservation}/folio:
     get:
       tags: [Finance]
@@ -728,7 +809,40 @@ paths:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/ReservationId'
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Folio ledger and financial summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolioEnvelope' }
+  /reservations/{reservation}/folio/close:
+    post:
+      tags: [Finance]
+      operationId: closeReservationFolio
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Settled checked-out folio closed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolioSummaryEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/folio/reopen:
+    post:
+      tags: [Finance]
+      operationId: reopenReservationFolio
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Folio reopened for additional ledger entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolioSummaryEnvelope' }
   /reservations/{reservation}/folio-lines:
     post:
       tags: [Finance]
@@ -737,9 +851,17 @@ paths:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/ReservationId'
         - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolioLineInput' }
       responses:
-        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '201':
+          description: Manual charge or adjustment posted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolioLineEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
   /folio-lines/{folioLine}/reverse:
     post:
@@ -749,9 +871,21 @@ paths:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
         - { name: folioLine, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 5000 }
       responses:
-        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '201':
+          description: Reversal line posted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolioLineEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
   /tasks:
     get:
@@ -1385,7 +1519,7 @@ components:
       enum: [draft, hold, confirmed, checked_in, checked_out, cancelled, no_show]
     MembershipRole:
       type: string
-      enum: [owner, manager, sales, operations, guide, kitchen, housekeeping, finance, viewer]
+      enum: [administrator, owner, manager, sales, operations, guide, kitchen, housekeeping, finance, viewer]
     ActiveMembership:
       type: object
       required: [tenant_id, role]
@@ -1393,9 +1527,20 @@ components:
         tenant_id: { type: string, format: uuid }
         property_id: { type: [string, 'null'], format: uuid }
         role: { $ref: '#/components/schemas/MembershipRole' }
-    ResourceType:
+    ResourceKind:
       type: string
-      enum: [room, guide, horse, boat, vehicle, equipment, venue, staff]
+      enum: [place, asset, crew]
+    HousekeepingStatus:
+      type: string
+      enum: [clean, dirty, in_progress, inspected, out_of_service]
+    FolioStatus:
+      type: string
+      enum: [open, closed]
+    ResourceCategorySlug:
+      type: string
+      minLength: 1
+      maxLength: 40
+      description: Property-scoped resource category slug.
     Guest:
       type: object
       required: [id, first_name, marketing_consent, created_at]
@@ -1475,10 +1620,13 @@ components:
         links: { type: object, additionalProperties: true }
     ProgramRequirement:
       type: object
-      required: [id, resource_type, capabilities, languages, quantity]
+      required: [id, resource_category_id, category_slug, kind, category, capabilities, languages, quantity]
       properties:
         id: { type: string, format: uuid }
-        resource_type: { $ref: '#/components/schemas/ResourceType' }
+        resource_category_id: { type: string, format: uuid }
+        category_slug: { $ref: '#/components/schemas/ResourceCategorySlug' }
+        kind: { $ref: '#/components/schemas/ResourceKind' }
+        category: { type: string }
         capabilities: { type: array, items: { type: string } }
         languages: { type: array, items: { type: string } }
         quantity: { type: integer, minimum: 1 }
@@ -1517,24 +1665,40 @@ components:
         links: { type: object, additionalProperties: true }
     Resource:
       type: object
-      required: [id, property_id, name, code, type, capacity, is_active]
+      required: [id, property_id, category_id, category_slug, name, code, kind, category, capacity, is_active]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        type: { $ref: '#/components/schemas/ResourceType' }
+        kind: { $ref: '#/components/schemas/ResourceKind' }
+        category_slug: { $ref: '#/components/schemas/ResourceCategorySlug' }
+        category:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            slug: { $ref: '#/components/schemas/ResourceCategorySlug' }
+            kind: { $ref: '#/components/schemas/ResourceKind' }
+            counts_as_stay: { type: boolean }
         capacity: { type: integer, minimum: 1 }
         attributes: { type: [object, 'null'], additionalProperties: true }
         is_active: { type: boolean }
+        housekeeping_status:
+          oneOf:
+            - $ref: '#/components/schemas/HousekeepingStatus'
+            - type: 'null'
+        housekeeping_updated_at: { type: [string, 'null'], format: date-time }
+        housekeeping_updated_by: { type: [integer, 'null'] }
     ResourceInput:
       type: object
-      required: [property_id, name, code, type, capacity]
+      required: [property_id, name, code, category_id, capacity]
       properties:
         property_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        type: { $ref: '#/components/schemas/ResourceType' }
+        category_id: { type: string, format: uuid }
         capacity: { type: integer, minimum: 1 }
         attributes: { type: [object, 'null'], additionalProperties: true }
         is_active: { type: boolean }
@@ -1549,16 +1713,26 @@ components:
       properties:
         id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
+        requested_category_id: { type: [string, 'null'], format: uuid }
         resource_id: { type: [string, 'null'], format: uuid }
         service_occurrence_id: { type: [string, 'null'], format: uuid }
         status: { type: string, enum: [tentative, confirmed, released] }
         starts_at: { type: string, format: date-time }
         ends_at: { type: string, format: date-time }
         quantity: { type: integer, minimum: 1 }
+        requested_category:
+          type: [object, 'null']
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            slug: { $ref: '#/components/schemas/ResourceCategorySlug' }
+            kind: { $ref: '#/components/schemas/ResourceKind' }
+            counts_as_stay: { type: boolean }
     AllocationInput:
       type: object
       required: [starts_at, ends_at]
       properties:
+        requested_category_id: { type: [string, 'null'], format: uuid }
         resource_id: { type: [string, 'null'], format: uuid }
         service_occurrence_id: { type: [string, 'null'], format: uuid }
         starts_at: { type: string, format: date-time }
@@ -1566,12 +1740,14 @@ components:
         quantity: { type: integer, minimum: 1, maximum: 10000 }
         status: { type: string, enum: [tentative, confirmed, released] }
       anyOf:
+        - required: [requested_category_id]
         - required: [resource_id]
         - required: [service_occurrence_id]
     AllocationPatchInput:
       type: object
       minProperties: 1
       properties:
+        requested_category_id: { type: [string, 'null'], format: uuid }
         resource_id: { type: [string, 'null'], format: uuid }
         service_occurrence_id: { type: [string, 'null'], format: uuid }
         starts_at: { type: string, format: date-time }
@@ -1724,13 +1900,15 @@ components:
             suggestions: { type: integer, minimum: 0 }
     CalendarResource:
       type: object
-      required: [id, property_id, name, code, type, capacity, is_buyout, utilization_percent]
+      required: [id, property_id, name, code, kind, category_slug, category, capacity, is_buyout, utilization_percent]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        type: { $ref: '#/components/schemas/ResourceType' }
+        kind: { $ref: '#/components/schemas/ResourceKind' }
+        category_slug: { $ref: '#/components/schemas/ResourceCategorySlug' }
+        category: { type: string }
         capacity: { type: integer, minimum: 1 }
         user_id: { type: [integer, 'null'] }
         is_buyout: { type: boolean }
@@ -1930,9 +2108,107 @@ components:
                   total_minor: { type: integer }
                   paid_minor: { type: integer }
                   balance_minor: { type: integer }
+    ReservationNote:
+      type: object
+      required: [id, reservation_id, kind, body, occurred_at, created_by]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        kind: { type: string, enum: [internal, guest_request, operations, finance] }
+        body: { type: string }
+        occurred_at: { type: string, format: date-time }
+        created_by: { type: integer }
+        creator:
+          type: [object, 'null']
+          properties:
+            id: { type: integer }
+            name: { type: string }
+    ReservationNoteInput:
+      type: object
+      required: [kind, body]
+      properties:
+        kind: { type: string, enum: [internal, guest_request, operations, finance] }
+        body: { type: string, maxLength: 10000 }
+        occurred_at: { type: string, format: date-time }
+    ReservationNoteEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ReservationNote' }
+    ReservationNoteCollection:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ReservationNote' }
+        meta: { type: object, additionalProperties: true }
+        links: { type: object, additionalProperties: true }
+    FolioLine:
+      type: object
+      required: [id, reservation_id, type, description, quantity, unit_amount_minor, net_amount_minor, tax_amount_minor, gross_amount_minor, amount_minor, currency, posted_at]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        payment_id: { type: [string, 'null'], format: uuid }
+        reverses_folio_line_id: { type: [string, 'null'], format: uuid }
+        type: { type: string, enum: [charge, payment, adjustment, refund] }
+        description: { type: string }
+        quantity: { type: string, pattern: '^-?[0-9]+\.[0-9]{3}$' }
+        unit_amount_minor: { type: integer }
+        net_amount_minor: { type: integer }
+        tax_amount_minor: { type: integer }
+        gross_amount_minor: { type: integer }
+        amount_minor: { type: integer, deprecated: true, description: Compatibility alias for gross_amount_minor. }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        posted_at: { type: string, format: date-time }
+        created_by: { type: [integer, 'null'] }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+    FolioLineInput:
+      type: object
+      required: [type, description, quantity_thousandths, unit_amount_minor]
+      properties:
+        type: { type: string, enum: [charge, adjustment] }
+        description: { type: string, maxLength: 500 }
+        quantity_thousandths: { type: integer, minimum: 1, maximum: 100000000 }
+        unit_amount_minor: { type: integer, minimum: -999999999999, maximum: 999999999999 }
+        tax_amount_minor: { type: integer, minimum: -999999999999, maximum: 999999999999, default: 0 }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+    FolioLineEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/FolioLine' }
+    FolioSummary:
+      type: object
+      required: [status, booked_net_minor, booked_tax_minor, booked_total_minor, ledger_net_minor, ledger_tax_minor, ledger_gross_minor, ledger_delta_minor, balance_minor, closed_at]
+      properties:
+        status: { $ref: '#/components/schemas/FolioStatus' }
+        booked_net_minor: { type: integer }
+        booked_tax_minor: { type: integer }
+        booked_total_minor: { type: integer }
+        ledger_net_minor: { type: integer }
+        ledger_tax_minor: { type: integer }
+        ledger_gross_minor: { type: integer }
+        ledger_delta_minor: { type: integer }
+        balance_minor: { type: integer }
+        closed_at: { type: [string, 'null'], format: date-time }
+    FolioSummaryEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/FolioSummary' }
+    FolioEnvelope:
+      type: object
+      required: [data, summary]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/FolioLine' }
+        summary: { $ref: '#/components/schemas/FolioSummary' }
     Reservation:
       type: object
-      required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, currency, subtotal_minor, tax_minor, total_minor, revision]
+      required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, currency, subtotal_minor, tax_minor, total_minor, folio_status, revision]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
@@ -1953,9 +2229,15 @@ components:
         subtotal_minor: { type: integer }
         tax_minor: { type: integer }
         total_minor: { type: integer }
+        folio_status: { $ref: '#/components/schemas/FolioStatus' }
+        folio_closed_at: { type: [string, 'null'], format: date-time }
+        folio_closed_by: { type: [integer, 'null'] }
         allocations:
           type: array
           items: { $ref: '#/components/schemas/Allocation' }
+        note_timeline:
+          type: array
+          items: { $ref: '#/components/schemas/ReservationNote' }
         revision: { type: integer, minimum: 1 }
         hold_expires_at:
           type: [string, 'null']
@@ -1987,6 +2269,7 @@ components:
             type: object
             required: [starts_at, ends_at]
             properties:
+              requested_category_id: { type: [string, 'null'], format: uuid }
               resource_id: { type: [string, 'null'], format: uuid }
               service_occurrence_id: { type: [string, 'null'], format: uuid }
               starts_at: { type: string, format: date-time }

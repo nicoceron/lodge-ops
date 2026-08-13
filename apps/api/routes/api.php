@@ -15,12 +15,19 @@ use App\Http\Controllers\Api\V1\ProgramController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\ProposalController;
 use App\Http\Controllers\Api\V1\ReservationController;
+use App\Http\Controllers\Api\V1\ReservationNoteController;
 use App\Http\Controllers\Api\V1\ResourceBlockController;
 use App\Http\Controllers\Api\V1\ResourceController;
 use App\Http\Controllers\Api\V1\ResourceSuggestionController;
 use App\Http\Controllers\Api\V1\ServiceOccurrenceController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Controllers\CalendarFeedController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('v1/calendar-feeds/{token}.ics', CalendarFeedController::class)
+    ->where('token', '[A-Za-z0-9]{64}')
+    ->middleware('throttle:60,1')
+    ->name('calendar-feeds.show');
 
 Route::prefix('v1/guest-portal')->group(function (): void {
     Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:10,1');
@@ -47,10 +54,13 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::apiResource('guests', GuestController::class);
     Route::get('resources/suggestions', ResourceSuggestionController::class);
     Route::apiResource('resources', ResourceController::class);
+    Route::patch('resources/{resource}/housekeeping', [ResourceController::class, 'updateHousekeeping']);
     Route::apiResource('reservations', ReservationController::class)->except(['destroy', 'store']);
     Route::post('reservations', [ReservationController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->middleware('idempotent');
     Route::post('reservations/{reservation}/transition', [ReservationController::class, 'transition']);
+    Route::get('reservations/{reservation}/notes', [ReservationNoteController::class, 'index']);
+    Route::post('reservations/{reservation}/notes', [ReservationNoteController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/allocations', [AllocationController::class, 'store'])->middleware('idempotent');
     Route::put('reservations/{reservation}/allocations/{allocation}', [AllocationController::class, 'update']);
     Route::delete('reservations/{reservation}/allocations/{allocation}', [AllocationController::class, 'destroy']);
@@ -59,6 +69,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::apiResource('resource-blocks', ResourceBlockController::class)->except(['store']);
     Route::post('resource-blocks', [ResourceBlockController::class, 'store'])->middleware('idempotent');
     Route::get('reservations/{reservation}/folio', [FolioController::class, 'index']);
+    Route::post('reservations/{reservation}/folio/close', [FolioController::class, 'close'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/folio/reopen', [FolioController::class, 'reopen'])->middleware('idempotent');
     Route::post('reservations/{reservation}/folio-lines', [FolioController::class, 'store'])->middleware('idempotent');
     Route::post('folio-lines/{folioLine}/reverse', [FolioController::class, 'reverse'])->middleware('idempotent');
     Route::apiResource('proposals', ProposalController::class)->except(['destroy']);

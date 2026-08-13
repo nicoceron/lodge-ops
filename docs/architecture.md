@@ -36,17 +36,17 @@ PostgreSQL row-level security can be added as defense in depth after request and
 2. CRM: guests, organizations, agencies, preferences, dietary requirements, timeline.
 3. Sales: inquiries, opportunities, proposal versions, options, holds, conversion.
 4. Catalog: programs, itineraries, activities, seasons, rate plans, taxes, policies.
-5. Inventory: resources, capabilities, pools, blocks, occurrences, requirements, allocations.
-6. Reservations: party, stays, booking items, status history, travel, waivers.
-7. Money: folios, immutable lines, deposit schedules, manual payments, evidence, refunds, FX snapshots.
-8. Operations: task templates, generated checklists, kitchen forecast, housekeeping, incidents.
+5. Inventory: property-defined place/asset/crew categories, instances, capabilities, pools, blocks, occurrences, requirements, requested categories, and exact allocations.
+6. Reservations: party, stays, booking items, append-only status and note timelines, travel, waivers.
+7. Money: open/closed folios, immutable net/tax/gross lines, deposit schedules, manual payments, evidence, refunds, FX snapshots.
+8. Operations: task templates, generated checklists, kitchen forecast, place housekeeping lifecycle, incidents.
 9. Communications: versioned templates, automation rules, outbox, delivery attempts, consent.
 10. Closeout: extras, documents, surveys, costs, commission, owner reporting.
 
 ## Critical invariants
 
 - Store instants in UTC and display them in the property IANA timezone.
-- Use half-open intervals `[start, end)` so same-day room turnover is valid.
+- Use half-open intervals `[start, end)` so a resource can turn over at the exact boundary without a false conflict.
 - Money uses integer minor units and an ISO 4217 currency code, never floating point.
 - Exclusive resources cannot overlap active holds, allocations, or blocks.
 - Pool allocations cannot exceed capacity; buyouts reserve the whole property and conflict with every allocation in their window.
@@ -77,4 +77,3 @@ The version choices and architecture follow current official documentation:
 - Laravel queues and scheduler: https://laravel.com/docs/13.x/queues and https://laravel.com/docs/13.x/scheduling
 - Filament 5 resources, custom pages, tenancy, authentication, and security: https://filamentphp.com/docs/5.x/resources/overview, https://filamentphp.com/docs/5.x/navigation/custom-pages, https://filamentphp.com/docs/5.x/users/tenancy, https://filamentphp.com/docs/5.x/users/overview, https://filamentphp.com/docs/5.x/advanced/security
 - Next.js 16 App Router for public content: https://nextjs.org/docs/app
-

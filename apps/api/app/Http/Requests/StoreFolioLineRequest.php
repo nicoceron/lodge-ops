@@ -14,6 +14,7 @@ class StoreFolioLineRequest extends TenantRequest
             'description' => ['required', 'string', 'max:500'],
             'quantity_thousandths' => ['required', 'integer', 'min:1', 'max:100000000'],
             'unit_amount_minor' => ['required', 'integer', 'min:-999999999999', 'max:999999999999', 'not_in:0'],
+            'tax_amount_minor' => ['sometimes', 'integer', 'min:-999999999999', 'max:999999999999'],
             'metadata' => ['nullable', 'array', 'max:100'],
         ];
     }

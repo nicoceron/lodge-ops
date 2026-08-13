@@ -30,7 +30,7 @@ class ReservationController extends Controller
         $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
 
         $reservations = Reservation::query()
-            ->with(['primaryGuest', 'program', 'allocations.resource', 'allocations.serviceOccurrence'])
+            ->with(['primaryGuest', 'program', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence'])
             ->when($membershipPropertyId, fn ($query) => $query->where('property_id', $membershipPropertyId))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('property_id'), fn ($query, $propertyId) => $query->where('property_id', $propertyId))
@@ -78,14 +78,14 @@ class ReservationController extends Controller
             return $reservation;
         });
 
-        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence']));
+        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence']));
     }
 
     public function show(Reservation $reservation): ReservationResource
     {
         $this->authorize('view', $reservation);
 
-        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor']));
+        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor', 'noteTimeline.creator']));
     }
 
     public function update(UpdateReservationRequest $request, Reservation $reservation): ReservationResource
@@ -134,7 +134,7 @@ class ReservationController extends Controller
             return $locked;
         });
 
-        return new ReservationResource($reservation->fresh()->load(['primaryGuest', 'program', 'guests', 'allocations.resource', 'allocations.serviceOccurrence']));
+        return new ReservationResource($reservation->fresh()->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence']));
     }
 
     public function confirm(Reservation $reservation, ReservationService $service): ReservationResource

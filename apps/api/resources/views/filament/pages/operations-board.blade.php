@@ -75,6 +75,16 @@
                             <div><div class="text-2xl font-bold">{{ $operations['housekeeping']['stayovers'] }}</div><div class="text-xs text-gray-500">Stayovers</div></div>
                         </div>
                         @if ($operations['housekeeping']['focus'])<div class="mt-4 rounded-lg bg-warning-50 p-3 text-sm dark:bg-white/5"><strong>Priority:</strong> {{ $operations['housekeeping']['focus'] }}</div>@endif
+                        <div class="mt-4 space-y-2">
+                            @forelse ($operations['housekeeping']['places'] as $place)
+                                <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-white/10">
+                                    <div><div class="font-medium">{{ $place['name'] }}</div><div class="text-xs text-gray-500">{{ $place['category'] }}</div></div>
+                                    <x-filament::badge :color="match ($place['status']) { 'clean', 'inspected' => 'success', 'dirty' => 'danger', 'in_progress' => 'warning', default => 'gray' }">{{ str($place['status'])->headline() }}</x-filament::badge>
+                                </div>
+                            @empty
+                                <div class="text-sm text-gray-500">No active places are configured.</div>
+                            @endforelse
+                        </div>
                     </x-filament::section>
                 @endif
 

@@ -2,19 +2,26 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\HousekeepingStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ReservationStatus;
+use App\Enums\ResourceKind;
 use App\Enums\TaskStatus;
 use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
+use App\Models\Resource;
+use App\Services\HousekeepingService;
 use App\Services\Projections\OperationsProjectionService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Gate;
 
 class OperationsBoard extends Page
 {
@@ -30,7 +37,7 @@ class OperationsBoard extends Page
 
     public static function canAccess(): bool
     {
-        return app(TenantContext::class)->membership()?->role?->canScheduleOperations() === true;
+        return app(TenantContext::class)->membership()?->role?->canManageOperations() === true;
     }
 
     /** @return array<string, mixed> */
@@ -123,6 +130,32 @@ class OperationsBoard extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('updateHousekeeping')
+                ->label('Update housekeeping')
+                ->icon('heroicon-m-sparkles')
+                ->visible(fn (): bool => app(TenantContext::class)->membership()?->role?->canManageHousekeeping() === true)
+                ->schema([
+                    Select::make('resource_id')
+                        ->label('Place')
+                        ->options(fn (): array => Resource::query()
+                            ->when(app(TenantContext::class)->membership()?->property_id, fn (Builder $query, string $propertyId) => $query->where('property_id', $propertyId))
+                            ->where('is_active', true)
+                            ->whereHas('category', fn (Builder $query) => $query->where('kind', ResourceKind::Place))
+                            ->orderBy('name')
+                            ->pluck('name', 'id')
+                            ->all())
+                        ->searchable()
+                        ->required(),
+                    Select::make('status')
+                        ->options(collect(HousekeepingStatus::cases())->mapWithKeys(fn (HousekeepingStatus $status): array => [$status->value => $status->label()])->all())
+                        ->required(),
+                ])
+                ->action(function (array $data): void {
+                    $resource = Resource::query()->findOrFail($data['resource_id']);
+                    Gate::authorize('updateHousekeeping', $resource);
+                    app(HousekeepingService::class)->update($resource, HousekeepingStatus::from($data['status']), auth()->id());
+                    Notification::make()->success()->title('Housekeeping state updated')->send();
+                }),
             Action::make('newTask')
                 ->label('New task')
                 ->icon('heroicon-m-plus')

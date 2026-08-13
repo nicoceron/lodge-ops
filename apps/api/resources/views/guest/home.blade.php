@@ -13,7 +13,7 @@
     <div class="grid three">
         <div class="card"><div class="muted">Arrival</div><div class="stat">{{ \Carbon\CarbonImmutable::parse($reservation['starts_at'])->timezone($reservation['property']['timezone'])->format('M j') }}</div><div>{{ \Carbon\CarbonImmutable::parse($reservation['starts_at'])->timezone($reservation['property']['timezone'])->format('H:i') }}</div></div>
         <div class="card"><div class="muted">Departure</div><div class="stat">{{ \Carbon\CarbonImmutable::parse($reservation['ends_at'])->timezone($reservation['property']['timezone'])->format('M j') }}</div><div>{{ \Carbon\CarbonImmutable::parse($reservation['ends_at'])->timezone($reservation['property']['timezone'])->format('H:i') }}</div></div>
-        <div class="card"><div class="muted">Room</div><div class="stat">{{ $reservation['room'] ?? 'To be assigned' }}</div><div>{{ $reservation['adults'] + $reservation['children'] }} guests</div></div>
+        <div class="card"><div class="muted">Stay place</div><div class="stat">{{ $reservation['stay_assignment'] ?? 'To be assigned' }}</div><div>{{ $reservation['adults'] + $reservation['children'] }} guests</div></div>
     </div>
 
     <div class="grid two">

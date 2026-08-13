@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Reservation;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -11,6 +12,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @property CarbonImmutable|null $actual_end_at
  * @property CarbonImmutable|null $cancelled_at
  * @property string|null $closure_reason
+ *
+ * @mixin Reservation
  */
 class ReservationResource extends JsonResource
 {
@@ -32,6 +35,9 @@ class ReservationResource extends JsonResource
             'subtotal_minor' => $this->subtotal_minor,
             'tax_minor' => $this->tax_minor,
             'total_minor' => $this->total_minor,
+            'folio_status' => $this->folio_status->value,
+            'folio_closed_at' => $this->folio_closed_at,
+            'folio_closed_by' => $this->folio_closed_by,
             'revision' => $this->revision,
             'notes' => $this->notes,
             'confirmed_at' => $this->confirmed_at,
@@ -47,36 +53,9 @@ class ReservationResource extends JsonResource
                 'display_color' => $this->program->display_color,
             ] : null),
             'guests' => GuestResource::collection($this->whenLoaded('guests')),
-            'allocations' => $this->whenLoaded('allocations', fn () => $this->allocations->map(fn ($allocation) => [
-                'id' => $allocation->id,
-                'resource_id' => $allocation->resource_id,
-                'service_occurrence_id' => $allocation->service_occurrence_id,
-                'status' => $allocation->status->value,
-                'starts_at' => $allocation->starts_at,
-                'ends_at' => $allocation->ends_at,
-                'quantity' => $allocation->quantity,
-                'resource' => $allocation->relationLoaded('resource') && $allocation->resource ? [
-                    'id' => $allocation->resource->id,
-                    'name' => $allocation->resource->name,
-                    'code' => $allocation->resource->code,
-                ] : null,
-                'service_occurrence' => $allocation->relationLoaded('serviceOccurrence') && $allocation->serviceOccurrence ? [
-                    'id' => $allocation->serviceOccurrence->id,
-                    'program_id' => $allocation->serviceOccurrence->program_id,
-                    'starts_at' => $allocation->serviceOccurrence->starts_at,
-                    'ends_at' => $allocation->serviceOccurrence->ends_at,
-                ] : null,
-            ])),
-            'status_history' => $this->whenLoaded('statusHistory', fn () => $this->statusHistory->map(fn ($history): array => [
-                'id' => $history->id,
-                'from_status' => $history->from_status?->value,
-                'to_status' => $history->to_status->value,
-                'changed_at' => $history->changed_at,
-                'actor' => $history->relationLoaded('actor') && $history->actor ? [
-                    'id' => $history->actor->id,
-                    'name' => $history->actor->name,
-                ] : null,
-            ])),
+            'allocations' => AllocationResource::collection($this->whenLoaded('allocations')),
+            'status_history' => ReservationStatusHistoryResource::collection($this->whenLoaded('statusHistory')),
+            'note_timeline' => $this->whenLoaded('noteTimeline', fn () => ReservationNoteResource::collection($this->noteTimeline)),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

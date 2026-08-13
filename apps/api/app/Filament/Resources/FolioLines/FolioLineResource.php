@@ -30,9 +30,9 @@ class FolioLineResource extends TenantResource
 
     protected static bool $canDeleteRecords = false;
 
-    protected static ?string $viewCapability = 'canViewFinance';
+    protected static ?string $viewCapability = 'canViewGuestMoney';
 
-    protected static string $writeCapability = 'canManageMoney';
+    protected static string $writeCapability = 'canManageGuestMoney';
 
     protected static ?string $propertyRelationship = 'reservation';
 

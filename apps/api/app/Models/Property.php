@@ -11,6 +11,11 @@ class Property extends TenantModel
         return ['settings' => 'array', 'is_active' => 'boolean'];
     }
 
+    public function resourceCategories(): HasMany
+    {
+        return $this->hasMany(ResourceCategory::class)->orderBy('sort_order')->orderBy('name');
+    }
+
     public function resources(): HasMany
     {
         return $this->hasMany(Resource::class);

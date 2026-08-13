@@ -23,7 +23,7 @@ class ResourceBlockController extends Controller
         $membership = app(TenantContext::class)->membership();
 
         return ResourceBlockResource::collection(ResourceBlock::query()
-            ->with('resource')
+            ->with('resource.category')
             ->when($membership?->property_id, fn ($query, $id) => $query->whereHas('resource', fn ($resource) => $resource->where('property_id', $id)))
             ->when($membership?->role === MembershipRole::Guide, fn ($query) => $query->whereHas('resource', fn ($resource) => $resource->where('user_id', auth()->id())))
             ->when($request->query('resource_id'), fn ($query, $id) => $query->where('resource_id', $id))
@@ -39,14 +39,14 @@ class ResourceBlockController extends Controller
         $data = $request->validated();
         $this->assertCanManageResource($data['resource_id']);
 
-        return new ResourceBlockResource(ResourceBlock::query()->create($data)->load('resource'));
+        return new ResourceBlockResource(ResourceBlock::query()->create($data)->load('resource.category'));
     }
 
     public function show(ResourceBlock $resourceBlock): ResourceBlockResource
     {
         $this->authorize('view', $resourceBlock);
 
-        return new ResourceBlockResource($resourceBlock->load('resource'));
+        return new ResourceBlockResource($resourceBlock->load('resource.category'));
     }
 
     public function update(UpdateResourceBlockRequest $request, ResourceBlock $resourceBlock): ResourceBlockResource
@@ -56,7 +56,7 @@ class ResourceBlockController extends Controller
         $this->assertCanManageResource($data['resource_id'] ?? $resourceBlock->resource_id);
         $resourceBlock->update($data);
 
-        return new ResourceBlockResource($resourceBlock->fresh()->load('resource'));
+        return new ResourceBlockResource($resourceBlock->fresh()->load('resource.category'));
     }
 
     public function destroy(ResourceBlock $resourceBlock): Response
