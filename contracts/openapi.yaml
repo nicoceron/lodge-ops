@@ -1109,18 +1109,6 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '422': { $ref: '#/components/responses/ValidationError' }
-  /integrations/{integration}/test:
-    post:
-      tags: [Integrations]
-      operationId: testIntegrationConnection
-      parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - { name: integration, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/ValidationError' }
   /organizations:
     get:
       tags: [CRM]

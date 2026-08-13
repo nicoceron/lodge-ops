@@ -24,10 +24,6 @@ class IntegrationConnectionService
             throw new DomainException('Secret references must use an approved secret-manager URI.');
         }
 
-        if ($type === 'mews' && ! in_array(data_get($configuration, 'environment', 'demo'), ['demo', 'production'], true)) {
-            throw new DomainException('Mews environment must be demo or production.');
-        }
-
         return IntegrationConnection::query()->updateOrCreate(
             ['type' => $type, 'name' => $name],
             [

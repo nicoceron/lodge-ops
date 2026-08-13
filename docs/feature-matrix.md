@@ -22,7 +22,7 @@ This matrix is the definition of product coverage. A capability is complete only
 | Retail/POS | Optional catalog, stock movement, tablet sale and reservation-linked charges | Filament | Implemented — `ExtendedOperationsTest` transactional stock-and-folio invariants |
 | Payroll/costs | Guide/staff cost records and commission accruals | Filament | Implemented — `ExtendedOperationsTest` |
 | Reporting | Role dashboards, explicit definitions, date/property filters, FX policy, CSV/PDF export | Filament | Implemented — `FinanceReportingTest`, `FilamentWorkspacePagesTest`, `StaffProjectionTest`, `ExtendedOperationsTest` CSV-injection protection |
-| Integrations | Email/calendar/accounting/payment/e-sign/webhook adapters plus a production-safe Mews connection health boundary | Filament + API | Implemented adapter boundary — `MewsIntegrationTest`, `ExtendedOperationsTest`, outbox suites; provider synchronization requires tenant-owned credentials and source-of-truth mapping |
+| Integrations | Email/calendar/accounting/payment/e-sign/webhook adapters | Filament | Implemented adapter boundary — `ExtendedOperationsTest`, outbox suites; provider activation requires tenant-owned credentials |
 
 ## Simplifications over the legacy product
 

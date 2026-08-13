@@ -18,7 +18,6 @@ use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\GuestPortalAccessToken;
 use App\Models\GuestPortalDocument;
-use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
@@ -80,7 +79,6 @@ class DatabaseSeeder extends Seeder
             $programs = $this->seedPrograms($property->id);
             $resources = $this->seedResources($property->id, $staff);
             $this->seedAutomation();
-            $this->seedIntegrations();
 
             $guest = Guest::query()->firstOrCreate(
                 ['email' => 'guest@example.com'],
@@ -138,20 +136,6 @@ class DatabaseSeeder extends Seeder
 
             $context->clear();
         });
-    }
-
-    private function seedIntegrations(): void
-    {
-        IntegrationConnection::query()->firstOrCreate(
-            ['type' => 'mews', 'name' => 'Mews Connector'],
-            [
-                'status' => 'disconnected',
-                'configuration' => [
-                    'environment' => 'demo',
-                    'mode' => 'read_only',
-                ],
-            ],
-        );
     }
 
     /** @return array<string, User> */

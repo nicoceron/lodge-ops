@@ -2,15 +2,12 @@
 
 namespace App\Filament\Resources\IntegrationConnections;
 
-use App\Exceptions\IntegrationConnectionException;
 use App\Filament\Resources\IntegrationConnections\Pages\ManageIntegrationConnections;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\LodgeOpsPresentation;
 use App\Models\IntegrationConnection;
 use App\Services\IntegrationConnectionService;
-use App\Services\Integrations\IntegrationConnectionHealthService;
 use BackedEnum;
-use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\KeyValue;
@@ -18,7 +15,6 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -50,7 +46,7 @@ class IntegrationConnectionResource extends TenantResource
                 TextInput::make('name')->required()->maxLength(160)->disabledOn('edit'),
                 Select::make('type')->options(IntegrationConnection::TYPES)->required()->disabledOn('edit'),
                 KeyValue::make('configuration')->label('Non-secret configuration')->columnSpanFull(),
-                TextInput::make('secret_reference')->label('Secret manager reference')->password()->revealable()->maxLength(500)->helperText('For local setup, use env://MEWS_CREDENTIALS. Production can point at your vault or cloud secret manager.')->columnSpanFull(),
+                TextInput::make('secret_reference')->label('Secret manager reference')->password()->revealable()->maxLength(500)->helperText('Use an approved vault, cloud secret-manager, or environment reference.')->columnSpanFull(),
             ]),
         ]);
     }
@@ -63,7 +59,6 @@ class IntegrationConnectionResource extends TenantResource
                 TextEntry::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? LodgeOpsPresentation::label($state)),
                 TextEntry::make('status')->badge()->formatStateUsing(fn (string $state): string => LodgeOpsPresentation::label($state))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
                 TextEntry::make('last_synced_at')->label('Last synchronized')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never'),
-                TextEntry::make('last_checked_at')->label('Last health check')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never'),
                 TextEntry::make('last_error')->label('Last error')->placeholder('No errors')->columnSpanFull(),
                 KeyValueEntry::make('configuration')->label('Non-secret configuration')->columnSpanFull()->placeholder('No configuration'),
             ]),
@@ -78,7 +73,6 @@ class IntegrationConnectionResource extends TenantResource
                 TextColumn::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? LodgeOpsPresentation::label($state)),
                 TextColumn::make('status')->badge()->formatStateUsing(fn (string $state): string => LodgeOpsPresentation::label($state))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
                 TextColumn::make('last_synced_at')->label('Last sync')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never')->sortable(),
-                TextColumn::make('last_checked_at')->label('Last check')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never')->sortable(),
                 TextColumn::make('health')->label('Health')
                     ->state(fn (IntegrationConnection $record): string => filled($record->last_error)
                         ? 'Needs attention'
@@ -93,20 +87,6 @@ class IntegrationConnectionResource extends TenantResource
             ->filters([SelectFilter::make('type')->options(IntegrationConnection::TYPES)])
             ->recordActions([
                 ViewAction::make(),
-                Action::make('testConnection')
-                    ->label('Test connection')
-                    ->icon('heroicon-o-signal')
-                    ->color('info')
-                    ->authorize('update')
-                    ->visible(fn (IntegrationConnection $record): bool => $record->type === 'mews' && self::canEdit($record))
-                    ->action(function (IntegrationConnection $record): void {
-                        try {
-                            app(IntegrationConnectionHealthService::class)->test($record);
-                            Notification::make()->success()->title('Mews connection verified')->send();
-                        } catch (IntegrationConnectionException $exception) {
-                            Notification::make()->danger()->title('Connection test failed')->body($exception->getMessage())->send();
-                        }
-                    }),
                 EditAction::make()->using(fn (IntegrationConnection $record, array $data): IntegrationConnection => app(IntegrationConnectionService::class)->configure(
                     $record->name,
                     $record->type,
@@ -116,7 +96,7 @@ class IntegrationConnectionResource extends TenantResource
             ])
             ->defaultSort('type')
             ->emptyStateHeading('No integrations configured')
-            ->emptyStateDescription('Connect Mews or add a calendar, accounting, payment, signature, email, or webhook adapter without storing provider credentials in LodgeOps.');
+            ->emptyStateDescription('Add a calendar, accounting, payment, signature, email, or webhook adapter without storing provider credentials in LodgeOps.');
     }
 
     public static function getPages(): array
