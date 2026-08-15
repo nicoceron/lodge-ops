@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'ai_automation' => [
+        'n8n_webhook' => env('AI_AUTOMATION_N8N_WEBHOOK', 'http://n8n:5678/webhook/lodgeops-agent'),
+        'token' => env('AI_AUTOMATION_TOKEN'),
+        'timeout' => (int) env('AI_AUTOMATION_TIMEOUT', 25),
+    ],
+
 ];
