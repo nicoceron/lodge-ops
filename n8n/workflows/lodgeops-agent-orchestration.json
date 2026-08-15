@@ -1,0 +1,65 @@
+{
+  "name": "LodgeOps - Agent Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lodgeops-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "lodgeops-webhook",
+      "name": "LodgeOps Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "lodgeops-agent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LODGEOPS_AGENT_URL || 'http://agent:8080/v1/workflows/reservation-assistant' }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ event_type: $json.body.event_type, context: $json.body.context, objective: $json.body.objective || 'Recommend the safest useful next operational action.' }) }}",
+        "options": {}
+      },
+      "id": "langgraph-agent",
+      "name": "LangGraph Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Return Recommendation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [520, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "LodgeOps Webhook": {
+      "main": [[{"node": "LangGraph Agent", "type": "main", "index": 0}]]
+    },
+    "LangGraph Agent": {
+      "main": [[{"node": "Return Recommendation", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "lodgeops-agent-orchestration-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
