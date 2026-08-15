@@ -23,6 +23,9 @@ x-api-common: &api-common
     MAIL_MAILER: smtp
     MAIL_HOST: mailpit
     MAIL_PORT: 1025
+    AI_AUTOMATION_N8N_WEBHOOK: ${AI_AUTOMATION_N8N_WEBHOOK:-http://n8n:5678/webhook/lodgeops-agent}
+    AI_AUTOMATION_TOKEN: ${AI_AUTOMATION_TOKEN:-}
+    AI_AUTOMATION_TIMEOUT: ${AI_AUTOMATION_TIMEOUT:-25}
   volumes:
     - ./apps/api:/app
     - api-vendor:/app/vendor
@@ -115,6 +118,42 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    environment:
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    ports:
+      - "${AI_AGENT_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  n8n:
+    image: n8nio/n8n:2.32.7
+    environment:
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      LODGEOPS_AGENT_URL: http://agent:8080/v1/workflows/reservation-assistant
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    depends_on:
+      agent:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -125,7 +164,7 @@ services:
     environment:
       NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
       NEXT_PUBLIC_MANAGE_URL: ${PUBLIC_MANAGE_URL:-http://localhost:8000/manage}
-    command: npm run dev -- --hostname 0.0.0.0
+    command: npm run dev -- --hostname=0.0.0.0
     ports:
       - "${WEB_PORT:-3000}:3000"
     healthcheck:
@@ -144,3 +183,4 @@ volumes:
   api-vendor:
   api-private:
   web-node-modules:
+  n8n-data:
