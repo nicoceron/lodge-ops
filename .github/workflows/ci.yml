@@ -100,12 +100,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install authenticated UAT browser
+        run: cd apps/web && npm ci && npx playwright install --with-deps chromium
       - run: cp .env.example .env && cp apps/api/.env.example apps/api/.env
       - run: make bootstrap
       - run: make up
       - run: make doctor
-      - name: Install authenticated UAT browser
-        run: cd apps/web && npm ci && npx playwright install --with-deps chromium
       - name: Run authenticated client UAT
         run: make test-client
       - name: Show service logs on failure
