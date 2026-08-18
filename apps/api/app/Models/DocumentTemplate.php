@@ -17,6 +17,11 @@ class DocumentTemplate extends TenantModel
         return $this->hasMany(GeneratedDocument::class);
     }
 
+    public function generationRequests(): HasMany
+    {
+        return $this->hasMany(DocumentGenerationRequest::class);
+    }
+
     protected static function booted(): void
     {
         static::updating(function (self $template): void {

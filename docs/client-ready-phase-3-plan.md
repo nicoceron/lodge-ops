@@ -1,7 +1,7 @@
 # Client-ready phase 3 implementation plan
 
 Date: 2026-08-18  
-Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
+Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [P3-03 granular plan](p3-03-documents-exports-implementation-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
 
 ## Current release truth
 
@@ -45,12 +45,12 @@ flowchart LR
 
 ## Branch and pull-request sequence
 
-P3-01 is merged into `main` and `origin/main` at `68a7fbc`. Phase 3 must not be implemented as one long-lived mixed branch.
+P3-01 and P3-02 are merged into `main` and `origin/main`; the current verified baseline is `4bbc72f`. Phase 3 must not be implemented as one long-lived mixed branch.
 
 The active branch is:
 
 ```text
-codex/p3-02-client-closed-loop-uat
+codex/p3-03-documents-exports
 ```
 
 Branch rules:
@@ -113,7 +113,7 @@ Done when every invariant has a PostgreSQL test and the N2 Playwright journey st
 
 ### P3-02 — finish N1 closed-loop client UAT
 
-Status: **implemented and verified on `codex/p3-02-client-closed-loop-uat`.**
+Status: **merged through PR #5 as `4bbc72f` after the continuous staff → guest → finance → operations → survey UAT and all CI gates passed.**
 
 | Requirement | Executable outcome |
 | --- | --- |
@@ -138,6 +138,8 @@ Add deterministic, state-changing authenticated journeys:
 Do not delete synthetic UAT financial/history rows to make reruns look clean. Use unique run identifiers, normal lifecycle cleanup, and bounded data-retention tooling.
 
 ### P3-03 — real documents, receipts, credit notes, and exports
+
+Status: **implementation planned on `codex/p3-03-documents-exports`; use the [granular P3-03 implementation plan](p3-03-documents-exports-implementation-plan.md) as the authoritative agent checklist.**
 
 Build on the existing models without pretending supplied bytes are rendered PDFs:
 

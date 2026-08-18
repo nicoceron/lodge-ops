@@ -242,6 +242,16 @@ class BackOfficeFilamentTest extends TestCase
             'status' => 'generated',
             'storage_path' => 'tenants/test/documents/waiver.pdf',
             'checksum' => str_repeat('a', 64),
+            'storage_disk' => 'local',
+            'file_name' => 'waiver.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 0,
+            'source_checksum' => str_repeat('a', 64),
+            'renderer' => 'legacy-test',
+            'renderer_version' => 'legacy',
+            'template_version' => 0,
+            'locale' => 'en',
+            'generated_at' => now(),
             'metadata' => ['created_by' => $user->id],
         ]);
         $this->assertThrows(fn () => $document->update(['status' => 'tampered']), LogicException::class);

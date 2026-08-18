@@ -16,6 +16,7 @@ use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DocumentGenerationRequest;
 use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
 use App\Models\FolioLine;
@@ -98,6 +99,7 @@ class AppServiceProvider extends ServiceProvider
             DeliveryAttempt::class,
             Deposit::class,
             DepositPolicy::class,
+            DocumentGenerationRequest::class,
             DocumentTemplate::class,
             ExchangeRate::class,
             FolioLine::class,

@@ -157,6 +157,11 @@ class Reservation extends TenantModel
         return $this->hasMany(GeneratedDocument::class);
     }
 
+    public function documentGenerationRequests(): HasMany
+    {
+        return $this->hasMany(DocumentGenerationRequest::class);
+    }
+
     public function statusHistory(): HasMany
     {
         return $this->hasMany(ReservationStatusHistory::class)->orderByDesc('changed_at');

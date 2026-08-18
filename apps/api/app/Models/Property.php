@@ -40,4 +40,9 @@ class Property extends TenantModel
     {
         return $this->hasMany(GuestPortalDocument::class);
     }
+
+    public function reportExports(): HasMany
+    {
+        return $this->hasMany(ReportExport::class);
+    }
 }

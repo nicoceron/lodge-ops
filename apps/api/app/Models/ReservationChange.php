@@ -69,4 +69,14 @@ class ReservationChange extends TenantModel
     {
         return $this->belongsTo(User::class, 'actor_id');
     }
+
+    public function documentGenerationRequests(): HasMany
+    {
+        return $this->hasMany(DocumentGenerationRequest::class);
+    }
+
+    public function generatedDocuments(): HasMany
+    {
+        return $this->hasMany(GeneratedDocument::class);
+    }
 }

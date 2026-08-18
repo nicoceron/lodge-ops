@@ -20,9 +20,23 @@ x-api-common: &api-common
     QUEUE_CONNECTION: redis
     SESSION_DRIVER: redis
     REDIS_HOST: redis
+    REDIS_QUEUE_RETRY_AFTER: 240
     MAIL_MAILER: smtp
     MAIL_HOST: mailpit
     MAIL_PORT: 1025
+    DOCUMENT_DISK: ${DOCUMENT_DISK:-documents}
+    DOCUMENT_RENDERER: ${DOCUMENT_RENDERER:-dompdf}
+    DOCUMENT_EXPORT_TTL_DAYS: ${DOCUMENT_EXPORT_TTL_DAYS:-7}
+    DOCUMENT_JOB_QUEUE: ${DOCUMENT_JOB_QUEUE:-documents}
+    DOCUMENT_JOB_TIMEOUT: ${DOCUMENT_JOB_TIMEOUT:-90}
+    DOCUMENT_JOB_TRIES: ${DOCUMENT_JOB_TRIES:-3}
+    DOCUMENT_JOB_RETRY_FOR_MINUTES: ${DOCUMENT_JOB_RETRY_FOR_MINUTES:-15}
+    DOCUMENT_JOB_OVERLAP_EXPIRE_AFTER: ${DOCUMENT_JOB_OVERLAP_EXPIRE_AFTER:-240}
+    DOCUMENT_EXPORT_JOB_QUEUE: ${DOCUMENT_EXPORT_JOB_QUEUE:-reports}
+    DOCUMENT_EXPORT_JOB_TIMEOUT: ${DOCUMENT_EXPORT_JOB_TIMEOUT:-180}
+    DOCUMENT_EXPORT_JOB_TRIES: ${DOCUMENT_EXPORT_JOB_TRIES:-3}
+    DOCUMENT_EXPORT_JOB_RETRY_FOR_MINUTES: ${DOCUMENT_EXPORT_JOB_RETRY_FOR_MINUTES:-30}
+    DOCUMENT_EXPORT_JOB_OVERLAP_EXPIRE_AFTER: ${DOCUMENT_EXPORT_JOB_OVERLAP_EXPIRE_AFTER:-300}
   volumes:
     - ./apps/api:/app
     - api-vendor:/app/vendor
@@ -95,7 +109,7 @@ services:
 
   worker:
     <<: *api-common
-    command: php artisan queue:work --queue=critical,automations,default,notifications,integrations,reports --tries=3 --timeout=90
+    command: php artisan queue:work --queue=critical,documents,automations,default,notifications,integrations,reports --tries=3 --timeout=180
     depends_on:
       postgres:
         condition: service_healthy
