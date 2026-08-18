@@ -1,12 +1,13 @@
 # Client-ready phase 3 implementation plan
 
 Date: 2026-08-18  
-Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [P3-03 granular plan](p3-03-documents-exports-implementation-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
+Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [P3-03 granular plan](p3-03-documents-exports-implementation-plan.md), [P3-06A online payment plan](p3-06-mercado-pago-payments-implementation-plan.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
 
 ## Current release truth
 
 N2, P3-01, P3-02, and P3-03 are implemented and independently re-verified:
 
+- P3-03 merged through PR #7 as `e459935`; `main` and `origin/main` are synchronized and the feature branch was deleted.
 - The fast local run reports 274 passed, 6 production-engine checks skipped by design, and 1,921 assertions across 280 tests.
 - The isolated PostgreSQL 18 gate reports 280 tests, 1 container source-tree check skipped, and 1,897 assertions, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, payment-origin constraints, document/export request races, and the separated secure-link limiter regression.
 - Seven authenticated Playwright tests pass, including the N2 guarded-change/refund loop, the continuous P3-02 staff → guest → finance → operations → survey journey, and the P3-03 real-artifact journey with role isolation and a 390×844 guest viewport.
@@ -21,10 +22,12 @@ This does **not** finish the client product. The remaining critical path is:
 flowchart LR
     A["N2.1 money and cutoff hardening"] --> B["Complete manual-transfer and stay UAT"]
     B --> C["Real documents and exports"]
-    C --> D["Production communications and scheduling"]
-    D --> E["Private storage, deployment, and recovery"]
-    E --> F["One selected online gateway"]
-    F --> G["One selected external integration at a time"]
+    C --> D["Inn-owned payment requests and Mercado Pago hosted checkout"]
+    D --> E["Front-desk cash and standalone-terminal controls"]
+    E --> F["Mercado Pago Point and QR"]
+    F --> G["Production communications and scheduling"]
+    G --> H["Private storage, deployment, and recovery"]
+    H --> I["One selected external integration at a time"]
 ```
 
 ## Gap register
@@ -39,18 +42,21 @@ flowchart LR
 | Communications | Local Laravel email transport, templates, suppressions, delivery attempts, outbox, worker, scheduler | Production provider, provider message/event IDs, delivery/bounce/complaint webhooks, preview/test-send/replay UI, failure queue, production supervision |
 | Scheduling | UTC scheduler with `withoutOverlapping()` and `onOneServer()` | Named lock TTLs, target occurrences persisted in UTC, property-local boundary and DST tests, backoff/timeouts/failed-job alerts, Horizon or equivalent production supervision |
 | Production | Healthy Compose stack | Private object storage, managed data services, secrets, TLS, monitoring, alerting, logs, malware service, backup/restore rehearsal, rollback/incident/privacy runbooks |
-| Online gateway | No provider transaction model or execution | Provider choice, hosted checkout, attempts/events/refunds/settlements, raw-body signature verification, duplicate/reordered callback handling, disputes, receipts, payout reconciliation |
+| Payment requests/links | No reservation-scoped online collection link | Inn-owned immutable payment requests with opaque revocable/rotatable links, delivery audit, exact amount/currency, request/attempt reuse, terminal states and no emailed provider URL |
+| Online gateway | No provider transaction model or execution | Mercado Pago Checkout Pro test-mode implementation for the Argentina property: hosted ARS checkout, immutable USD → ARS conversion when offered, attempts/events/refunds/settlements, raw-body signature verification, duplicate/reordered callback handling, disputes, receipts, and reconciliation |
+| Front-desk tenders | Manual payments exist but do not yet have full channel/entry-mode, external-terminal detail or cash-shift controls | Truthful bank-transfer/cash/standalone-terminal channels, typed receipt-safe details, cash open/close/variance, append-only external refund evidence and browser UAT |
+| Card-present and QR | No terminal registry or provider execution | Mercado Pago Point/QR Orders integration, one active order per terminal, signed event plus lookup, virtual/sandbox coverage and supervised real-hardware payment/refund/settlement UAT |
 | Direct booking | Public marketing site only | Conditional public availability/quote/hold/consent/payment/recovery flow using the same Inn services |
 | Integrations | Configuration records, local mail, and one-way private iCalendar | Adapter execution, sync runs/items/cursors, mappings, signed webhooks, retry/dead letter/replay, health, drift detection, reconciliation for each selected provider |
 
 ## Branch and pull-request sequence
 
-P3-01, P3-02, and the P3-03 foundation package are merged into `main` and `origin/main`; the P3-03 delivery branch starts from `1f0e383`. Phase 3 must not be implemented as one long-lived mixed branch.
+P3-01, P3-02, and P3-03 are merged into `main` and `origin/main` through `e459935`. Phase 3 must not be implemented as one long-lived mixed branch. Slice numbers are durable requirement identifiers, not a prohibition on executing the now-selected gateway before P3-04/P3-05.
 
-The active branch is:
+The active planning and implementation branch is:
 
 ```text
-codex/p3-03-documents-exports
+codex/p3-06-payment-gateway-mercado-pago
 ```
 
 Branch rules:
@@ -61,16 +67,18 @@ Branch rules:
 4. Do not begin the next slice merely because the current code compiles. Merge only after the slice's real journey and failure-path gates pass.
 5. Preserve synthetic UAT history through normal lifecycle behavior. Do not add database cleanup that deletes financial or audit evidence to make a branch look clean.
 
-Planned branch order:
+Branch register and current execution order:
 
 | Slice | Branch | Boundary |
 | --- | --- | --- |
 | P3-01 | `codex/p3-01-financial-temporal-hardening` | Cancellation cutoff, refund/reversal collision, payment origin truth, N2 concurrency and API replay tests only |
 | P3-02 | `codex/p3-02-client-closed-loop-uat` | Guest evidence, finance approval, stay/folio/survey, role and mobile state-changing journeys |
 | P3-03 | `codex/p3-03-documents-exports` | Generated artifacts, receipts/credit notes, private download/email, queued CSV/XLSX |
-| P3-04 | `codex/p3-04-production-communications` | Production mail events, scheduling, retries, failure work queues, queue supervision |
-| P3-05 | `codex/p3-05-production-readiness` | Storage, deployment, monitoring, backup/restore, security and handoff |
-| P3-06 | `codex/p3-06-payment-gateway-<provider>` | One selected gateway only; replace `<provider>` after the merchant decision |
+| P3-06A — implementing | `codex/p3-06-payment-gateway-mercado-pago` | Deterministic request/link, Checkout Pro adapter, signed-event lookup, provider payment/refund and settlement implementation is complete; live test-buyer/webhook/refund/receipt UAT awaits credentials and public HTTPS ingress. |
+| P3-06B — after P3-06A | `codex/p3-06b-front-desk-tenders` | Truthful cash, bank-transfer and standalone external-terminal recording, cash close/variance, receipts and manual external refunds |
+| P3-06C — after P3-06B | `codex/p3-06c-mercado-pago-point-qr` | Integrated Point and QR Orders, terminal/POS registry, virtual/sandbox tests and real-hardware UAT |
+| P3-04 — after P3-06C | `codex/p3-04-production-communications` | Production mail events, scheduling, retries, failure work queues, queue supervision |
+| P3-05 — after P3-04 | `codex/p3-05-production-readiness` | Storage, deployment, monitoring, backup/restore, security and handoff |
 | P3-07 | `codex/p3-07-direct-booking` | Conditional public booking scope only |
 | P3-08 | `codex/p3-08-integration-<provider>` | Integration execution platform plus one selected connector |
 
@@ -171,12 +179,15 @@ Follow the current [Laravel 13 queue](https://laravel.com/docs/13.x/queues) and 
 - Rehearse database and object restore together; record RPO/RTO and evidence. Test deploy, migration rollback strategy, application rollback, worker restart, key rotation, incident handling, and disaster recovery.
 - Run the complete state-changing UAT against a production-like deployment and produce a handoff checklist.
 
-### P3-06 — one provider-backed online payment integration
+### P3-06A — Inn payment requests/links and one provider-backed online integration
 
-This starts only when the client confirms merchant legal entity/country, USD/ARS charging, settlement currencies/accounts, card-present needs, fees, tax-receipt behavior, sandbox owner, and refund/dispute operations.
+Status: **deterministic implementation complete; live Mercado Pago test-mode UAT pending credentials and public HTTPS ingress. Follow the [granular plan](p3-06-mercado-pago-payments-implementation-plan.md) and [operations runbook](p3-06a-payment-operations-runbook.md).**
+
+The test-mode implementation proceeds against the Argentina property baseline. Production activation still requires confirmation of the merchant legal entity/account, USD/ARS charging and settlement currencies/accounts, card-present needs, fees, tax-receipt behavior, and refund/dispute operations.
 
 Keep Inn authoritative and add:
 
+- immutable `payment_requests` with opaque hashed access tokens, expiry, revocation, supersession, resend/rotation audit and exactly-once satisfaction;
 - `payment_attempts`, `provider_events`, provider-backed `refunds`, and `settlement_entries` with unique provider/account/event and idempotency constraints.
 - A `PaymentGateway` adapter for hosted checkout creation, verified raw-body event parsing, payment lookup, and refund execution.
 - Authoritative asynchronous webhook processing; redirects are informational only.
@@ -186,6 +197,36 @@ Keep Inn authoritative and add:
 Laravel Cashier is an optional Stripe implementation aid, not the domain. Its current documentation supports guest/single-charge Checkout and signed webhook handling, but its subscription/billable schema must not leak into reservation accounting. Frappe Payments remains a reference, not a runtime dependency.
 
 Acceptance replays invalid signatures, duplicates, reordering, delayed success, success-after-timeout, amount/currency mismatch, requires-action, failure, refund, dispute, and payout mismatch. Exactly one Inn payment/folio effect may result from a successful provider transaction.
+
+### P3-06B — front-desk cash and standalone-terminal tenders
+
+Status: **planned after P3-06A; follow the [granular P3-06B implementation plan](p3-06b-front-desk-tenders-implementation-plan.md).**
+
+Make existing/manual collection operationally truthful before controlling hardware:
+
+- explicit payment `channel`, `entry_mode` and origin constraints;
+- typed external-terminal receipt details with no PAN/CVV/expiry/track/chip/NFC data;
+- minimal cash shift, movements, close and variance review;
+- append-only manual external refunds with Finance execution evidence;
+- P3-03 receipts, reports, API/OpenAPI, Filament and reservation-hub actions;
+- PostgreSQL replay/race coverage plus a state-changing standalone-card/cash/variance/refund browser journey.
+
+P3-06B does not send money to a terminal and must not claim integrated card-present processing.
+
+### P3-06C — Mercado Pago Point and QR
+
+Status: **planned after P3-06B; follow the [granular P3-06C implementation plan](p3-06c-mercado-pago-point-qr-implementation-plan.md).**
+
+Reuse P3-06A's provider transport, event ledger, payment application, refunds and settlements to add:
+
+- property-scoped Point terminal and QR point-of-sale registry;
+- exact staff-initiated Point/QR requests with one active order per terminal;
+- Mercado Pago Orders create/fetch/cancel/refund using stable idempotency keys;
+- signed event plus authoritative lookup before any Inn money mutation;
+- dynamic QR rendering/expiry and Point virtual-device coverage;
+- supervised physical-terminal payment, receipt, refund and settlement UAT before the client-complete claim.
+
+Hyperswitch remains deferred until at least two live PSPs and measured routing/failover value exist. It currently adds infrastructure without a production-ready Mercado Pago/Payway/Mobbex or Argentine Getnet connector. Mobbex Smart POS remains a future commercial/security bake-off, not a speculative second adapter.
 
 ### P3-07 — direct booking, conditional on signed scope
 
@@ -234,4 +275,6 @@ A slice is complete only when:
 
 ## Immediate next action
 
-Review and merge **P3-01** after its branch checks remain green. Then update local `main` with `git pull --ff-only` and create **P3-02** from that merged commit; do not stack it on this branch. P3-02 closes the original Rincón Grande manual-transfer/stay promise, and P3-03 produces the documents/exports the client needs to see. Provider selection can proceed in parallel as a business decision, but P3-06 code must not start against an unconfirmed merchant/provider model.
+Continue on `codex/p3-06-payment-gateway-mercado-pago`, verify it remains based on synchronized `main` at `e459935` or later, preserve these uncommitted planning documents, and execute the [granular P3-06A plan](p3-06-mercado-pago-payments-implementation-plan.md). Build payment-request/link invariants and deterministic fake/contract/concurrency coverage first, but do not call the slice complete until a staff-issued Inn link drives a real Mercado Pago Argentina test-buyer hosted checkout, signed webhook, exactly-once Inn payment/request/deposit/folio effect, partial provider refund and generated receipts end to end.
+
+After P3-06A merges, create P3-06B from synchronized `main`; after P3-06B merges, create P3-06C from synchronized `main`. Do not stack these branches or absorb front-desk/hardware scope into P3-06A. P3-04 remains unstarted and follows P3-06C in the current execution order.

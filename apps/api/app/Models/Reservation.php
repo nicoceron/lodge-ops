@@ -37,6 +37,7 @@ use LogicException;
  * @property-read Guest|null $primaryGuest
  * @property-read Collection<int, Allocation> $allocations
  * @property-read Collection<int, Payment> $payments
+ * @property-read Collection<int, PaymentRequest> $paymentRequests
  * @property-read Collection<int, FolioLine> $folioLines
  * @property-read Collection<int, Deposit> $deposits
  * @property-read Collection<int, ReservationNote> $noteTimeline
@@ -132,6 +133,11 @@ class Reservation extends TenantModel
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function paymentRequests(): HasMany
+    {
+        return $this->hasMany(PaymentRequest::class);
     }
 
     public function folioLines(): HasMany

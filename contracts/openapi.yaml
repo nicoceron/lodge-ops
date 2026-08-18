@@ -1233,6 +1233,107 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/payment-requests:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Payments]
+      operationId: listPaymentRequests
+      responses:
+        '200': { description: Immutable payment-request history., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/PaymentRequest' } } } } } } }
+    post:
+      tags: [Payments]
+      operationId: issuePaymentRequest
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PaymentRequestInput' } } }
+      responses:
+        '201': { description: Request issued; the Inn-owned access URL is returned once., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /payment-requests/{paymentRequest}:
+    get:
+      tags: [Payments]
+      operationId: getPaymentRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: paymentRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Payment request projection., content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/PaymentRequest' } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /payment-requests/{paymentRequest}/rotate:
+    post:
+      tags: [Payments]
+      operationId: rotatePaymentRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: paymentRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Token rotated and a replacement Inn URL returned once. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payment-requests/{paymentRequest}/resend:
+    post:
+      tags: [Payments]
+      operationId: secureResendPaymentRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: paymentRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Secure resend rotates the non-retained plaintext token. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payment-requests/{paymentRequest}/revoke:
+    post:
+      tags: [Payments]
+      operationId: revokePaymentRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: paymentRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { description: Request revoked without deleting its audit history. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payment-attempts/{paymentAttempt}/reconcile:
+    post:
+      tags: [Finance]
+      operationId: reconcileProviderPaymentAttempt
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: paymentAttempt, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Authoritative provider lookup and normal payment-event processing completed. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /provider-refunds/{refund}/execute:
+    post:
+      tags: [Finance]
+      operationId: executeProviderRefund
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: refund, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Provider refund execution recovered or completed. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payment-webhooks/{webhookKey}:
+    post:
+      tags: [Payments]
+      operationId: receivePaymentWebhook
+      security: []
+      parameters:
+        - { name: webhookKey, in: path, required: true, schema: { type: string, minLength: 32, maxLength: 128 } }
+        - { name: x-signature, in: header, required: true, schema: { type: string } }
+        - { name: x-request-id, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '200': { description: Signed notification durably accepted; processing is asynchronous. }
+        '401': { description: Invalid or stale provider signature. }
   /proposals:
     get:
       tags: [Proposals]
@@ -2874,6 +2975,31 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/Payment' }
+    PaymentRequest:
+      type: object
+      required: [id, property_id, reservation_id, purpose, state, source_amount_minor, source_currency, expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        deposit_id: { type: [string, 'null'], format: uuid }
+        purpose: { type: string, enum: [deposit, balance, full_outstanding, authorized_partial] }
+        state: { type: string, enum: [draft, open, processing, paid, expired, revoked, superseded] }
+        source_amount_minor: { type: integer, minimum: 1 }
+        source_currency: { type: string, pattern: '^[A-Z]{3}$' }
+        charge_currency: { type: [string, 'null'], pattern: '^[A-Z]{3}$' }
+        expires_at: { type: string, format: date-time }
+        paid_at: { type: [string, 'null'], format: date-time }
+        payment_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+    PaymentRequestInput:
+      type: object
+      required: [purpose]
+      properties:
+        purpose: { type: string, enum: [deposit, balance, full_outstanding, authorized_partial] }
+        deposit_id: { type: [string, 'null'], format: uuid }
+        amount_minor: { type: [integer, 'null'], minimum: 1 }
+        expires_at: { type: [string, 'null'], format: date-time }
     Dashboard:
       type: object
       required: [data]

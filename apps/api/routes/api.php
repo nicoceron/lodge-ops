@@ -13,9 +13,12 @@ use App\Http\Controllers\Api\V1\GuestController;
 use App\Http\Controllers\Api\V1\GuestPortalController;
 use App\Http\Controllers\Api\V1\OperationsProjectionController;
 use App\Http\Controllers\Api\V1\PaymentController;
+use App\Http\Controllers\Api\V1\PaymentRequestController;
+use App\Http\Controllers\Api\V1\PaymentWebhookController;
 use App\Http\Controllers\Api\V1\ProgramController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\ProposalController;
+use App\Http\Controllers\Api\V1\ProviderFinanceController;
 use App\Http\Controllers\Api\V1\ReportExportController;
 use App\Http\Controllers\Api\V1\ReservationChangeController;
 use App\Http\Controllers\Api\V1\ReservationController;
@@ -35,6 +38,11 @@ Route::get('v1/calendar-feeds/{token}.ics', CalendarFeedController::class)
     ->where('token', '[A-Za-z0-9]{64}')
     ->middleware('throttle:60,1')
     ->name('calendar-feeds.show');
+
+Route::post('v1/payment-webhooks/{webhookKey}', PaymentWebhookController::class)
+    ->where('webhookKey', '[A-Za-z0-9_-]{32,128}')
+    ->middleware('throttle:payment-webhook')
+    ->name('payment-webhooks.receive');
 
 Route::prefix('v1/guest-portal')->group(function (): void {
     Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:guest-exchange');
@@ -99,6 +107,14 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('payments', [PaymentController::class, 'store'])->middleware('idempotent');
     Route::post('payments/{payment}/reconcile', [PaymentController::class, 'reconcile'])->middleware('idempotent');
     Route::post('payments/{payment}/reverse', [PaymentController::class, 'reverse'])->middleware('idempotent');
+    Route::get('reservations/{reservation}/payment-requests', [PaymentRequestController::class, 'index']);
+    Route::post('reservations/{reservation}/payment-requests', [PaymentRequestController::class, 'store'])->middleware('idempotent');
+    Route::get('payment-requests/{paymentRequest}', [PaymentRequestController::class, 'show']);
+    Route::post('payment-requests/{paymentRequest}/rotate', [PaymentRequestController::class, 'rotate'])->middleware('idempotent');
+    Route::post('payment-requests/{paymentRequest}/resend', [PaymentRequestController::class, 'rotate'])->middleware('idempotent');
+    Route::post('payment-requests/{paymentRequest}/revoke', [PaymentRequestController::class, 'revoke'])->middleware('idempotent');
+    Route::post('payment-attempts/{paymentAttempt}/reconcile', [ProviderFinanceController::class, 'reconcile'])->middleware('idempotent');
+    Route::post('provider-refunds/{refund}/execute', [ProviderFinanceController::class, 'refund'])->middleware('idempotent');
     Route::apiResource('deposits', DepositController::class)->only(['index', 'store', 'show']);
     Route::post('deposits/{deposit}/waive', [DepositController::class, 'waive'])->middleware('idempotent');
 

@@ -26,7 +26,8 @@ class DocumentExportMigrationCompatibilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->assertSame(0, Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]));
+        $migrationPath = 'database/migrations/2026_08_18_000400_create_document_export_lifecycles.php';
+        $this->assertSame(0, Artisan::call('migrate:rollback', ['--path' => $migrationPath, '--force' => true]));
 
         $documentId = (string) Str::uuid();
         $exportId = (string) Str::uuid();
@@ -57,7 +58,7 @@ class DocumentExportMigrationCompatibilityTest extends TestCase
             'updated_at' => $createdAt,
         ]);
 
-        $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $this->assertSame(0, Artisan::call('migrate', ['--path' => $migrationPath, '--force' => true]));
 
         $this->assertDatabaseHas('generated_documents', [
             'id' => $documentId,

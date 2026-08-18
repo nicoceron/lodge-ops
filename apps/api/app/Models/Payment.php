@@ -54,6 +54,16 @@ class Payment extends TenantModel
         return $this->hasMany(GeneratedDocument::class);
     }
 
+    public function paymentRequests(): HasMany
+    {
+        return $this->hasMany(PaymentRequest::class);
+    }
+
+    public function providerRefunds(): HasMany
+    {
+        return $this->hasMany(ProviderRefund::class);
+    }
+
     /** @return HasMany<FolioLine, $this> */
     public function folioLines(): HasMany
     {

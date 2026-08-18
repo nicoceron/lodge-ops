@@ -1,10 +1,17 @@
 <?php
 
 use App\Http\Controllers\GuestGeneratedDocumentDownloadController;
+use App\Http\Controllers\PaymentLinkController;
 use App\Http\Controllers\Web\GuestPortalController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/manage');
+
+Route::prefix('pay')->middleware('throttle:payment-request-link')->group(function (): void {
+    Route::get('{token}', [PaymentLinkController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->name('payment-link.show');
+    Route::post('{token}/checkout', [PaymentLinkController::class, 'checkout'])->where('token', '[A-Za-z0-9]{64}')->name('payment-link.checkout');
+    Route::get('return/{externalReference}', [PaymentLinkController::class, 'returned'])->whereUuid('externalReference')->name('payment-link.return');
+});
 
 Route::prefix('guest')->name('guest.portal.')->group(function (): void {
     Route::get('access/{token}', [GuestPortalController::class, 'access'])

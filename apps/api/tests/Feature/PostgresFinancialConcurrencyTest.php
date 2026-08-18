@@ -5,18 +5,23 @@ namespace Tests\Feature;
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
+use App\Enums\PaymentRequestPurpose;
 use App\Enums\PaymentStatus;
 use App\Enums\ReportExportFormat;
 use App\Enums\ReportExportKind;
 use App\Enums\ReportExportStatus;
+use App\Enums\ReservationStatus;
 use App\Http\Middleware\EnsureIdempotentCommand;
+use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\Payment;
+use App\Models\PaymentAttempt;
 use App\Models\Reservation;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CompleteRefund;
 use App\Services\FolioService;
+use App\Services\Payments\IssuePaymentRequest;
 use App\Services\PaymentService;
 use App\Services\RequestRefund;
 use App\Support\Tenancy\TenantContext;
@@ -33,6 +38,48 @@ use Throwable;
 class PostgresFinancialConcurrencyTest extends TestCase
 {
     use CreatesTenant, DatabaseMigrations;
+
+    public function test_postgres_allows_only_one_reusable_attempt_per_payment_request_under_race(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'ARS',
+            'subtotal_minor' => 50_000,
+            'tax_minor' => 0,
+            'total_minor' => 50_000,
+        ]);
+        $request = app(IssuePaymentRequest::class)->handle($reservation, PaymentRequestPurpose::FullOutstanding, null, null, $user->id)->request;
+        $connection = IntegrationConnection::query()->create([
+            'name' => 'race-gateway', 'type' => 'payment',
+            'configuration' => ['provider' => 'mercado_pago'], 'secret_reference' => 'env:RACE_GATEWAY_TOKEN',
+        ]);
+        $claim = fn (): string => PaymentAttempt::query()->create([
+            'property_id' => $property->id,
+            'reservation_id' => $reservation->id,
+            'payment_request_id' => $request->id,
+            'integration_connection_id' => $connection->id,
+            'provider' => 'mercado_pago',
+            'environment' => 'sandbox',
+            'provider_account' => 'seller-race',
+            'external_reference' => (string) Str::uuid(),
+            'idempotency_key' => (string) Str::uuid(),
+            'purpose' => 'full_outstanding',
+            'state' => 'creating',
+            'source_amount_minor' => 50_000,
+            'source_currency' => 'ARS',
+            'charge_amount_minor' => 50_000,
+            'charge_currency' => 'ARS',
+        ])->id;
+
+        $results = $this->concurrently([$claim, $claim], $tenant, $membership);
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, PaymentAttempt::query()->where('payment_request_id', $request->id)->count());
+    }
 
     public function test_concurrent_refund_request_and_legacy_reversal_cannot_both_mutate_money(): void
     {
