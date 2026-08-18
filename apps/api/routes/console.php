@@ -22,3 +22,8 @@ Schedule::command('reservation-milestones:dispatch')
     ->hourly()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('artifacts:purge-expired --batch=100')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->onOneServer();

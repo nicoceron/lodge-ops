@@ -3,10 +3,13 @@
 namespace App\Filament\Resources\Payments;
 
 use App\Enums\DepositStatus;
+use App\Enums\DocumentKind;
 use App\Enums\PaymentStatus;
 use App\Filament\Support\InnPresentation;
 use App\Models\Deposit;
 use App\Models\Payment;
+use App\Models\User;
+use App\Services\Documents\RequestDocumentGeneration;
 use App\Services\PaymentService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -20,6 +23,13 @@ final class PaymentWorkflowActions
     public static function forRecord(): array
     {
         return [
+            Action::make('generate_payment_receipt')
+                ->label('Generate receipt')->icon('heroicon-o-document-arrow-down')
+                ->visible(fn (Payment $record): bool => in_array($record->status, [PaymentStatus::Succeeded, PaymentStatus::Refunded], true))
+                ->action(function (Payment $record): void {
+                    app(RequestDocumentGeneration::class)->handle(User::query()->findOrFail(auth()->id()), $record->reservation, DocumentKind::PaymentReceipt, app()->getLocale(), (string) str()->uuid(), $record);
+                    Notification::make()->success()->title('Payment receipt queued')->send();
+                }),
             Action::make('reconcile')
                 ->label('Reconcile')
                 ->icon('heroicon-o-check-badge')

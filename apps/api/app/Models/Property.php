@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/** @property string $id @property string $name @property string $code @property string $timezone @property string|null $address @property array<string, mixed>|null $settings */
 class Property extends TenantModel
 {
     protected function casts(): array

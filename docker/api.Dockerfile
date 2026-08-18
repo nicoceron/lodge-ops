@@ -9,6 +9,7 @@ RUN apk add --no-cache \
         libzip-dev \
         nodejs \
         npm \
+        poppler-utils \
         postgresql-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install bcmath gd intl pcntl pdo_pgsql zip \

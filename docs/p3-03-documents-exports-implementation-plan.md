@@ -209,6 +209,14 @@ Implementation evidence recorded on 2026-08-18:
 | --- | --- | --- |
 | WP-00 | Complete | Pre-change gates passed: SQLite API 245 tests, PostgreSQL API 245 tests, client 6 tests, lint/static analysis, OpenAPI contract and service doctor. The updated `inn-api` image builds successfully and `docker compose config --quiet` passes. |
 | WP-01 | Complete | Full SQLite API suite passes 252 tests with 1,768 assertions; full PostgreSQL API suite passes 252 tests with 1,744 assertions. Focused schema, migration compatibility, and document/export PostgreSQL race tests pass. The current database migrated forward without deleting existing rows, and a fresh SQLite migration passes. |
+| WP-02 | Complete | `DocumentGenerationFlowTest` covers lifecycle matrices, all six snapshot kinds, canonical determinism, retry immutability, redaction, manual/provider wording, refund totals and acknowledged-waiver immutability. |
+| WP-03 | Complete | Encrypted after-commit jobs, overlap locks, parser-open validation, temporary-object promotion/cleanup, failure/retry state, idempotent requests/workers, real Poppler render checks and immutable replacement lineage are executable. |
+| WP-04 | Complete | Staff/API/guest controllers authorize before storage, fail closed on integrity/expiry/purge, emit path-free audits, and idempotently queue attachment-by-artifact email intent; role/property denials and guest phone download pass. |
+| WP-05 | Complete | Eight tenant/property-scoped definitions generate formula-safe CSV/XLSX with half-open local-date filters, exact row/integrity metadata, retry/expiry/purge, League CSV/OpenSpout parsing and isolated PostgreSQL coverage. |
+| WP-06 | Complete | Filament exposes generation, failure/retry, download/email/replacement, payment/refund receipt and report request/retry/purge actions; guest documents remain distinct and phone-safe. |
+| WP-07 | Complete | Authenticated command-backed API routes and OpenAPI schemas pass idempotency, safe-resource, lifecycle, authorization and 82-path/116-operation contract verification. |
+| WP-08 | Complete | The seven-test Chromium client suite includes the state-changing P3-03 staff/guest journey: queued real PDF plus CSV/XLSX generation, download, parser/open validation and 390×844 guest access. |
+| WP-09 | Complete | Main runbook, UAT ledger and Phase 3 status are updated; legacy arbitrary-byte storage and private-path UI exposure are removed; QloApps is recorded as inspiration only. Final gates pass: SQLite 280 tests/1,921 assertions, PostgreSQL 280 tests/1,897 assertions, focused PostgreSQL 32 tests/184 assertions, seven authenticated browser tests, lint/static analysis, OpenAPI 82 paths/116 operations/100 references, Docker build/health, dependency audits and diff hygiene. |
 
 ### WP-02 — trusted templates and canonical snapshot builders
 
@@ -242,11 +250,11 @@ Required snapshot content:
 
 Tests:
 
-- [ ] Data providers cover every valid/invalid lifecycle state.
-- [ ] Equivalent snapshots produce identical canonical JSON/source checksum.
-- [ ] Changes after request creation do not change a retry's snapshot.
-- [ ] Sensitive internal notes, evidence storage paths and secrets never enter snapshots.
-- [ ] Manual versus provider-origin wording remains truthful.
+- [x] Data providers cover every valid/invalid lifecycle state.
+- [x] Equivalent snapshots produce identical canonical JSON/source checksum.
+- [x] Changes after request creation do not change a retry's snapshot.
+- [x] Sensitive internal notes, evidence storage paths and secrets never enter snapshots.
+- [x] Manual versus provider-origin wording remains truthful.
 
 ### WP-03 — request commands and generation state machine
 
@@ -282,13 +290,13 @@ Retry command reuses the original snapshot. A replacement request is a new reque
 
 Tests:
 
-- [ ] Dispatch occurs after commit and not after rollback.
-- [ ] Queue payload is encrypted and contains no guest snapshot/address/document number.
-- [ ] Duplicate HTTP/Filament requests replay one request.
-- [ ] Concurrent workers create at most one final artifact.
-- [ ] Crash before/after object write does not leave a completed row pointing to a missing object.
-- [ ] Renderer failure, missing template/font, invalid bytes and storage failure are retryable and visible.
-- [ ] Replacement never mutates prior artifact.
+- [x] Dispatch occurs after commit and not after rollback.
+- [x] Queue payload is encrypted and contains no guest snapshot/address/document number.
+- [x] Duplicate HTTP/Filament requests replay one request.
+- [x] Concurrent workers create at most one final artifact.
+- [x] Crash before/after object write does not leave a completed row pointing to a missing object.
+- [x] Renderer failure, missing template/font, invalid bytes and storage failure are retryable and visible.
+- [x] Replacement never mutates prior artifact.
 
 ### WP-04 — authorized access, guest access and delivery intent
 
@@ -326,10 +334,10 @@ Email intent:
 
 Tests:
 
-- [ ] Role matrix and property/tenant denial for metadata, download, retry, replace and email.
-- [ ] Guest active/expired/replayed token coverage.
-- [ ] Missing, expired, purged and checksum-mismatched objects fail closed.
-- [ ] Email retry does not create duplicate communication/artifact effects.
+- [x] Role matrix and property/tenant denial for metadata, download, retry, replace and email.
+- [x] Guest active/expired/replayed token coverage.
+- [x] Missing, expired, purged and checksum-mismatched objects fail closed.
+- [x] Email retry does not create duplicate communication/artifact effects.
 
 ### WP-05 — report definition and export pipeline
 
@@ -380,13 +388,13 @@ Export behavior:
 
 Tests:
 
-- [ ] Every definition has filter/column golden tests.
-- [ ] Cross-tenant/property fixtures never appear even when IDs/filters are manipulated.
-- [ ] Currency totals and half-open date boundaries are correct.
-- [ ] Formula payloads beginning after spaces/control characters are neutralized in parsed CSV and XLSX cells.
-- [ ] Empty, one-row and large chunked exports have exact counts.
-- [ ] CSV parses with League CSV; XLSX opens with OpenSpout/ZIP and has expected sheets/cells.
-- [ ] Failure/retry/expiry/purge and concurrent identical request behavior pass on PostgreSQL.
+- [x] Every definition has filter/column golden tests.
+- [x] Cross-tenant/property fixtures never appear even when IDs/filters are manipulated.
+- [x] Currency totals and half-open date boundaries are correct.
+- [x] Formula payloads beginning after spaces/control characters are neutralized in parsed CSV and XLSX cells.
+- [x] Empty, one-row and large chunked exports have exact counts.
+- [x] CSV parses with League CSV; XLSX opens with OpenSpout/ZIP and has expected sheets/cells.
+- [x] Failure/retry/expiry/purge and concurrent identical request behavior pass on PostgreSQL.
 
 ### WP-06 — Filament and guest-portal product surfaces
 
@@ -469,13 +477,13 @@ Real-render integration assertions:
 
 ### WP-09 — documentation, cleanup and PR gate
 
-- [ ] Update [Client UAT ledger](client-uat-ledger.md) with requirement IDs and executable evidence.
-- [ ] Update [Phase 3 plan](client-ready-phase-3-plan.md) to `implemented and verified` only after all gates pass.
-- [ ] Document environment variables, worker queue and local artifact inspection in the main setup/runbook.
-- [ ] Add a renderer/export failure troubleshooting note without exposing sensitive snapshots.
-- [ ] Remove or migrate the legacy caller-supplied-byte `DocumentService::store()` path; no production call site may remain.
-- [ ] Run dependency/license audit and record QloApps as inspiration only—no copied OSL source.
-- [ ] Preserve unrelated worktree changes and synthetic audit history.
+- [x] Update [Client UAT ledger](client-uat-ledger.md) with requirement IDs and executable evidence.
+- [x] Update [Phase 3 plan](client-ready-phase-3-plan.md) to `implemented and verified` only after all gates pass.
+- [x] Document environment variables, worker queue and local artifact inspection in the main setup/runbook.
+- [x] Add a renderer/export failure troubleshooting note without exposing sensitive snapshots.
+- [x] Remove or migrate the legacy caller-supplied-byte `DocumentService::store()` path; no production call site may remain.
+- [x] Run dependency/license audit and record QloApps as inspiration only—no copied OSL source.
+- [x] Preserve unrelated worktree changes and synthetic audit history.
 
 ## File-level implementation map
 

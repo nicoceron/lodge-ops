@@ -3,6 +3,7 @@
 return [
     'disk' => env('DOCUMENT_DISK', 'documents'),
     'renderer' => env('DOCUMENT_RENDERER', 'dompdf'),
+    'pdfinfo_binary' => env('DOCUMENT_PDFINFO_BINARY', 'pdfinfo'),
 
     'exports' => [
         'ttl_days' => (int) env('DOCUMENT_EXPORT_TTL_DAYS', 7),

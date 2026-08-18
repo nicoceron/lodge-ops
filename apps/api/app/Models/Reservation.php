@@ -32,14 +32,17 @@ use LogicException;
  * @property int|null $folio_closed_by
  * @property ReservationStatus $status
  * @property-read Program|null $program
+ * @property-read Property $property
  * @property-read BookingQuote|null $bookingQuote
  * @property-read Guest|null $primaryGuest
  * @property-read Collection<int, Allocation> $allocations
  * @property-read Collection<int, Payment> $payments
+ * @property-read Collection<int, FolioLine> $folioLines
  * @property-read Collection<int, Deposit> $deposits
  * @property-read Collection<int, ReservationNote> $noteTimeline
  * @property-read Collection<int, ReservationStatusHistory> $statusHistory
  * @property-read Collection<int, ReservationChange> $changes
+ * @property-read Collection<int, GeneratedDocument> $generatedDocuments
  * @property-read Collection<int, GuestPortalProfile> $guestPortalProfiles
  */
 class Reservation extends TenantModel

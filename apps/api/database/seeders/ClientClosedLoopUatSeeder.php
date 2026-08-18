@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Enums\DocumentKind;
 use App\Enums\ReservationStatus;
+use App\Models\DocumentTemplate;
 use App\Models\Guest;
 use App\Models\GuestPortalAccessToken;
 use App\Models\Property;
@@ -25,6 +27,35 @@ class ClientClosedLoopUatSeeder extends Seeder
         $context->set($tenant);
 
         try {
+            foreach (DocumentKind::cases() as $kind) {
+                DocumentTemplate::query()->firstOrCreate(
+                    ['kind' => $kind->value, 'version' => 1],
+                    [
+                        'name' => str($kind->value)->replace('_', ' ')->title(),
+                        'definition' => ['locale' => null],
+                        'is_active' => true,
+                    ],
+                );
+            }
+
+            $demoReservation = Reservation::query()
+                ->where('confirmation_number', 'RSV-DEMO-001')
+                ->firstOrFail();
+
+            GuestPortalAccessToken::query()->updateOrCreate(
+                ['token_hash' => hash('sha256', DatabaseSeeder::DEMO_GUEST_PORTAL_TOKEN)],
+                [
+                    'reservation_id' => $demoReservation->id,
+                    'guest_id' => $demoReservation->primary_guest_id,
+                    'session_hash' => null,
+                    'expires_at' => now()->addWeek(),
+                    'exchanged_at' => null,
+                    'session_expires_at' => null,
+                    'last_used_at' => null,
+                    'revoked_at' => null,
+                ],
+            );
+
             $property = Property::query()->firstOrCreate(
                 ['code' => 'UAT-ISOLATION'],
                 ['name' => 'UAT isolation property', 'timezone' => 'UTC', 'is_active' => true],

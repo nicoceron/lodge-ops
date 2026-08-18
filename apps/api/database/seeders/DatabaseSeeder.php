@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Enums\AllocationStatus;
 use App\Enums\DepositStatus;
+use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
 use App\Enums\HousekeepingStatus;
 use App\Enums\MembershipRole;
@@ -22,6 +23,7 @@ use App\Models\CostRecord;
 use App\Models\CrmActivity;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -102,6 +104,12 @@ class DatabaseSeeder extends Seeder
                 ['property_id' => $property->id, 'role' => MembershipRole::Administrator, 'is_active' => true],
             );
             $context->set($tenant, $membership);
+            foreach (DocumentKind::cases() as $kind) {
+                DocumentTemplate::query()->firstOrCreate(
+                    ['kind' => $kind->value, 'version' => 1],
+                    ['name' => str($kind->value)->replace('_', ' ')->title(), 'definition' => ['locale' => null], 'is_active' => true],
+                );
+            }
 
             $staff = $this->seedTeam($tenant->id, $property->id);
             $catalog = app(ResourceCatalog::class)->ensure($property, $this->demoResourceCategories());

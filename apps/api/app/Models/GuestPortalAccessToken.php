@@ -4,7 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** @property string $tenant_id */
+/**
+ * @property string $tenant_id
+ * @property string $reservation_id
+ * @property-read Reservation $reservation
+ */
 class GuestPortalAccessToken extends TenantModel
 {
     protected $hidden = ['token_hash', 'session_hash'];
@@ -20,6 +24,7 @@ class GuestPortalAccessToken extends TenantModel
         ];
     }
 
+    /** @return BelongsTo<Reservation, $this> */
     public function reservation(): BelongsTo
     {
         return $this->belongsTo(Reservation::class);

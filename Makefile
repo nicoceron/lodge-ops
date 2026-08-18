@@ -1,4 +1,4 @@
-.PHONY: bootstrap up down logs doctor build-api test test-api test-api-postgres test-web test-client lint analyse-api contract verify migrate seed shell-api
+.PHONY: bootstrap up down logs doctor build-api test test-api test-api-postgres test-documents-exports test-web test-client lint analyse-api contract verify migrate seed shell-api
 
 bootstrap:
 	test -f .env || cp .env.example .env
@@ -43,6 +43,10 @@ test-api:
 test-api-postgres:
 	docker compose exec -T postgres sh -lc 'psql -U "$${POSTGRES_USER:-inn}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''inn_test'\''" | grep -q 1 || createdb -U "$${POSTGRES_USER:-inn}" inn_test'
 	docker compose run --rm --no-deps -e APP_ENV=testing -e DB_DATABASE=inn_test api ./vendor/bin/phpunit --configuration phpunit.pgsql.xml
+
+test-documents-exports:
+	docker compose exec -T postgres sh -lc 'psql -U "$${POSTGRES_USER:-inn}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''inn_test'\''" | grep -q 1 || createdb -U "$${POSTGRES_USER:-inn}" inn_test'
+	docker compose run --rm --no-deps -e APP_ENV=testing -e DB_DATABASE=inn_test api ./vendor/bin/phpunit --configuration phpunit.pgsql.xml tests/Feature/Documents
 
 test-web:
 	cd apps/web && npm run e2e

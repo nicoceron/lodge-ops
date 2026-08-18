@@ -5,6 +5,14 @@
 @section('content')
 <div class="stack">
     <section><h1>Documents</h1><p class="lede">Review the current document version before acknowledging it.</p></section>
+    <section class="card stack" aria-labelledby="generated-documents-title">
+        <div><span class="pill">PDF copies</span><h2 id="generated-documents-title">Generated stay documents</h2></div>
+        @forelse ($generated_documents as $generated)
+            <div class="row"><div><strong>{{ str($generated['kind'])->replace('_', ' ')->title() }}</strong><div class="muted">Generated {{ \Carbon\CarbonImmutable::parse($generated['generated_at'])->format('M j, Y') }}</div></div><a class="button" href="{{ $generated['download_url'] }}" aria-label="Download {{ $generated['file_name'] }}">Download PDF</a></div>
+        @empty
+            <p class="muted">No generated stay documents are available yet.</p>
+        @endforelse
+    </section>
     @if ($document)
         <section class="card stack">
             <div><span class="pill">Version {{ $document['version'] }}</span><h2>{{ $document['title'] }}</h2></div>

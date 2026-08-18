@@ -79,7 +79,7 @@ class BackOfficeFilamentTest extends TestCase
         $this->assertTrue(CommissionAccrualResource::canViewAny());
         $this->assertTrue(ExchangeRateResource::canCreate());
         $this->assertTrue(ReportExportResource::canViewAny());
-        $this->assertFalse(GeneratedDocumentResource::canViewAny());
+        $this->assertTrue(GeneratedDocumentResource::canViewAny());
 
         [, , $managerUser] = $this->tenantEnvironment(MembershipRole::Manager, authenticate: false);
         $this->actingAs($managerUser);

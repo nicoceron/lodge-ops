@@ -279,7 +279,7 @@ class MasterCalendar extends Page
                 'starts_at' => $task->due_at,
                 'ends_at' => $task->due_at->addMinute(),
                 'status' => $task->status->value,
-                'property' => $task->property?->name ?? '',
+                'property' => $task->property->name,
                 'program' => null,
                 'color' => null,
                 'is_buyout' => false,

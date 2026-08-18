@@ -4,9 +4,32 @@ namespace App\Models;
 
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * @property string $id
+ * @property string $tenant_id
+ * @property int|null $requested_by
+ * @property string|null $document_template_id
+ * @property string|null $reservation_id
+ * @property string|null $guest_id
+ * @property string|null $payment_id
+ * @property string|null $reservation_change_id
+ * @property DocumentKind $kind
+ * @property DocumentGenerationStatus $status
+ * @property string $locale
+ * @property array<string, mixed> $source_snapshot
+ * @property string $source_checksum
+ * @property string $deduplication_key
+ * @property int $attempts
+ * @property CarbonImmutable|null $started_at
+ * @property CarbonImmutable|null $completed_at
+ * @property CarbonImmutable|null $failed_at
+ * @property string|null $last_error
+ * @property-read GeneratedDocument|null $generatedDocument
+ */
 class DocumentGenerationRequest extends TenantModel
 {
     protected $attributes = [
