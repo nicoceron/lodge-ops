@@ -29,7 +29,7 @@ doctor:
 	curl --fail --silent --show-error http://localhost:$${API_PORT:-8000}/manage/login >/dev/null
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/css/filament/filament/app.css)" = "200"
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/js/filament/filament/app.js)" = "200"
-	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | rg --quiet 'Inn'
+	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | grep --quiet 'Inn'
 	@echo "Inn public site and Laravel/Filament application are reachable."
 
 build-api:
