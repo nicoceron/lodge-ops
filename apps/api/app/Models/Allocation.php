@@ -68,11 +68,13 @@ class Allocation extends TenantModel
         return $this->belongsTo(Reservation::class);
     }
 
+    /** @return BelongsTo<\App\Models\Resource, $this> */
     public function resource(): BelongsTo
     {
         return $this->belongsTo(Resource::class);
     }
 
+    /** @return BelongsTo<ResourceCategory, $this> */
     public function requestedCategory(): BelongsTo
     {
         return $this->belongsTo(ResourceCategory::class, 'requested_category_id');
@@ -97,6 +99,7 @@ class Allocation extends TenantModel
         return $this->assignedInstanceName() ?? (($this->requestedCategoryName() ?? 'Stay place').' requested');
     }
 
+    /** @return BelongsTo<ServiceOccurrence, $this> */
     public function serviceOccurrence(): BelongsTo
     {
         return $this->belongsTo(ServiceOccurrence::class);

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FolioLineType;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use LogicException;
@@ -11,6 +12,12 @@ use LogicException;
  * @property int $net_amount_minor
  * @property int $tax_amount_minor
  * @property int $gross_amount_minor
+ * @property string $id
+ * @property FolioLineType $type
+ * @property string $description
+ * @property string $quantity
+ * @property CarbonImmutable $posted_at
+ * @property string|null $reverses_folio_line_id
  * @property-read Reservation $reservation
  */
 class FolioLine extends TenantModel

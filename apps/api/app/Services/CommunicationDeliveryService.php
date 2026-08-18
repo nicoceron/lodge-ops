@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\CommunicationMail;
 use App\Models\Communication;
 use App\Models\DeliveryAttempt;
+use App\Models\GeneratedDocument;
 use App\Models\Guest;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +32,7 @@ class CommunicationDeliveryService
                 throw new DomainException("No delivery adapter is configured for channel [{$locked->channel}].");
             }
 
-            $recipient = $locked->guest?->email;
+            $recipient = data_get($locked->metadata, 'recipient', $locked->guest?->email);
             if (! is_string($recipient) || trim($recipient) === '') {
                 throw new DomainException('The communication recipient has no email address.');
             }
@@ -70,6 +71,9 @@ class CommunicationDeliveryService
                 'recipient' => trim($recipient),
                 'subject' => $locked->subject ?: config('app.name').' update',
                 'body' => $locked->body,
+                'document' => ($documentId = data_get($locked->metadata, 'generated_document_id'))
+                    ? GeneratedDocument::query()->whereKey($documentId)->first()
+                    : null,
             ];
         }, 3);
 
@@ -81,6 +85,9 @@ class CommunicationDeliveryService
             Mail::to($prepared['recipient'])->send(new CommunicationMail(
                 $prepared['subject'],
                 $prepared['body'],
+                $prepared['document']?->storage_disk,
+                $prepared['document']?->storage_path,
+                $prepared['document']?->file_name,
             ));
 
             DB::transaction(function () use ($prepared): void {

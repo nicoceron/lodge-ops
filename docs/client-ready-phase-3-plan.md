@@ -5,11 +5,11 @@ Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 p
 
 ## Current release truth
 
-N2, P3-01, and P3-02 are implemented and independently re-verified:
+N2, P3-01, P3-02, and P3-03 are implemented and independently re-verified:
 
-- The fast local run reports 241 passed, 4 production-engine checks skipped by design, and 1,738 assertions across 245 tests.
-- The isolated PostgreSQL 18 gate reports 245 tests, 1 container source-tree check skipped, and 1,704 assertions, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, payment-origin constraints, and the separated secure-link limiter regression.
-- Six authenticated Playwright tests pass, including the N2 guarded-change/refund loop and a continuous P3-02 staff → guest → finance → operations → survey journey with real role isolation and a phone viewport.
+- The fast local run reports 274 passed, 6 production-engine checks skipped by design, and 1,921 assertions across 280 tests.
+- The isolated PostgreSQL 18 gate reports 280 tests, 1 container source-tree check skipped, and 1,897 assertions, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, payment-origin constraints, document/export request races, and the separated secure-link limiter regression.
+- Seven authenticated Playwright tests pass, including the N2 guarded-change/refund loop, the continuous P3-02 staff → guest → finance → operations → survey journey, and the P3-03 real-artifact journey with role isolation and a 390×844 guest viewport.
 - Pint, PHPStan, ESLint, TypeScript, OpenAPI verification, Docker/runtime health, and the authenticated client suite pass.
 - Reservation creation is quote-authoritative and guarded changes are append-only, policy-authorized, conflict checked, and idempotent at their command endpoints.
 - Cancellation tiers use the property's local calendar date with UTC audit instants and DST coverage; staff/API-created card and transfer rows are explicitly manual-origin records; an open or completed refund blocks the legacy full-payment reversal path.
@@ -32,10 +32,10 @@ flowchart LR
 | Area | What is real now | Remaining implementation gap |
 | --- | --- | --- |
 | N2 guarded changes | Date amendment, room assignment/move/swap, property-local cancellation/no-show fee, internal refund request/fail/complete, refund/reversal collision protection, explicit payment origins, concurrent PostgreSQL and API replay coverage, change ledger, Filament/browser evidence | Dedicated remaining-amount correction command and provider refund execution remain separate; both are deferred until their selected financial workflow/provider slice |
-| Client closed loop | One continuous browser journey now persists pricing/allocation, guest pre-arrival/document/evidence, finance correction/approval, check-in/task/extra/checkout/settlement/folio close/housekeeping, survey, role denial, property isolation, expired/replayed links, retry behavior, and a phone viewport | Generated documents/receipts/exports are P3-03; production communications, scheduling, storage, and recovery remain P3-04/P3-05 |
+| Client closed loop | One continuous browser journey persists pricing/allocation, guest pre-arrival/document/evidence, finance correction/approval, check-in/task/extra/checkout/settlement/folio close/housekeeping, survey, role denial, property isolation, expired/replayed links, retry behavior, and a phone viewport; the P3-03 journey additionally downloads and parses queued PDF/CSV/XLSX artifacts across staff and guest surfaces | Production communications, scheduling, managed object storage, and recovery remain P3-04/P3-05 |
 | Manual payments | Exact-once evidence approval, correction request without balance mutation, private finance preview, selected-deposit application, manual payment reconciliation, and zero-balance browser evidence | Cash controls/receipts if cash is in scope and production scanning/storage/retention remain separate slices |
-| Documents | Versioned template and immutable generated-document records | Real PDF rendering, source snapshots, lifecycle/error state, private download/email, confirmation/itinerary/folio/receipt/credit-note outputs, jurisdiction-gated invoice issuance |
-| Exports | Export record model and CSV formula sanitizer | Request/generate/download lifecycle, filtered CSV/XLSX, queue/retry/expiry, tenant/role scoping, reconciliation tests |
+| Documents | Trusted versioned templates, immutable canonical snapshots, queued real-PDF rendering, parser/integrity checks, private authorized staff/guest downloads, email intent, retry/failure state, replacement lineage, and confirmation/itinerary/folio/payment/refund/waiver outputs | Jurisdiction-gated fiscal invoice issuance remains deferred until legal entity, numbering, tax, and cancellation rules are approved |
+| Exports | Eight tenant/property-scoped definitions, queued CSV/XLSX generation, formula neutralization, property-local half-open filters, private authorized download, row/integrity metadata, retry, expiry, and ledger-preserving purge | Production-scale performance sizing and managed private object storage remain P3-05 |
 | Communications | Local Laravel email transport, templates, suppressions, delivery attempts, outbox, worker, scheduler | Production provider, provider message/event IDs, delivery/bounce/complaint webhooks, preview/test-send/replay UI, failure queue, production supervision |
 | Scheduling | UTC scheduler with `withoutOverlapping()` and `onOneServer()` | Named lock TTLs, target occurrences persisted in UTC, property-local boundary and DST tests, backoff/timeouts/failed-job alerts, Horizon or equivalent production supervision |
 | Production | Healthy Compose stack | Private object storage, managed data services, secrets, TLS, monitoring, alerting, logs, malware service, backup/restore rehearsal, rollback/incident/privacy runbooks |
@@ -45,7 +45,7 @@ flowchart LR
 
 ## Branch and pull-request sequence
 
-P3-01 and P3-02 are merged into `main` and `origin/main`; the current verified baseline is `4bbc72f`. Phase 3 must not be implemented as one long-lived mixed branch.
+P3-01, P3-02, and the P3-03 foundation package are merged into `main` and `origin/main`; the P3-03 delivery branch starts from `1f0e383`. Phase 3 must not be implemented as one long-lived mixed branch.
 
 The active branch is:
 
@@ -139,7 +139,7 @@ Do not delete synthetic UAT financial/history rows to make reruns look clean. Us
 
 ### P3-03 — real documents, receipts, credit notes, and exports
 
-Status: **implementation planned on `codex/p3-03-documents-exports`; use the [granular P3-03 implementation plan](p3-03-documents-exports-implementation-plan.md) as the authoritative agent checklist.**
+Status: **implemented and verified on `codex/p3-03-documents-exports`; the [granular P3-03 implementation plan](p3-03-documents-exports-implementation-plan.md) records the executable evidence and release gates.**
 
 Build on the existing models without pretending supplied bytes are rendered PDFs:
 

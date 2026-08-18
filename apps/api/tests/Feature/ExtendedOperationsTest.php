@@ -30,7 +30,6 @@ use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use LogicException;
 use Tests\Concerns\CreatesTenant;
@@ -161,22 +160,16 @@ class ExtendedOperationsTest extends TestCase
         $this->assertNotEmpty($tenantA->id);
     }
 
-    public function test_document_versions_are_immutable_and_files_use_private_tenant_paths(): void
+    public function test_document_template_versions_are_immutable(): void
     {
-        Storage::fake('local');
-        [$tenant, $property] = $this->tenantEnvironment();
-        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $this->tenantEnvironment();
         $service = app(DocumentService::class);
         $versionOne = $service->createTemplate('Itinerary', 'itinerary', ['sections' => ['stay']]);
         $versionTwo = $service->createTemplate('Itinerary', 'itinerary', ['sections' => ['stay', 'activities']]);
-        $document = $service->store($versionTwo, '%PDF-test', $reservation);
 
         $this->assertSame(1, $versionOne->version);
         $this->assertSame(2, $versionTwo->version);
         $this->assertFalse($versionOne->fresh()->is_active);
-        $this->assertStringStartsWith("tenants/{$tenant->id}/documents/{$reservation->id}/", $document->storage_path);
-        $this->assertSame(hash('sha256', '%PDF-test'), $document->checksum);
-        Storage::disk('local')->assertExists($document->storage_path);
 
         try {
             $versionOne->update(['definition' => ['tampered' => true]]);

@@ -40,6 +40,7 @@ class GuestPortalService
             'guestPaymentEvidence' => fn ($query) => $query->where('guest_id', $access->guest_id)->latest('submitted_at'),
             'payments',
             'surveys' => fn ($query) => $query->where('guest_id', $access->guest_id)->where('kind', 'post_stay'),
+            'generatedDocuments' => fn ($query) => $query->where('status', 'generated')->whereNull('purged_at')->where(fn ($availability) => $availability->whereNull('expires_at')->orWhere('expires_at', '>', now()))->latest('generated_at'),
         ]);
 
         $guests = $reservation->guests()->whereKey($access->guest_id)->get();

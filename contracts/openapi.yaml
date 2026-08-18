@@ -30,6 +30,8 @@ tags:
   - name: CRM
   - name: Retail
   - name: Integrations
+  - name: Documents
+  - name: Reports
 
 paths:
   /dashboard:
@@ -1554,6 +1556,17 @@ paths:
       security: [{ guestPortalSession: [] }]
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
+  /guest-portal/generated-documents/{generatedDocument}/download:
+    get:
+      tags: [Guest Portal, Documents]
+      operationId: downloadGuestGeneratedDocument
+      security: [{ guestPortalSession: [] }]
+      parameters:
+        - { name: generatedDocument, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Integrity-verified guest-visible PDF for the active reservation, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Artifact expired or purged. }
   /guest-portal/survey:
     post:
       tags: [Guest Portal]
@@ -1563,6 +1576,121 @@ paths:
       responses:
         '201': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/document-requests:
+    post:
+      tags: [Documents]
+      operationId: requestReservationDocument
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentRequestInput' }
+      responses:
+        '201': { description: Document generation request accepted or replayed, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentRequestEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /document-requests/{documentGenerationRequest}:
+    get:
+      tags: [Documents]
+      operationId: getDocumentGenerationRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: documentGenerationRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Safe document request state, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentRequestEnvelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /document-requests/{documentGenerationRequest}/retry:
+    post:
+      tags: [Documents]
+      operationId: retryDocumentGenerationRequest
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: documentGenerationRequest, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Failed request returned to pending, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentRequestEnvelope' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /generated-documents/{generatedDocument}:
+    get:
+      tags: [Documents]
+      operationId: getGeneratedDocument
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: generatedDocument, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Safe generated document metadata without a disk path, content: { application/json: { schema: { $ref: '#/components/schemas/GeneratedDocumentEnvelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /generated-documents/{generatedDocument}/download:
+    get:
+      tags: [Documents]
+      operationId: downloadGeneratedDocument
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: generatedDocument, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Integrity-verified private PDF, headers: { X-Content-Type-Options: { schema: { type: string, const: nosniff } } }, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '410': { description: Artifact expired or purged. }
+        '503': { description: Artifact object unavailable or corrupt. }
+  /generated-documents/{generatedDocument}/email:
+    post:
+      tags: [Documents]
+      operationId: emailGeneratedDocument
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: generatedDocument, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { recipient: { type: [string, 'null'], format: email } } } } }
+      responses:
+        '202': { description: Idempotent email delivery intent queued. }
+  /report-exports:
+    post:
+      tags: [Reports]
+      operationId: requestReportExport
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReportExportInput' } } }
+      responses:
+        '201': { description: Report export accepted or replayed, content: { application/json: { schema: { $ref: '#/components/schemas/ReportExportEnvelope' } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /report-exports/{reportExport}:
+    get:
+      tags: [Reports]
+      operationId: getReportExport
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: reportExport, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Safe report export state, content: { application/json: { schema: { $ref: '#/components/schemas/ReportExportEnvelope' } } } }
+  /report-exports/{reportExport}/retry:
+    post:
+      tags: [Reports]
+      operationId: retryReportExport
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reportExport, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Failed export returned to pending, content: { application/json: { schema: { $ref: '#/components/schemas/ReportExportEnvelope' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /report-exports/{reportExport}/download:
+    get:
+      tags: [Reports]
+      operationId: downloadReportExport
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: reportExport, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Integrity-verified CSV or XLSX artifact, content: { text/csv: { schema: { type: string, format: binary } }, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { description: Export expired or purged. }
 
 components:
   securitySchemes:
@@ -1676,6 +1804,98 @@ components:
                       type: array
                       items: { type: string }
   schemas:
+    DocumentRequestInput:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [reservation_confirmation, itinerary, folio_statement, payment_receipt, refund_receipt, waiver_copy] }
+        locale: { type: string, maxLength: 12, default: en }
+        payment_id: { type: [string, 'null'], format: uuid }
+        reservation_change_id: { type: [string, 'null'], format: uuid }
+        acknowledgement_id: { type: [string, 'null'], format: uuid }
+        replaces_document_id: { type: [string, 'null'], format: uuid }
+    DocumentRequest:
+      type: object
+      required: [id, kind, status, locale, reservation_id, source_checksum, attempts]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [reservation_confirmation, itinerary, folio_statement, payment_receipt, refund_receipt, waiver_copy] }
+        status: { type: string, enum: [pending, processing, generated, failed] }
+        locale: { type: string }
+        reservation_id: { type: string, format: uuid }
+        payment_id: { type: [string, 'null'], format: uuid }
+        reservation_change_id: { type: [string, 'null'], format: uuid }
+        source_checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        attempts: { type: integer, minimum: 0 }
+        last_error: { type: [string, 'null'], description: Bounded redacted operational error. }
+        generated_document_id: { type: [string, 'null'], format: uuid }
+    DocumentRequestEnvelope:
+      type: object
+      required: [data]
+      properties: { data: { $ref: '#/components/schemas/DocumentRequest' } }
+    GeneratedDocument:
+      type: object
+      required: [id, kind, status, file_name, mime_type, size_bytes, checksum, source_checksum, template_version, locale, generated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        status: { type: string, const: generated }
+        reservation_id: { type: [string, 'null'], format: uuid }
+        guest_id: { type: [string, 'null'], format: uuid }
+        file_name: { type: string }
+        mime_type: { type: string, const: application/pdf }
+        size_bytes: { type: integer, minimum: 1 }
+        checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        source_checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        template_version: { type: integer, minimum: 1 }
+        locale: { type: string }
+        generated_at: { type: string, format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+        purged_at: { type: [string, 'null'], format: date-time }
+    GeneratedDocumentEnvelope:
+      type: object
+      required: [data]
+      properties: { data: { $ref: '#/components/schemas/GeneratedDocument' } }
+    ReportExportInput:
+      type: object
+      required: [property_id, kind, format]
+      properties:
+        property_id: { type: string, format: uuid }
+        kind: { type: string, enum: [arrivals, departures, occupancy, revenue, payments_deposits_refunds, costs_margin_commissions, dietary, tasks_housekeeping] }
+        format: { type: string, enum: [csv, xlsx] }
+        locale: { type: string, maxLength: 12, default: en }
+        filters:
+          type: object
+          additionalProperties: false
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            status: { type: string }
+    ReportExport:
+      type: object
+      required: [id, kind, format, status, property_id, locale, filters, filter_checksum, row_count, attempts]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        format: { type: string, enum: [csv, xlsx] }
+        status: { type: string, enum: [pending, processing, completed, failed] }
+        property_id: { type: string, format: uuid }
+        locale: { type: string }
+        filters: { type: object, additionalProperties: true }
+        filter_checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        file_name: { type: [string, 'null'] }
+        mime_type: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'], minimum: 0 }
+        checksum: { type: [string, 'null'] }
+        row_count: { type: integer, minimum: 0 }
+        attempts: { type: integer, minimum: 0 }
+        last_error: { type: [string, 'null'], description: Bounded redacted operational error. }
+        expires_at: { type: [string, 'null'], format: date-time }
+        purged_at: { type: [string, 'null'], format: date-time }
+    ReportExportEnvelope:
+      type: object
+      required: [data]
+      properties: { data: { $ref: '#/components/schemas/ReportExport' } }
     GenericDataEnvelope:
       type: object
       required: [data]

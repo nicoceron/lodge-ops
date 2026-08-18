@@ -13,6 +13,7 @@ use LogicException;
  * @property CarbonImmutable $ends_at
  * @property string $property_id
  * @property-read Program $program
+ * @property string|null $meeting_point
  * @property-read Collection<int, Allocation> $allocations
  */
 class ServiceOccurrence extends TenantModel
@@ -31,6 +32,7 @@ class ServiceOccurrence extends TenantModel
         return ['starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime', 'capacity' => 'integer', 'is_cancelled' => 'boolean'];
     }
 
+    /** @return BelongsTo<Program, $this> */
     public function program(): BelongsTo
     {
         return $this->belongsTo(Program::class);

@@ -29,7 +29,6 @@ class DocumentsRelationManager extends RelationManager
                 TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->placeholder('—'),
                 TextEntry::make('guest.email')->label('Guest')->placeholder('—'),
-                TextEntry::make('storage_path')->copyable()->columnSpanFull(),
                 TextEntry::make('checksum')->copyable()->columnSpanFull(),
                 KeyValueEntry::make('metadata')->columnSpanFull()->placeholder('No metadata'),
             ]),

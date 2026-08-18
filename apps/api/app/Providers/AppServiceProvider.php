@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Documents\DocumentRenderer;
 use App\Models\Allocation;
 use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
@@ -48,6 +49,7 @@ use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\TaxRule;
 use App\Observers\TenantAuditObserver;
+use App\Services\Documents\SpatieDocumentRenderer;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -64,6 +66,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
+        $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
     }
 
     /**

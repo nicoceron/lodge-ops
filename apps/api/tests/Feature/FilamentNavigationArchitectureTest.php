@@ -33,6 +33,7 @@ class FilamentNavigationArchitectureTest extends TestCase
         $this->assertSame([
             'Commercial',
             'Operations',
+            'Reports',
             'Sales & CRM',
             'Finance',
             'Guest experience',
@@ -43,5 +44,16 @@ class FilamentNavigationArchitectureTest extends TestCase
         $this->assertFalse($groups[0]->isCollapsed());
         $this->assertTrue($groups[6]->isCollapsed());
         $this->assertTrue($groups[7]->isCollapsed());
+    }
+
+    public function test_private_storage_paths_are_not_rendered_by_filament_components(): void
+    {
+        $sources = collect(new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path('Filament'))))
+            ->filter(fn (\SplFileInfo $file): bool => $file->isFile() && $file->getExtension() === 'php')
+            ->map(fn (\SplFileInfo $file): string|false => file_get_contents($file->getPathname()))
+            ->filter(fn (string|false $source): bool => is_string($source));
+
+        $this->assertFalse($sources->contains(fn (string $source): bool => str_contains($source, "TextEntry::make('storage_path')")));
+        $this->assertFalse($sources->contains(fn (string $source): bool => str_contains($source, "TextColumn::make('storage_path')")));
     }
 }

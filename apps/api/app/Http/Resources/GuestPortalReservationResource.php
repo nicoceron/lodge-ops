@@ -72,6 +72,16 @@ class GuestPortalReservationResource extends JsonResource
         $surveyAvailable = $reservation->status === ReservationStatus::CheckedOut
             || $reservation->actual_end_at?->isPast() === true
             || $reservation->ends_at->isPast();
+        $financialVisible = (bool) data_get($reservation->property->settings, 'guest_documents.financial_visible', false);
+        $generatedDocuments = $reservation->generatedDocuments
+            ->filter(fn ($generated): bool => $financialVisible || ! in_array($generated->kind, ['folio_statement', 'payment_receipt', 'refund_receipt'], true))
+            ->map(fn ($generated): array => [
+                'id' => $generated->id,
+                'kind' => $generated->kind,
+                'file_name' => $generated->file_name,
+                'generated_at' => $generated->generated_at->toIso8601String(),
+                'download_url' => route('guest.portal.generated-documents.download', $generated),
+            ])->values();
 
         return [
             'portal' => [
@@ -123,6 +133,7 @@ class GuestPortalReservationResource extends JsonResource
                 'signature' => $acknowledgement?->signature,
                 'acknowledged_at' => $acknowledgement?->acknowledged_at?->toIso8601String(),
             ],
+            'generated_documents' => $generatedDocuments,
             'payment' => [
                 'currency' => $this->currency,
                 'balance_minor' => $balanceMinor,

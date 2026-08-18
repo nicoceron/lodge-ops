@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\BookingQuoteController;
 use App\Http\Controllers\Api\V1\CalendarController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DepositController;
+use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ExtendedOperationsController;
 use App\Http\Controllers\Api\V1\FinanceProjectionController;
 use App\Http\Controllers\Api\V1\FolioController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\ProgramController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\ProposalController;
+use App\Http\Controllers\Api\V1\ReportExportController;
 use App\Http\Controllers\Api\V1\ReservationChangeController;
 use App\Http\Controllers\Api\V1\ReservationController;
 use App\Http\Controllers\Api\V1\ReservationNoteController;
@@ -24,6 +26,9 @@ use App\Http\Controllers\Api\V1\ResourceSuggestionController;
 use App\Http\Controllers\Api\V1\ServiceOccurrenceController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\CalendarFeedController;
+use App\Http\Controllers\GeneratedDocumentDownloadController;
+use App\Http\Controllers\GuestGeneratedDocumentDownloadController;
+use App\Http\Controllers\ReportExportDownloadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('v1/calendar-feeds/{token}.ics', CalendarFeedController::class)
@@ -41,6 +46,7 @@ Route::prefix('v1/guest-portal')->group(function (): void {
         Route::post('payment-evidence', [GuestPortalController::class, 'storePaymentEvidence']);
         Route::get('folio', [GuestPortalController::class, 'folio']);
         Route::post('survey', [GuestPortalController::class, 'storeSurvey']);
+        Route::get('generated-documents/{generatedDocument}/download', GuestGeneratedDocumentDownloadController::class);
     });
 });
 
@@ -95,6 +101,17 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('payments/{payment}/reverse', [PaymentController::class, 'reverse'])->middleware('idempotent');
     Route::apiResource('deposits', DepositController::class)->only(['index', 'store', 'show']);
     Route::post('deposits/{deposit}/waive', [DepositController::class, 'waive'])->middleware('idempotent');
+
+    Route::post('reservations/{reservation}/document-requests', [DocumentController::class, 'store'])->middleware('idempotent');
+    Route::get('document-requests/{documentGenerationRequest}', [DocumentController::class, 'request']);
+    Route::post('document-requests/{documentGenerationRequest}/retry', [DocumentController::class, 'retry'])->middleware('idempotent');
+    Route::get('generated-documents/{generatedDocument}', [DocumentController::class, 'show']);
+    Route::get('generated-documents/{generatedDocument}/download', GeneratedDocumentDownloadController::class);
+    Route::post('generated-documents/{generatedDocument}/email', [DocumentController::class, 'email'])->middleware('idempotent');
+    Route::post('report-exports', [ReportExportController::class, 'store'])->middleware('idempotent');
+    Route::get('report-exports/{reportExport}', [ReportExportController::class, 'show']);
+    Route::post('report-exports/{reportExport}/retry', [ReportExportController::class, 'retry'])->middleware('idempotent');
+    Route::get('report-exports/{reportExport}/download', ReportExportDownloadController::class);
 
     Route::get('catalog', [ExtendedOperationsController::class, 'catalog']);
     Route::post('catalog', [ExtendedOperationsController::class, 'storeCatalog'])->middleware('idempotent');

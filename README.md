@@ -53,6 +53,12 @@ With the seeded Compose application running, execute the authenticated client-UA
 make test-client
 ```
 
+Run the isolated PostgreSQL document/export gate with:
+
+```bash
+make test-documents-exports
+```
+
 If ports 5432 or 6379 are already occupied, Compose supports explicit alternatives:
 
 ```bash
@@ -72,6 +78,8 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - Availability-first staff booking with deterministic server-priced quotes, immutable rate/tax/deposit/cancellation snapshots, inline or repeat guests, and atomic category or exact-room holds.
 - A controlled manual bank-transfer loop from guest evidence through authorized staff review to idempotent payment, folio, and deposit reconciliation.
 - Guarded quote-authoritative amendments, room assignment/move/swap, policy-priced cancellation/no-show, append-only partial/full internal refunds, and a readable reservation change ledger.
+- Asynchronous reservation confirmations, itineraries, folio statements, payment/refund receipts, and waiver copies rendered from immutable canonical snapshots and trusted versioned templates; artifacts remain private, checksummed, replacement-linked, and policy-authorized for staff/guest download or email intent.
+- Asynchronous CSV/XLSX arrivals, departures, occupancy, revenue, payment/deposit/refund, cost/commission, dietary, and task/housekeeping exports with property-local filters, formula neutralization, role-scoped definitions, integrity metadata, retry state, seven-day default expiry, and ledger-preserving purge.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, tenant isolation, the complete guest workflow, and public-site browser journeys.
@@ -85,3 +93,21 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - `docker`: reproducible runtime images
 
 The source scrape used for product research is deliberately outside this repository and is never copied into builds, fixtures, or Git history.
+
+## Document and export operations
+
+The Compose worker consumes `critical,documents,automations,default,notifications,integrations,reports`; production supervision must preserve the `documents` and `reports` queues. The scheduler runs `artifacts:purge-expired` daily. Purging deletes expired private objects but retains request/export rows and audit metadata.
+
+Configuration is environment-driven:
+
+- `DOCUMENT_DISK` selects the private Laravel filesystem disk.
+- `DOCUMENT_RENDERER` selects the registered trusted renderer (`dompdf` by default).
+- `DOCUMENT_PDFINFO_BINARY` selects the Poppler parser used to reject malformed renderer output before storage.
+- `DOCUMENT_EXPORT_TTL_DAYS` controls report retention (seven days by default).
+- `DOCUMENT_JOB_*` and `DOCUMENT_EXPORT_JOB_*` control queue names, timeouts, attempts, retry windows, and overlap-lock expiry.
+
+Inspect artifacts through the authorized Filament, API, or guest download flow; raw storage paths are deliberately absent from UI and API responses. For local format diagnostics, `make test-documents-exports` creates temporary artifacts on the isolated `inn_test` database and verifies PDF parsing/rendering plus CSV/XLSX parsing without refreshing the demo database.
+
+If generation fails, inspect the redacted failure in **Document Generation Requests** or **Report Exports**, then check `make logs` for the request/export UUID. Confirm that the worker consumes the correct queue, the private disk is writable, Poppler is installed, and the configured template is active before using Retry. Do not log source snapshots, guest tokens, attachment paths, or document contents.
+
+QloApps receipt/voucher behavior informed domain review only. No QloApps OSL-3.0 source was copied; Inn's snapshots, storage, authorization, queueing, and templates are original implementation.

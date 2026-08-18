@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\GuestGeneratedDocumentDownloadController;
 use App\Http\Controllers\Web\GuestPortalController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,6 +18,7 @@ Route::prefix('guest')->name('guest.portal.')->group(function (): void {
         Route::put('pre-arrival', [GuestPortalController::class, 'updatePreArrival'])->name('pre-arrival.update');
         Route::get('documents', [GuestPortalController::class, 'documents'])->name('documents');
         Route::post('documents', [GuestPortalController::class, 'acknowledge'])->name('documents.acknowledge');
+        Route::get('generated-documents/{generatedDocument}/download', GuestGeneratedDocumentDownloadController::class)->name('generated-documents.download');
         Route::get('payments', [GuestPortalController::class, 'payments'])->name('payments');
         Route::post('payments', [GuestPortalController::class, 'storePaymentEvidence'])->name('payments.store');
         Route::get('folio', [GuestPortalController::class, 'folio'])->name('folio');

@@ -2,7 +2,9 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Controllers\GeneratedDocumentDownloadController;
 use App\Http\Controllers\PaymentEvidenceDownloadController;
+use App\Http\Controllers\ReportExportDownloadController;
 use App\Http\Middleware\ResolveFilamentTenant;
 use App\Models\Tenant;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
@@ -34,6 +36,10 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('Inn')
             ->maxContentWidth(Width::Full)
             ->spa(hasPrefetching: true)
+            ->spaUrlExceptions([
+                '*manage/workspace/*/generated-documents/*/download',
+                '*manage/workspace/*/report-exports/*/download',
+            ])
             ->unsavedChangesAlerts()
             ->databaseTransactions()
             ->strictAuthorization()
@@ -48,16 +54,18 @@ class AdminPanelProvider extends PanelProvider
             ->tenant(Tenant::class, slugAttribute: 'slug', ownershipRelationship: 'tenant')
             ->tenantRoutePrefix('workspace')
             ->tenantMiddleware([ResolveFilamentTenant::class], isPersistent: true)
-            ->authenticatedTenantRoutes(fn () => Route::get(
-                'payment-evidence/{evidence}/download',
-                PaymentEvidenceDownloadController::class,
-            )->name('payment-evidence.download'))
+            ->authenticatedTenantRoutes(function (): void {
+                Route::get('payment-evidence/{evidence}/download', PaymentEvidenceDownloadController::class)->name('payment-evidence.download');
+                Route::get('generated-documents/{generatedDocument}/download', GeneratedDocumentDownloadController::class)->name('generated-documents.download');
+                Route::get('report-exports/{reportExport}/download', ReportExportDownloadController::class)->name('report-exports.download');
+            })
             ->colors([
                 'primary' => Color::Amber,
             ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Commercial'),
                 NavigationGroup::make()->label('Operations'),
+                NavigationGroup::make()->label('Reports'),
                 NavigationGroup::make()->label('Sales & CRM')->collapsed(),
                 NavigationGroup::make()->label('Finance')->collapsed(),
                 NavigationGroup::make()->label('Guest experience')->collapsed(),
