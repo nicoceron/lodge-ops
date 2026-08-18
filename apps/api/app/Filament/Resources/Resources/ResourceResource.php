@@ -31,7 +31,7 @@ class ResourceResource extends TenantResource
 
     protected static string $writeCapability = 'canManageConfiguration';
 
-    protected static ?string $viewCapability = 'canManageConfiguration';
+    protected static ?string $viewCapability = 'canViewResources';
 
     public static function form(Schema $schema): Schema
     {

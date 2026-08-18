@@ -157,4 +157,29 @@ class GuestPortalWebTest extends TestCase
             'score' => 5,
         ]);
     }
+
+    public function test_authenticated_portal_traffic_does_not_exhaust_the_magic_link_limiter(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $firstGuest = Guest::factory()->create();
+        $firstReservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $firstGuest->id,
+        ]);
+        $firstToken = app(GuestPortalTokenService::class)->issue($firstReservation, $firstGuest)['token'];
+        $secondGuest = Guest::factory()->create();
+        $secondReservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $secondGuest->id,
+        ]);
+        $secondToken = app(GuestPortalTokenService::class)->issue($secondReservation, $secondGuest)['token'];
+
+        $this->get('/guest/access/'.$firstToken)->assertRedirect('/guest/stay');
+
+        for ($request = 0; $request < 12; $request++) {
+            $this->get('/guest/stay')->assertOk();
+        }
+
+        $this->get('/guest/access/'.$secondToken)->assertRedirect('/guest/stay');
+    }
 }

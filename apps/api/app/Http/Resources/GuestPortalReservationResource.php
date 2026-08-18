@@ -4,8 +4,10 @@ namespace App\Http\Resources;
 
 use App\Enums\AllocationStatus;
 use App\Enums\FolioStatus;
+use App\Enums\ReservationStatus;
 use App\Models\Allocation;
 use App\Models\GuestPortalAccessToken;
+use App\Models\Reservation;
 use App\Services\FolioService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,6 +17,11 @@ class GuestPortalReservationResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $reservation = $this->resource;
+        if (! $reservation instanceof Reservation) {
+            throw new \LogicException('Guest portal resources require a reservation.');
+        }
+
         /** @var GuestPortalAccessToken $access */
         $access = $request->attributes->get('guest_portal_access');
         $guest = $this->guestsForPortal->firstWhere('id', $access->guest_id);
@@ -29,7 +36,7 @@ class GuestPortalReservationResource extends JsonResource
         $survey = $this->surveys
             ->where('guest_id', $access->guest_id)
             ->firstWhere('kind', 'post_stay');
-        $balanceMinor = max(0, app(FolioService::class)->summary($this->resource)['balance_minor']);
+        $balanceMinor = max(0, app(FolioService::class)->summary($reservation)['balance_minor']);
         $stayAssignments = $this->allocations
             ->filter(fn ($allocation): bool => $allocation->status !== AllocationStatus::Released
                 && ($allocation->requestedCategory?->counts_as_stay === true || $allocation->resource?->countsAsStay() === true))
@@ -62,6 +69,9 @@ class GuestPortalReservationResource extends JsonResource
         $paymentComplete = $balanceMinor === 0;
         $folioFinal = $this->folio_status === FolioStatus::Closed;
         $surveyComplete = $survey !== null;
+        $surveyAvailable = $reservation->status === ReservationStatus::CheckedOut
+            || $reservation->actual_end_at?->isPast() === true
+            || $reservation->ends_at->isPast();
 
         return [
             'portal' => [
@@ -128,7 +138,7 @@ class GuestPortalReservationResource extends JsonResource
                 ],
             ],
             'survey' => [
-                'available' => $this->ends_at->isPast(),
+                'available' => $surveyAvailable,
                 'submitted' => $surveyComplete,
                 'responded_at' => $survey?->responded_at?->toIso8601String(),
             ],
