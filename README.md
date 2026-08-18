@@ -71,6 +71,7 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - Transaction-safe reservation confirmation, category and instance capacity checks, half-open intervals, holds/status transitions, actual check-in/check-out facts, housekeeping handoff, reasoned cancellation/no-show closure, optimistic revisions, minor-unit money, net/tax/gross folios, close/reopen controls, and retry-safe commands.
 - Availability-first staff booking with deterministic server-priced quotes, immutable rate/tax/deposit/cancellation snapshots, inline or repeat guests, and atomic category or exact-room holds.
 - A controlled manual bank-transfer loop from guest evidence through authorized staff review to idempotent payment, folio, and deposit reconciliation.
+- Guarded quote-authoritative amendments, room assignment/move/swap, policy-priced cancellation/no-show, append-only partial/full internal refunds, and a readable reservation change ledger.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, tenant isolation, the complete guest workflow, and public-site browser journeys.

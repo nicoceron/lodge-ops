@@ -23,6 +23,7 @@ final class AvailabilityQuery
         mixed $endsAt,
         int $occupancy,
         ?string $categoryId = null,
+        ?string $excludeReservationId = null,
     ): array {
         $starts = CarbonImmutable::parse($startsAt);
         $ends = CarbonImmutable::parse($endsAt);
@@ -43,8 +44,8 @@ final class AvailabilityQuery
             ->get();
 
         $allResources = $categories->flatMap->resources;
-        $unavailableResourceIds = $this->unavailableResourceIds($allResources, $starts, $ends);
-        $buyoutActive = $this->buyoutConflict($propertyId, $starts, $ends);
+        $unavailableResourceIds = $this->unavailableResourceIds($allResources, $starts, $ends, $excludeReservationId);
+        $buyoutActive = $this->buyoutConflict($propertyId, $starts, $ends, $excludeReservationId);
         $resourceRows = [];
         $categoryRows = [];
 
@@ -77,7 +78,7 @@ final class AvailabilityQuery
     }
 
     /** @param Collection<int, resource> $resources @return Collection<int, string> */
-    private function unavailableResourceIds(Collection $resources, CarbonImmutable $starts, CarbonImmutable $ends): Collection
+    private function unavailableResourceIds(Collection $resources, CarbonImmutable $starts, CarbonImmutable $ends, ?string $excludeReservationId): Collection
     {
         $ids = $resources->pluck('id');
         if ($ids->isEmpty()) {
@@ -91,6 +92,7 @@ final class AvailabilityQuery
             ->pluck('resource_id');
         $allocated = Allocation::query()
             ->whereIn('resource_id', $ids)
+            ->when($excludeReservationId, fn ($query) => $query->where('reservation_id', '!=', $excludeReservationId))
             ->where('starts_at', '<', $ends)
             ->where('ends_at', '>', $starts)
             ->where(function ($query): void {
@@ -107,7 +109,7 @@ final class AvailabilityQuery
         return $blocked->merge($allocated)->filter()->unique()->values();
     }
 
-    private function buyoutConflict(string $propertyId, CarbonImmutable $starts, CarbonImmutable $ends): bool
+    private function buyoutConflict(string $propertyId, CarbonImmutable $starts, CarbonImmutable $ends, ?string $excludeReservationId): bool
     {
         $buyoutIds = Resource::query()->where('property_id', $propertyId)->get()
             ->filter(fn (Resource $resource): bool => $resource->isBuyout())->pluck('id');
@@ -116,6 +118,7 @@ final class AvailabilityQuery
             ResourceBlock::query()->whereIn('resource_id', $buyoutIds)
                 ->where('starts_at', '<', $ends)->where('ends_at', '>', $starts)->exists()
             || Allocation::query()->whereIn('resource_id', $buyoutIds)
+                ->when($excludeReservationId, fn ($query) => $query->where('reservation_id', '!=', $excludeReservationId))
                 ->where('starts_at', '<', $ends)->where('ends_at', '>', $starts)
                 ->where(function ($query): void {
                     $query->where('status', AllocationStatus::Confirmed)

@@ -4,6 +4,8 @@ Date: 2026-08-17
 Audience: product, engineering, operations, and client UAT  
 Companion audit: [Client-readiness implementation gap map](client-readiness-implementation-gap-map.md)
 
+> PR-00 through PR-03 and phase 2 N2 / original PR-05 are implemented. The evidence-based next sequence is now tracked in the [phase 3 plan](client-ready-phase-3-plan.md). It supersedes the old assumption that a calendar plugin spike should be the automatic next task.
+
 ## Outcome and decisions
 
 The implementation plan exists now. The first release target is one closed, demonstrable lodge journey:
@@ -36,12 +38,12 @@ The immediate PR-00 through PR-03 milestone is implemented and verified:
 - PR-02: availability-first staff composer, inline/repeat guests and companions, server-only totals, atomic hold/allocation, policy-driven deposits, and a reservation hub for allocations, money, tasks, communications, documents, notes, and history.
 - PR-03: guest transfer metadata and scan hook, authorized private evidence access, finance review actions, and idempotent payment/folio/deposit reconciliation.
 
-The PostgreSQL Compose fixture passes the authenticated staff journeys, and the direct visual pass covers the reservation composer, reservation hub, and transfer-evidence queue. PR-04 and later remain follow-on work; PR-08 cannot begin until the client selects a merchant provider and sandbox account.
+The PostgreSQL Compose fixture passes the authenticated staff smoke/render journeys, and the direct visual pass covers the reservation composer, reservation hub, and transfer-evidence queue. State-changing closed-loop browser UAT is the first item in phase 2. PR-08 cannot begin until the client selects a merchant provider and sandbox account.
 
 ### Payment decision
 
 - **Manual bank transfer is the first production payment method.** It is already the client's stated workflow, and most of its domain foundation exists. The missing review and reconciliation loop is small enough to finish without introducing a second platform.
-- **Frappe Payments is not a good primary payment engine for Inn.** It is a Frappe/Python application that expects Frappe DocTypes, web forms, and ERP-style payment requests. Running it beside Laravel would introduce another runtime and a distributed transaction boundary without solving the Inn reservation workflow. Its official repository is active and MIT-licensed, but current open issues include provider-success/accounting-finalization gaps. Frappe or ERPNext can remain a later accounting destination, not the payment authority.
+- **Frappe Payments is not a good primary payment engine for Inn.** Its current pinned source is an active MIT Frappe 17 / Python 3.14 application with provider SDKs and tests, but it expects Frappe DocTypes, web forms, and Frappe deployment. Running it beside Laravel would introduce another runtime and a distributed transaction boundary without replacing Inn's reservation, payment, refund, and folio authority. Frappe or ERPNext can remain a later accounting destination, not the payment authority.
 - **Laravel Cashier is optional, not the Inn payment domain.** Cashier 16 supports one-off charges, Payment Intents, refunds, signed Stripe webhooks, and guest Checkout. It is primarily organized around Stripe billable models and subscription billing, while lodge deposits are dynamic, guest-initiated, reservation-scoped, multi-tenant payment attempts. If Stripe is selected, prefer the official Stripe PHP SDK behind the `PaymentGateway` contract; adopt Cashier only if a spike proves that its schema and webhook controller reduce work without leaking Cashier models into the domain.
 - **Use provider-hosted checkout.** Inn stores no card number, CVC, or raw payment method. The signed webhook, not the success redirect, is authoritative.
 
@@ -51,9 +53,9 @@ The PostgreSQL Compose fixture passes the authenticated staff journeys, and the 
 | --- | --- | --- | --- |
 | 4.1 Unified rooms and activities calendar | Domain-complete custom calendar and projections | Validate resource-lane usability, long stays, colors, buyouts, filters, mobile agenda, and safe actions | PR-04 calendar spike and parity gate |
 | 4.2 Guides and operational resources | Domain-complete requirements, capabilities, suggestions, and conflict rules | Complete allocation workbench and authenticated conflict journeys | PR-02 and PR-05 |
-| 4.3 Manual reservations, companions, proposals, repeat guests | Client-complete staff hold slice: live availability, immutable quote, atomic allocation, inline/repeat guests and companions | Controlled amendments and later direct-booking exposure | PR-01 and PR-02 complete; PR-05 follow-on |
+| 4.3 Manual reservations, companions, proposals, repeat guests | Domain and composer complete: live availability, immutable quote, atomic allocation, inline/repeat guests and companions | State-changing browser UAT, controlled amendments, and later direct-booking exposure | PR-01 and PR-02 implemented; phase 2 N1/N2 follow-on |
 | 4.4 Emails, triggers, internal notifications | Domain-complete locally for email automation | Production mail provider, delivery/bounce state, resend, template preview, operational failure queue | PR-06 |
-| 4.5 50% deposit, balance 30 days, transfer evidence, USD/ARS | Client-complete manual-transfer slice with configurable deposit policy, secure review, and exact-once reconciliation | Hosted gateway and provider reconciliation after selection | PR-03 complete; PR-08 provider-gated |
+| 4.5 50% deposit, balance 30 days, transfer evidence, USD/ARS | Domain and review UI complete with configurable deposit policy, secure review, and exact-once reconciliation | State-changing browser UAT; hosted gateway and provider reconciliation after selection | PR-03 implemented; phase 2 N1 and provider-gated N6 follow-on |
 | 4.6 Revenue, costs, margin, commissions | Domain-complete projections | Verify definitions with client data; implement real authorized exports | PR-07 |
 | 4.7 Dietary requirements and kitchen view | Implemented | Authenticated UAT and field-redaction checks | PR-00 and UAT |
 | 4.8 Tasks and program checklists | Implemented | Authenticated UAT, exception/retry visibility | PR-00 and PR-06 |
@@ -187,7 +189,7 @@ Acceptance gate:
 
 Keep the current `MasterCalendar` until Guava passes every parity check. Evaluate Saade FullCalendar only if Guava fails the spike; the resource scheduler path can require a FullCalendar Premium license.
 
-### PR-05 — amendments, moves, cancellation, no-show, and refunds
+### PR-05 — amendments, moves, cancellation, no-show, and refunds — implemented as phase 2 N2
 
 **Purpose:** make post-booking changes controlled operations instead of unrelated form edits.
 
@@ -378,4 +380,4 @@ The implementation is client-ready only when all gates pass in a production-like
 
 ## Immediate starting order
 
-Start with `PR-00`, then `PR-01`, `PR-02`, and `PR-03`. Those four slices turn the current strong domain demo into a usable reservation plus bank-transfer product. Run the Guava calendar spike in `PR-04` without blocking the booking/payment core. Do not begin Frappe Payments, a channel manager, self-service dashboards, or multiple gateway adapters before that loop passes authenticated UAT.
+The active starting order is phase 3 `P3-01`, `P3-02`, then `P3-03`: harden the N2 money/cutoff invariants, finish the manual-transfer and stay browser loop, then ship real documents and exports. Do not begin Frappe Payments, a channel manager, self-service dashboards, or multiple gateway adapters before the selected complete loop passes authenticated UAT.

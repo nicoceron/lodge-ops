@@ -9,6 +9,7 @@ use App\Models\DepositPolicy;
 use App\Models\Program;
 use App\Models\RatePlan;
 use App\Models\RateRule;
+use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Models\TaxRule;
@@ -35,6 +36,16 @@ final class BookingQuoteService
 
             return $quote->fresh(['lines', 'ratePlan', 'resourceCategory', 'resource']);
         });
+    }
+
+    /** @param array<string, mixed> $input */
+    public function createAmendment(Reservation $reservation, array $input): BookingQuote
+    {
+        return $this->create([
+            ...$input,
+            'property_id' => $reservation->property_id,
+            'amendment_of_reservation_id' => $reservation->id,
+        ]);
     }
 
     /** @param array<string, mixed> $input @return array<string, mixed> */
@@ -66,7 +77,19 @@ final class BookingQuoteService
         if ($resource !== null && $resource->capacity < $occupancy) {
             throw ValidationException::withMessages(['resource_id' => 'The selected accommodation does not fit the requested occupancy.']);
         }
-        $availability = $this->availability->forStay($propertyId, $starts, $ends, $occupancy, $category->id);
+        $amendmentReservationId = (string) ($input['amendment_of_reservation_id'] ?? '');
+        if ($amendmentReservationId !== '' && ! Reservation::query()
+            ->whereKey($amendmentReservationId)->where('property_id', $propertyId)->exists()) {
+            throw ValidationException::withMessages(['reservation_id' => 'The amendment reservation is outside this property.']);
+        }
+        $availability = $this->availability->forStay(
+            $propertyId,
+            $starts,
+            $ends,
+            $occupancy,
+            $category->id,
+            $amendmentReservationId ?: null,
+        );
         if ($resource !== null && ! collect($availability['resources'])->firstWhere('id', $resource->id)['available']) {
             throw ValidationException::withMessages(['resource_id' => 'The selected accommodation is no longer available.']);
         }
@@ -175,6 +198,7 @@ final class BookingQuoteService
             'ends_at' => $ends->toIso8601String(),
             'adults' => $adults,
             'children' => $children,
+            'amendment_of_reservation_id' => $amendmentReservationId ?: null,
         ];
         $calculation = [
             ...$inputs,

@@ -18,7 +18,6 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Support\HtmlString;
-use Illuminate\Support\Str;
 use Throwable;
 
 class ReservationForm
@@ -74,19 +73,18 @@ class ReservationForm
                     Textarea::make('notes')->rows(4)->columnSpanFull(),
                 ]),
             Section::make('Stay')
-                ->description('Existing draft or hold details. Guarded operations are used after confirmation.')
+                ->description('Guest assignment and notes may be edited here. Dates, occupancy, package, resource, and price change only through Amend stay or Move room.')
                 ->columnSpanFull()
                 ->visibleOn('edit')->columns(2)->schema([
-                    Select::make('property_id')->label('Property')->options(InnPresentation::propertyOptions(...))->searchable()->preload()->required(),
+                    Select::make('property_id')->label('Property')->options(InnPresentation::propertyOptions(...))->disabled()->dehydrated(false),
                     Select::make('primary_guest_id')->label('Primary guest')->options(self::guestOptions(...))->searchable(),
-                    Select::make('program_id')->label('Primary package')->relationship('program', 'name')->searchable()->preload(),
                     Select::make('companion_guest_ids')->label('Companions')->options(self::guestOptions(...))->multiple()->searchable()->preload()->dehydrated(false),
-                    TextInput::make('confirmation_number')->required()->default(fn (): string => 'RSV-'.Str::upper((string) Str::ulid()))->maxLength(80)->scopedUnique(ignoreRecord: true),
-                    Select::make('status')->options(InnPresentation::enumOptions(ReservationStatus::cases()))->disabled()->dehydrated()->required(),
-                    DateTimePicker::make('starts_at')->label('Arrival')->timezone(InnPresentation::timezone())->seconds(false)->required(),
-                    DateTimePicker::make('ends_at')->label('Departure')->timezone(InnPresentation::timezone())->seconds(false)->after('starts_at')->required(),
-                    TextInput::make('adults')->required()->integer()->minValue(1),
-                    TextInput::make('children')->required()->integer()->minValue(0),
+                    TextInput::make('confirmation_number')->disabled()->dehydrated(false),
+                    Select::make('status')->options(InnPresentation::enumOptions(ReservationStatus::cases()))->disabled()->dehydrated(false),
+                    DateTimePicker::make('starts_at')->label('Arrival')->timezone(InnPresentation::timezone())->seconds(false)->disabled()->dehydrated(false),
+                    DateTimePicker::make('ends_at')->label('Departure')->timezone(InnPresentation::timezone())->seconds(false)->disabled()->dehydrated(false),
+                    TextInput::make('adults')->disabled()->dehydrated(false),
+                    TextInput::make('children')->disabled()->dehydrated(false),
                     TextInput::make('source')->maxLength(50),
                     Textarea::make('notes')->rows(4)->columnSpanFull(),
                 ]),
@@ -94,10 +92,10 @@ class ReservationForm
                 ->description('These values reflect the accepted quote. Use a guarded amendment operation for post-confirmation changes.')
                 ->columnSpanFull()
                 ->visibleOn('edit')->columns(2)->schema([
-                    TextInput::make('currency')->required()->length(3)->disabled()->dehydrated(),
-                    TextInput::make('subtotal_minor')->label('Subtotal (minor units)')->integer()->disabled()->dehydrated(),
-                    TextInput::make('tax_minor')->label('Tax (minor units)')->integer()->disabled()->dehydrated(),
-                    TextInput::make('total_minor')->label('Total (minor units)')->disabled()->dehydrated(),
+                    TextInput::make('currency')->disabled()->dehydrated(false),
+                    TextInput::make('subtotal_minor')->label('Subtotal (minor units)')->integer()->disabled()->dehydrated(false),
+                    TextInput::make('tax_minor')->label('Tax (minor units)')->integer()->disabled()->dehydrated(false),
+                    TextInput::make('total_minor')->label('Total (minor units)')->disabled()->dehydrated(false),
                 ]),
         ]);
     }

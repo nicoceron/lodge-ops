@@ -23,13 +23,15 @@ class AllocationWorkflowService
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
             $this->assertTargetsBelongToReservation($reservation, $data);
 
-            $allocation = $reservation->allocations()->create([
+            $allocation = new Allocation;
+            $allocation->forceFill([
                 ...Arr::only($data, ['requested_category_id', 'resource_id', 'service_occurrence_id', 'starts_at', 'ends_at', 'quantity']),
                 'quantity' => $data['quantity'] ?? 1,
                 'status' => $reservation->status === ReservationStatus::Confirmed
                     ? AllocationStatus::Confirmed
                     : AllocationStatus::Tentative,
             ]);
+            $reservation->allocations()->save($allocation);
 
             if ($this->reservesCapacity($reservation, $allocation->status)) {
                 $this->availability->assertAvailable($allocation);

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Reservations\Pages;
 
 use App\Enums\FolioStatus;
+use App\Filament\Resources\Reservations\ReservationChangeActions;
 use App\Filament\Resources\Reservations\ReservationResource;
 use App\Filament\Resources\Reservations\ReservationWorkflowActions;
 use App\Models\FolioLine;
@@ -21,7 +22,8 @@ class ViewReservation extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            EditAction::make(),
+            EditAction::make()->visible(fn (Reservation $record): bool => ReservationResource::canEdit($record)),
+            ...ReservationChangeActions::make(),
             Action::make('closeFolio')
                 ->label('Close folio')
                 ->icon('heroicon-o-lock-closed')

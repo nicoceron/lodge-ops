@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AllocationController;
+use App\Http\Controllers\Api\V1\BookingQuoteController;
 use App\Http\Controllers\Api\V1\CalendarController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DepositController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\ProgramController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\ProposalController;
+use App\Http\Controllers\Api\V1\ReservationChangeController;
 use App\Http\Controllers\Api\V1\ReservationController;
 use App\Http\Controllers\Api\V1\ReservationNoteController;
 use App\Http\Controllers\Api\V1\ResourceBlockController;
@@ -54,11 +56,20 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::apiResource('guests', GuestController::class);
     Route::get('resources/suggestions', ResourceSuggestionController::class);
     Route::apiResource('resources', ResourceController::class);
+    Route::post('booking-quotes', [BookingQuoteController::class, 'store'])->middleware('idempotent');
     Route::patch('resources/{resource}/housekeeping', [ResourceController::class, 'updateHousekeeping']);
     Route::apiResource('reservations', ReservationController::class)->except(['destroy', 'store']);
     Route::post('reservations', [ReservationController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->middleware('idempotent');
     Route::post('reservations/{reservation}/transition', [ReservationController::class, 'transition']);
+    Route::get('reservations/{reservation}/changes', [ReservationChangeController::class, 'index']);
+    Route::post('reservations/{reservation}/amend', [ReservationChangeController::class, 'amend'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/reallocate', [ReservationChangeController::class, 'reallocate'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/cancel', [ReservationChangeController::class, 'cancel'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/no-show', [ReservationChangeController::class, 'noShow'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/refunds', [ReservationChangeController::class, 'requestRefund'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/refunds/{refund}/complete', [ReservationChangeController::class, 'completeRefund'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/refunds/{refund}/fail', [ReservationChangeController::class, 'failRefund'])->middleware('idempotent');
     Route::get('reservations/{reservation}/notes', [ReservationNoteController::class, 'index']);
     Route::post('reservations/{reservation}/notes', [ReservationNoteController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/allocations', [AllocationController::class, 'store'])->middleware('idempotent');

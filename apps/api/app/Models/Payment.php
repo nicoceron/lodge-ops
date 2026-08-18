@@ -8,6 +8,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
+ * @property string $id
+ * @property string $reservation_id
+ * @property PaymentStatus $status
+ * @property string $method
  * @property CarbonImmutable|null $processed_at
  * @property string $currency
  * @property int $amount_minor
@@ -37,6 +41,7 @@ class Payment extends TenantModel
         return $this->hasMany(Deposit::class);
     }
 
+    /** @return HasMany<FolioLine, $this> */
     public function folioLines(): HasMany
     {
         return $this->hasMany(FolioLine::class);

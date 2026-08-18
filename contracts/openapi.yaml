@@ -578,6 +578,26 @@ paths:
       operationId: cancelServiceOccurrence
       responses:
         '204': { description: Occurrence cancelled and tentative allocations released. }
+  /booking-quotes:
+    post:
+      tags: [Reservations]
+      operationId: createBookingQuote
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingQuoteInput' }
+      responses:
+        '201':
+          description: Expiring, server-priced quote created after an availability check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingQuoteEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reservations:
     get:
       tags: [Reservations]
@@ -690,6 +710,167 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReservationEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/changes:
+    get:
+      tags: [Reservations]
+      operationId: listReservationChanges
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Paginated append-only amendment, move, cancellation, no-show, and refund ledger.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationChangeCollection' }
+  /reservations/{reservation}/amend:
+    post:
+      tags: [Reservations]
+      operationId: amendReservation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationAmendmentInput' }
+      responses:
+        '200':
+          description: Reservation re-quoted and amended without overwriting prior pricing or allocation history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/reallocate:
+    post:
+      tags: [Reservations, Resources]
+      operationId: reallocateReservationResource
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationReallocationInput' }
+      responses:
+        '200':
+          description: Resource assigned, moved, or swapped with locked overlap checks and retained history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/cancel:
+    post:
+      tags: [Reservations, Finance]
+      operationId: cancelReservation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClosureReasonInput' }
+      responses:
+        '200':
+          description: Reservation cancelled, policy fee posted, capacity released, and open deposits waived.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/no-show:
+    post:
+      tags: [Reservations, Finance]
+      operationId: markReservationNoShow
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClosureReasonInput' }
+      responses:
+        '200':
+          description: No-show recorded with its policy charge and append-only lifecycle evidence.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/refunds:
+    post:
+      tags: [Finance]
+      operationId: requestReservationRefund
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundRequestInput' }
+      responses:
+        '200':
+          description: Refund request recorded after payment and guest-credit limits are checked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationChangeEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/refunds/{refund}/complete:
+    post:
+      tags: [Finance]
+      operationId: completeReservationRefund
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/RefundId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundCompletionInput' }
+      responses:
+        '200':
+          description: Refund completed exactly once and posted to the folio.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationChangeEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/refunds/{refund}/fail:
+    post:
+      tags: [Finance]
+      operationId: failReservationRefund
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ReservationId'
+        - $ref: '#/components/parameters/RefundId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClosureReasonInput' }
+      responses:
+        '200':
+          description: Failed refund attempt appended while the request remains retryable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationChangeEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reservations/{reservation}/allocations:
     post:
       tags: [Reservations, Resources]
@@ -1428,6 +1609,11 @@ components:
       schema: { type: string, format: uuid }
     ReservationId:
       name: reservation
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RefundId:
+      name: refund
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -2217,6 +2403,104 @@ components:
           type: array
           items: { $ref: '#/components/schemas/FolioLine' }
         summary: { $ref: '#/components/schemas/FolioSummary' }
+    BookingQuoteInput:
+      type: object
+      required: [property_id, rate_plan_id, resource_category_id, starts_at, ends_at, adults]
+      properties:
+        property_id: { type: string, format: uuid }
+        rate_plan_id: { type: string, format: uuid }
+        resource_category_id: { type: string, format: uuid }
+        resource_id: { type: [string, 'null'], format: uuid }
+        program_id: { type: [string, 'null'], format: uuid }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        adults: { type: integer, minimum: 1, maximum: 1000 }
+        children: { type: integer, minimum: 0, maximum: 1000, default: 0 }
+    BookingQuote:
+      type: object
+      required: [id, property_id, currency, subtotal_minor, tax_minor, total_minor, expires_at, lines]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotal_minor: { type: integer }
+        tax_minor: { type: integer }
+        total_minor: { type: integer }
+        deposit_policy_snapshot: { type: [object, 'null'], additionalProperties: true }
+        cancellation_policy_snapshot: { type: [object, 'null'], additionalProperties: true }
+        expires_at: { type: string, format: date-time }
+        lines:
+          type: array
+          items: { type: object, additionalProperties: true }
+    BookingQuoteEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/BookingQuote' }
+    ReservationChange:
+      type: object
+      required: [id, reservation_id, type, status, occurred_at]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        parent_change_id: { type: [string, 'null'], format: uuid }
+        actor_id: { type: [integer, 'null'] }
+        type: { type: string }
+        status: { type: string }
+        currency: { type: [string, 'null'], pattern: '^[A-Z]{3}$' }
+        amount_minor: { type: [integer, 'null'] }
+        reference: { type: [string, 'null'] }
+        before_snapshot: { type: [object, 'null'], additionalProperties: true }
+        after_snapshot: { type: [object, 'null'], additionalProperties: true }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+        occurred_at: { type: string, format: date-time }
+        actor:
+          type: [object, 'null']
+          properties:
+            id: { type: integer }
+            name: { type: string }
+    ReservationChangeEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ReservationChange' }
+    ReservationChangeCollection:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ReservationChange' }
+        meta: { type: object, additionalProperties: true }
+        links: { type: object, additionalProperties: true }
+    ReservationAmendmentInput:
+      allOf:
+        - $ref: '#/components/schemas/BookingQuoteInput'
+    ReservationReallocationInput:
+      type: object
+      required: [allocation_id, resource_id]
+      properties:
+        allocation_id: { type: string, format: uuid }
+        resource_id: { type: string, format: uuid }
+        swap_allocation_id: { type: [string, 'null'], format: uuid }
+        reason: { type: [string, 'null'], maxLength: 500 }
+    ClosureReasonInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, maxLength: 500 }
+    RefundRequestInput:
+      type: object
+      required: [payment_id, amount_minor, reason]
+      properties:
+        payment_id: { type: string, format: uuid }
+        amount_minor: { type: integer, minimum: 1 }
+        reason: { type: string, maxLength: 500 }
+    RefundCompletionInput:
+      type: object
+      required: [reference]
+      properties:
+        reference: { type: string, maxLength: 255 }
     Reservation:
       type: object
       required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, currency, subtotal_minor, tax_minor, total_minor, folio_status, revision]
@@ -2249,6 +2533,9 @@ components:
         note_timeline:
           type: array
           items: { $ref: '#/components/schemas/ReservationNote' }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/ReservationChange' }
         revision: { type: integer, minimum: 1 }
         hold_expires_at:
           type: [string, 'null']
@@ -2256,54 +2543,31 @@ components:
           description: Expiration instant for an active capacity hold.
     ReservationInput:
       type: object
-      required: [property_id, starts_at, ends_at, adults, currency]
+      required: [quote_id]
       properties:
-        property_id: { type: string, format: uuid }
-        program_id: { type: [string, 'null'], format: uuid }
+        quote_id: { type: string, format: uuid }
         primary_guest_id: { type: [string, 'null'], format: uuid }
-        guest_ids:
+        companion_guest_ids:
           type: array
           maxItems: 50
           items: { type: string, format: uuid }
+        guest_first_name: { type: [string, 'null'], maxLength: 100 }
+        guest_last_name: { type: [string, 'null'], maxLength: 100 }
+        guest_email: { type: [string, 'null'], format: email, maxLength: 255 }
+        guest_phone: { type: [string, 'null'], maxLength: 40 }
+        guest_language: { type: [string, 'null'], maxLength: 12 }
+        guest_dietary: { type: [string, 'null'], maxLength: 500 }
         source: { type: [string, 'null'], maxLength: 50 }
-        starts_at: { type: string, format: date-time }
-        ends_at: { type: string, format: date-time }
-        adults: { type: integer, minimum: 1, maximum: 1000 }
-        children: { type: integer, minimum: 0, maximum: 1000 }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
-        subtotal_minor: { type: integer, minimum: 0 }
-        tax_minor: { type: integer, minimum: 0 }
         notes: { type: [string, 'null'], maxLength: 10000 }
-        allocations:
-          type: array
-          items:
-            type: object
-            required: [starts_at, ends_at]
-            properties:
-              requested_category_id: { type: [string, 'null'], format: uuid }
-              resource_id: { type: [string, 'null'], format: uuid }
-              service_occurrence_id: { type: [string, 'null'], format: uuid }
-              starts_at: { type: string, format: date-time }
-              ends_at: { type: string, format: date-time }
-              quantity: { type: integer, minimum: 1 }
     ReservationUpdateInput:
       type: object
       properties:
-        property_id: { type: string, format: uuid }
-        program_id: { type: [string, 'null'], format: uuid }
         primary_guest_id: { type: [string, 'null'], format: uuid }
-        guest_ids:
+        companion_guest_ids:
           type: array
           maxItems: 50
           items: { type: string, format: uuid }
         source: { type: [string, 'null'], maxLength: 50 }
-        starts_at: { type: string, format: date-time }
-        ends_at: { type: string, format: date-time }
-        adults: { type: integer, minimum: 1, maximum: 1000 }
-        children: { type: integer, minimum: 0, maximum: 1000 }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
-        subtotal_minor: { type: integer, minimum: 0 }
-        tax_minor: { type: integer, minimum: 0 }
         notes: { type: [string, 'null'], maxLength: 10000 }
     ReservationEnvelope:
       type: object

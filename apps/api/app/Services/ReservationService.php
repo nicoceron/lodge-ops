@@ -22,6 +22,8 @@ class ReservationService
         private ProgramRequirementService $programRequirements,
         private ReservationConfirmationProvisioner $provisioner,
         private HousekeepingService $housekeeping,
+        private CancelReservation $cancelReservation,
+        private MarkNoShow $markNoShow,
     ) {}
 
     public function confirm(Reservation $reservation): Reservation
@@ -85,6 +87,12 @@ class ReservationService
         if ($next === ReservationStatus::Confirmed) {
             return $this->confirm($reservation);
         }
+        if ($next === ReservationStatus::Cancelled) {
+            return $this->cancelReservation->handle($reservation, (string) ($metadata['reason'] ?? ''), auth()->id());
+        }
+        if ($next === ReservationStatus::NoShow) {
+            return $this->markNoShow->handle($reservation, (string) ($metadata['reason'] ?? ''), auth()->id());
+        }
 
         $metadata = array_filter(
             $metadata,
@@ -131,15 +139,6 @@ class ReservationService
             if ($next === ReservationStatus::CheckedOut) {
                 $changes['actual_end_at'] = now();
             }
-            if (in_array($next, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
-                $reason = trim((string) ($metadata['reason'] ?? ''));
-                if ($reason === '') {
-                    throw new \DomainException('A reason is required when cancelling a reservation or recording a no-show.');
-                }
-                $changes['cancelled_at'] = now();
-                $changes['closure_reason'] = $reason;
-                $metadata['reason'] = $reason;
-            }
             $previousStatus = $locked->status;
             $locked->update($changes);
             $this->recordStatus($locked, $previousStatus, $next, $metadata);
@@ -147,9 +146,6 @@ class ReservationService
                 $allocation->save();
             }
 
-            if (in_array($next, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
-                $locked->allocations()->update(['status' => AllocationStatus::Released]);
-            }
             if ($next === ReservationStatus::CheckedOut) {
                 $locked->allocations()
                     ->where('status', '!=', AllocationStatus::Released)

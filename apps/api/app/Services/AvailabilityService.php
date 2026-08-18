@@ -214,6 +214,7 @@ class AvailabilityService
             ->where('ends_at', '>', $allocation->starts_at)
             ->where(fn ($query) => $this->activeAllocationScope($query, $allocation))
             ->lockForUpdate()
+            ->get(['quantity'])
             ->sum('quantity');
 
         if ($reserved + $allocation->quantity > $availableCapacity) {

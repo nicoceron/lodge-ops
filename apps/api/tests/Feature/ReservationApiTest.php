@@ -4,12 +4,16 @@ namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
+use App\Models\BookingQuote;
 use App\Models\Guest;
 use App\Models\Property;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
 use App\Models\Resource;
 use App\Models\Tenant;
+use App\Services\BookingQuoteService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesTenant;
@@ -19,11 +23,10 @@ class ReservationApiTest extends TestCase
 {
     use CreatesTenant, RefreshDatabase;
 
-    public function test_api_calculates_total_in_minor_units_and_rejects_cross_tenant_foreign_ids(): void
+    public function test_api_commits_server_quote_and_rejects_client_totals_and_cross_tenant_quotes(): void
     {
-        [$tenant, $property] = $this->tenantEnvironment();
-        $payload = [
-            'property_id' => $property->id,
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $untrusted = [
             'starts_at' => '2026-09-10T15:00:00Z',
             'ends_at' => '2026-09-12T11:00:00Z',
             'adults' => 2,
@@ -32,11 +35,17 @@ class ReservationApiTest extends TestCase
             'tax_minor' => 9500000,
         ];
 
+        $this->withHeader('X-Tenant-ID', $tenant->id)->postJson('/api/v1/reservations', $untrusted)
+            ->assertUnprocessable()->assertJsonValidationErrors(['quote_id', 'subtotal_minor', 'tax_minor']);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $guest = Guest::factory()->create();
+        $quote = $this->quote($property, 25_000_000, $untrusted['starts_at'], $untrusted['ends_at']);
         $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson('/api/v1/reservations', $payload)
+            ->postJson('/api/v1/reservations', ['quote_id' => $quote->id, 'primary_guest_id' => $guest->id])
             ->assertCreated()
-            ->assertJsonPath('data.total_minor', 59500000)
-            ->assertJsonPath('data.status', 'draft');
+            ->assertJsonPath('data.total_minor', 50_000_000)
+            ->assertJsonPath('data.status', 'hold');
 
         $this->assertDatabaseHas('audits', [
             'tenant_id' => $tenant->id,
@@ -49,11 +58,11 @@ class ReservationApiTest extends TestCase
         app(TenantContext::class)->set($otherTenant);
         $otherProperty = Property::factory()->create();
 
-        $payload['property_id'] = $otherProperty->id;
+        $otherQuote = $this->quote($otherProperty, 1000, $untrusted['starts_at'], $untrusted['ends_at']);
         $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson('/api/v1/reservations', $payload)
+            ->postJson('/api/v1/reservations', ['quote_id' => $otherQuote->id, 'primary_guest_id' => $guest->id])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('property_id');
+            ->assertJsonValidationErrors('quote_id');
     }
 
     public function test_stale_reservation_updates_are_rejected_with_a_conflict(): void
@@ -76,12 +85,11 @@ class ReservationApiTest extends TestCase
     public function test_retrying_a_command_with_the_same_idempotency_key_replays_its_response(): void
     {
         [$tenant, $property] = $this->tenantEnvironment();
+        $guest = Guest::factory()->create();
+        $quote = $this->quote($property, 1000, '2026-10-10T15:00:00Z', '2026-10-12T11:00:00Z');
         $payload = [
-            'property_id' => $property->id,
-            'starts_at' => '2026-10-10T15:00:00Z',
-            'ends_at' => '2026-10-12T11:00:00Z',
-            'adults' => 2,
-            'currency' => 'USD',
+            'quote_id' => $quote->id,
+            'primary_guest_id' => $guest->id,
         ];
         $headers = [
             'X-Tenant-ID' => $tenant->id,
@@ -136,7 +144,7 @@ class ReservationApiTest extends TestCase
         ]);
     }
 
-    public function test_editing_stay_dates_updates_full_stay_allocations_and_preserves_contained_activity_dates(): void
+    public function test_generic_edit_rejects_stay_dates_and_preserves_allocation_history(): void
     {
         [$tenant, $property] = $this->tenantEnvironment();
         $stayResource = Resource::factory()->create(['property_id' => $property->id]);
@@ -167,10 +175,10 @@ class ReservationApiTest extends TestCase
             ->patchJson("/api/v1/reservations/{$reservation->id}", [
                 'starts_at' => '2026-09-11T15:00:00Z',
                 'ends_at' => '2026-09-15T11:00:00Z',
-            ])->assertOk();
+            ])->assertUnprocessable()->assertJsonValidationErrors(['starts_at', 'ends_at']);
 
-        $this->assertSame('2026-09-11T15:00:00+00:00', $stay->fresh()->starts_at->toIso8601String());
-        $this->assertSame('2026-09-15T11:00:00+00:00', $stay->fresh()->ends_at->toIso8601String());
+        $this->assertSame('2026-09-10T15:00:00+00:00', $stay->fresh()->starts_at->toIso8601String());
+        $this->assertSame('2026-09-14T11:00:00+00:00', $stay->fresh()->ends_at->toIso8601String());
         $this->assertSame('2026-09-12T09:00:00+00:00', $activity->fresh()->starts_at->toIso8601String());
         $this->assertSame('2026-09-12T12:00:00+00:00', $activity->fresh()->ends_at->toIso8601String());
     }
@@ -245,9 +253,37 @@ class ReservationApiTest extends TestCase
             ->patchJson("/api/v1/reservations/{$reservation->id}", [
                 'starts_at' => '2026-09-15T15:00:00Z',
             ])->assertUnprocessable()
-            ->assertJsonValidationErrors('ends_at');
+            ->assertJsonValidationErrors('starts_at');
 
         $this->assertSame('2026-09-10T15:00:00+00:00', $reservation->fresh()->starts_at->toIso8601String());
         $this->assertSame('2026-09-14T11:00:00+00:00', $reservation->fresh()->ends_at->toIso8601String());
+    }
+
+    private function quote(Property $property, int $nightlyRate, mixed $startsAt, mixed $endsAt): BookingQuote
+    {
+        $category = $this->category($property, 'room');
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id]);
+        $plan = RatePlan::query()->create([
+            'property_id' => $property->id,
+            'name' => 'API '.fake()->unique()->word(),
+            'currency' => 'USD',
+            'maximum_occupancy' => 4,
+        ]);
+        RateRule::query()->create([
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $category->id,
+            'amount_minor' => $nightlyRate,
+        ]);
+
+        return app(BookingQuoteService::class)->create([
+            'property_id' => $property->id,
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $category->id,
+            'resource_id' => $room->id,
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'adults' => 2,
+            'children' => 0,
+        ]);
     }
 }

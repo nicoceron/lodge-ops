@@ -56,6 +56,7 @@ class ReservationResource extends JsonResource
             'allocations' => AllocationResource::collection($this->whenLoaded('allocations')),
             'status_history' => ReservationStatusHistoryResource::collection($this->whenLoaded('statusHistory')),
             'note_timeline' => $this->whenLoaded('noteTimeline', fn () => ReservationNoteResource::collection($this->noteTimeline)),
+            'changes' => ReservationChangeResource::collection($this->whenLoaded('changes')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

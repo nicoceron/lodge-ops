@@ -11,6 +11,7 @@ use LogicException;
 
 /**
  * @property BookingQuoteStatus $status
+ * @property string $rate_plan_id
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
  * @property CarbonImmutable $expires_at

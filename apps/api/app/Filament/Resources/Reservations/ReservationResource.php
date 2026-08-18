@@ -15,6 +15,7 @@ use App\Filament\Resources\Reservations\RelationManagers\GeneratedDocumentsRelat
 use App\Filament\Resources\Reservations\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\OperationalTasksRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\PaymentsRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\ReservationChangesRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\StatusHistoryRelationManager;
 use App\Filament\Resources\Reservations\Schemas\ReservationForm;
 use App\Filament\Resources\Reservations\Schemas\ReservationInfolist;
@@ -104,6 +105,7 @@ class ReservationResource extends TenantResource
             CommunicationsRelationManager::class,
             GeneratedDocumentsRelationManager::class,
             NotesRelationManager::class,
+            ReservationChangesRelationManager::class,
             StatusHistoryRelationManager::class,
         ];
     }

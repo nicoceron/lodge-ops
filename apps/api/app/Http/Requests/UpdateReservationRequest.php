@@ -2,23 +2,32 @@
 
 namespace App\Http\Requests;
 
-class UpdateReservationRequest extends StoreReservationRequest
+use Illuminate\Validation\Validator;
+
+class UpdateReservationRequest extends TenantRequest
 {
     public function rules(): array
     {
-        $rules = parent::rules();
-
-        foreach (['property_id', 'starts_at', 'ends_at', 'adults', 'currency'] as $field) {
-            $rules[$field][0] = 'sometimes';
-        }
-
-        unset($rules['allocations'], $rules['allocations.*.requested_category_id'], $rules['allocations.*.resource_id'], $rules['allocations.*.service_occurrence_id'], $rules['allocations.*.starts_at'], $rules['allocations.*.ends_at'], $rules['allocations.*.quantity']);
-
-        return $rules;
+        return [
+            'primary_guest_id' => ['sometimes', 'nullable', 'uuid', $this->tenantExists('guests')],
+            'guest_ids' => ['sometimes', 'array', 'max:50'],
+            'guest_ids.*' => ['uuid', 'distinct', $this->tenantExists('guests')],
+            'source' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:10000'],
+        ];
     }
 
     public function after(): array
     {
-        return [];
+        return [function (Validator $validator): void {
+            foreach ([
+                'property_id', 'program_id', 'starts_at', 'ends_at', 'adults', 'children',
+                'currency', 'subtotal_minor', 'tax_minor', 'total_minor', 'allocations',
+            ] as $field) {
+                if ($this->exists($field)) {
+                    $validator->errors()->add($field, 'Use the guarded amendment or reallocation command for this field.');
+                }
+            }
+        }];
     }
 }

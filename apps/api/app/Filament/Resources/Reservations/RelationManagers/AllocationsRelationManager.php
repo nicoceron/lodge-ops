@@ -155,18 +155,23 @@ class AllocationsRelationManager extends RelationManager
                             )->implode("\n"))
                             ->send();
                     }),
-                CreateAction::make()->using(fn (array $data): Allocation => app(AllocationWorkflowService::class)
-                    ->create($this->ownerReservation(), $data)),
+                CreateAction::make()
+                    ->visible(fn (): bool => in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
+                    ->using(fn (array $data): Allocation => app(AllocationWorkflowService::class)
+                        ->create($this->ownerReservation(), $data)),
             ])
             ->recordActions([
-                EditAction::make()->using(fn (Allocation $record, array $data): Allocation => app(AllocationWorkflowService::class)
-                    ->update($this->ownerReservation(), $record, $data)),
+                EditAction::make()
+                    ->visible(fn (): bool => in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
+                    ->using(fn (Allocation $record, array $data): Allocation => app(AllocationWorkflowService::class)
+                        ->update($this->ownerReservation(), $record, $data)),
                 Action::make('release')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->authorize('update')
                     ->requiresConfirmation()
-                    ->visible(fn (Allocation $record): bool => $record->status !== AllocationStatus::Released)
+                    ->visible(fn (Allocation $record): bool => $record->status !== AllocationStatus::Released
+                        && in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
                     ->action(fn (Allocation $record) => app(AllocationWorkflowService::class)
                         ->release($this->ownerReservation(), $record)),
             ])

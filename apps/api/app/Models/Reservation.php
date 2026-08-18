@@ -32,10 +32,14 @@ use LogicException;
  * @property int|null $folio_closed_by
  * @property ReservationStatus $status
  * @property-read Program|null $program
+ * @property-read BookingQuote|null $bookingQuote
  * @property-read Guest|null $primaryGuest
  * @property-read Collection<int, Allocation> $allocations
+ * @property-read Collection<int, Payment> $payments
+ * @property-read Collection<int, Deposit> $deposits
  * @property-read Collection<int, ReservationNote> $noteTimeline
  * @property-read Collection<int, ReservationStatusHistory> $statusHistory
+ * @property-read Collection<int, ReservationChange> $changes
  * @property-read Collection<int, GuestPortalProfile> $guestPortalProfiles
  */
 class Reservation extends TenantModel
@@ -86,6 +90,7 @@ class Reservation extends TenantModel
         return $this->belongsTo(Property::class);
     }
 
+    /** @return BelongsTo<BookingQuote, $this> */
     public function bookingQuote(): BelongsTo
     {
         return $this->belongsTo(BookingQuote::class);
@@ -109,6 +114,7 @@ class Reservation extends TenantModel
             ->withTimestamps();
     }
 
+    /** @return HasMany<Allocation, $this> */
     public function allocations(): HasMany
     {
         return $this->hasMany(Allocation::class);
@@ -119,6 +125,7 @@ class Reservation extends TenantModel
         return $this->hasMany(Proposal::class);
     }
 
+    /** @return HasMany<Payment, $this> */
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
@@ -129,6 +136,7 @@ class Reservation extends TenantModel
         return $this->hasMany(FolioLine::class);
     }
 
+    /** @return HasMany<Deposit, $this> */
     public function deposits(): HasMany
     {
         return $this->hasMany(Deposit::class);
@@ -152,6 +160,12 @@ class Reservation extends TenantModel
     public function statusHistory(): HasMany
     {
         return $this->hasMany(ReservationStatusHistory::class)->orderByDesc('changed_at');
+    }
+
+    /** @return HasMany<ReservationChange, $this> */
+    public function changes(): HasMany
+    {
+        return $this->hasMany(ReservationChange::class)->orderByDesc('occurred_at');
     }
 
     public function noteTimeline(): HasMany

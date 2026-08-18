@@ -36,4 +36,20 @@ class ReservationPolicy extends TenantPolicy
     {
         return $this->canManageReservations($user, $reservation);
     }
+
+    public function reallocate(User $user, Reservation $reservation): bool
+    {
+        return $this->canManageReservations($user, $reservation)
+            || $this->canScheduleOperations($user, $reservation);
+    }
+
+    public function requestRefund(User $user, Reservation $reservation): bool
+    {
+        return $this->canManageGuestMoney($user, $reservation);
+    }
+
+    public function completeRefund(User $user, Reservation $reservation): bool
+    {
+        return $this->canManageMoney($user, $reservation);
+    }
 }

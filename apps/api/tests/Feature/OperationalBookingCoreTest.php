@@ -8,11 +8,14 @@ use App\Enums\ReservationStatus;
 use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\Program;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
+use App\Services\BookingQuoteService;
 use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -37,6 +40,30 @@ class OperationalBookingCoreTest extends TestCase
             'languages' => ['spanish'],
         ]);
         $guest = Guest::factory()->create();
+        $roomCategory = $this->category($property, 'room');
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $roomCategory->id]);
+        $ratePlan = RatePlan::query()->create([
+            'property_id' => $property->id,
+            'name' => 'Operational API',
+            'currency' => 'USD',
+            'maximum_occupancy' => 4,
+        ]);
+        RateRule::query()->create([
+            'rate_plan_id' => $ratePlan->id,
+            'resource_category_id' => $roomCategory->id,
+            'amount_minor' => 10_000,
+        ]);
+        $quote = app(BookingQuoteService::class)->create([
+            'property_id' => $property->id,
+            'rate_plan_id' => $ratePlan->id,
+            'resource_category_id' => $roomCategory->id,
+            'resource_id' => $room->id,
+            'program_id' => $program->id,
+            'starts_at' => '2026-11-01T15:00:00Z',
+            'ends_at' => '2026-11-04T11:00:00Z',
+            'adults' => 2,
+            'children' => 0,
+        ]);
 
         $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/properties?per_page=100')
             ->assertOk()
@@ -52,13 +79,8 @@ class OperationalBookingCoreTest extends TestCase
             ->assertJsonPath('data.0.requirements.0.guests_per_resource', 4);
 
         $response = $this->withHeader('X-Tenant-ID', $tenant->id)->postJson('/api/v1/reservations', [
-            'property_id' => $property->id,
-            'program_id' => $program->id,
+            'quote_id' => $quote->id,
             'primary_guest_id' => $guest->id,
-            'starts_at' => '2026-11-01T15:00:00Z',
-            'ends_at' => '2026-11-04T11:00:00Z',
-            'adults' => 2,
-            'currency' => 'USD',
         ])->assertCreated()
             ->assertJsonPath('data.program_id', $program->id)
             ->assertJsonPath('data.program.id', $program->id)

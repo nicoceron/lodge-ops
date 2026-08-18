@@ -1,12 +1,12 @@
 # Client-readiness implementation gap map
 
-Date: 2026-08-17
+Date: 2026-08-17; status updated 2026-08-18
 
-Execution plan: [Client-ready implementation plan](client-ready-implementation-plan.md)
+Execution plans: [original implementation plan](client-ready-implementation-plan.md), [verified phase 2 plan](client-ready-phase-2-plan.md), and [active phase 3 plan](client-ready-phase-3-plan.md)
 
 ## Decision
 
-Inn now has a client-complete staff booking and manual bank-transfer milestone. It is not yet a complete launch product because online payments, controlled amendments/refunds, production communications, legal documents/exports, and provider integrations remain open or explicitly provider-gated.
+Inn now has a state-changing staff booking/change/payment/cancellation/refund browser journey in addition to the domain and UI foundation for manual bank-transfer review. It is not yet client-complete end to end because guest evidence approval, stay operation/checkout, documents/exports, production communications, deployment/recovery, online payments, and provider integrations remain open or explicitly provider-gated.
 
 The strongest implemented areas are tenant isolation, roles, the master calendar, guarded reservation state transitions, conflict-aware allocations, operational tasks, housekeeping, guest itinerary/pre-registration, folios, manual payments, CRM, proposals, surveys, retail, and finance projections.
 
@@ -14,10 +14,10 @@ The remaining client-facing breaks are:
 
 1. The guest portal cannot take an online payment. It supports a now-complete, controlled manual bank-transfer flow.
 2. Payment-gateway, accounting, e-signature, webhook, SMS/WhatsApp, and channel connections are configuration records rather than working provider integrations.
-3. Amendments, room moves, cancellations, refunds, legal invoices, document generation, and exports do not yet form complete client journeys.
+3. Guarded amendments, room moves, priced cancellations, and internal refunds now form one browser-proven journey, but N2.1 temporal/financial collisions, provider refunds, legal invoices, document generation, and exports remain.
 4. Production mail delivery, object storage, monitoring, backup/restore, and provider reconciliation still require deployment decisions and production UAT.
 
-The completed 2026-08-17 milestone replaced manual reservation totals with live availability, server pricing, immutable quote/policy snapshots, and an atomic hold/allocation. It also connected guest transfer evidence to a tenant-scoped review queue and exact-once manual payment/deposit reconciliation. Authenticated staff Playwright journeys now gate the seeded client demo.
+The 2026-08-18 N2 milestone made the generic reservation API quote-authoritative and added append-only guarded amendment, room assignment/move/swap, cancellation/no-show fee, and partial/full internal refund commands. One authenticated Playwright journey now mutates that full loop; the remaining N1 guest/stay/role/mobile journeys stay open.
 
 ## Evidence standard
 
@@ -28,19 +28,19 @@ This map uses four statuses:
 - **Scaffold**: a model, form, adapter boundary, or test double exists without a working provider or operational loop.
 - **Missing**: the required behavior is absent.
 
-The audit combined source inspection, the complete verification suite, real browser execution, and an authenticated seeded PostgreSQL UAT run. Verification passes with 218 PHPUnit tests and 8 Playwright executions: 4 public-site executions plus 4 authenticated staff journeys.
+The 2026-08-18 verification combined source inspection, runtime health, 224 passing PHPUnit tests with 1,548 assertions, and five passing authenticated Playwright tests against seeded PostgreSQL. Four are route/render smoke journeys; the N2 test is state-changing. A single N2 loop does not establish completion of the remaining guest, stay, document, provider, role, mobile, or production journeys.
 
 ## Client journeys
 
 | Journey | Current evidence | Status | Missing implementation | Release gate |
 | --- | --- | --- | --- | --- |
-| Search availability and create a priced reservation | Availability-first composer; occupancy/category/exact-room checks; deterministic nightly/service/tax quote; inline or repeat guest; immutable policy snapshots; atomic hold/allocation | Client-complete for the staff hold slice | Controlled post-booking amendments remain a later slice | `UAT-4.3` plus quote, conflict, tenant-scope, and policy tests pass without staff-entered totals |
+| Search availability and create a priced reservation | Availability-first composer; deterministic quote; atomic hold/allocation; browser create → confirm → amend → move with immutable history | Client-complete for the exercised staff/N2 slice | Repeat-guest/companion mutation, calendar persistence assertion, role/mobile/error journeys | Phase 3 UAT covers the remaining variants without staff-entered totals |
 | Guest books directly | Public application is a marketing site and links staff to the protected Filament application | Missing | Public availability search; quote; guest details; consent; hold expiry; online payment; confirmation; bot/rate-limit protection; analytics | A guest can book and pay from the public site without staff intervention |
 | Hold, collect deposit, and confirm | Guarded transitions, expiring atomic holds, configurable fixed/percentage deposit policies, and selected policy provisioning | Domain-complete; manual collection path complete | Hosted payment request/link, provider status, and failed/late online-payment handling | A selected deposit policy provisions deterministically; a manual evidence approval changes payment/deposit projections exactly once |
 | Guest pays online | Portal shows balance and accepts a file as evidence | Missing | Hosted checkout; payment attempt/session; success/cancel return; webhook; receipt; balance refresh; no raw card storage | Guest pays a partial or full amount and sees the resulting balance |
-| Staff reviews bank-transfer evidence | Guest-declared amount/currency/reference; scan hook; finance review queue; secure private download; approve/reject/request-more-info; reviewer audit; exact-once payment and deposit reconciliation | Client-complete | Production object-storage retention and external malware service remain deployment work | `UAT-4.5` and `PaymentEvidenceReviewTest` prove one approval creates one payment/folio effect and rejection creates none |
-| Amend dates, occupancy, room, and price | Reservation dates and allocation records can be edited separately | Domain-complete | Availability recheck; price delta; explicit move/swap/reallocate operation; reason; audit history; payment/deposit recalculation; guest notice | A room/date change cannot overbook and leaves a traceable before/after record |
-| Cancel/no-show and refund | Status closure releases allocations; internal payment reversal exists | Domain-complete | Cancellation policy evaluation; fee; refundable amount; provider refund; partial refund; refund status; failed-refund retry; credit note/receipt | Cancellation produces the expected inventory, fee, refund, folio, and communication effects |
+| Staff reviews bank-transfer evidence | Guest-declared amount/currency/reference; scan hook; finance review queue; secure private download; approve/reject/request-more-info; reviewer audit; exact-once payment and deposit reconciliation | Domain and UI implemented | Guest upload → staff approval browser UAT; production object-storage retention and external malware service | Browser UAT proves one approval creates one payment/folio effect and rejection creates none; `PaymentEvidenceReviewTest` retains failure/idempotency coverage |
+| Amend dates, occupancy, room, and price | Confirmed-stay re-quote, price/deposit effects, explicit assign/move/swap, locks, reason, and append-only before/after history | Client-complete for the exercised amendment/move; domain-complete for swap variants | N2.1 concurrency/expiry/activity/paid-deposit/checked-in variant matrix and guest notice | Every variant preserves inventory, money, and readable history under retry/conflict |
+| Cancel/no-show and refund | Policy fee, inventory release, refund requirement, internal partial/full request/fail/complete, exact-once folio effect, zero-balance browser proof | Client-complete for one manual cancellation/refund; domain-complete for remaining internal variants | Property-local cutoff hardening, partial-refund/reversal collision, no-show matrix, receipt/credit note, provider refund/dispute/settlement | P3-01 internal invariants pass and P3-06 proves provider execution separately |
 | Check in, operate stay, and check out | Arrival/departure facts, tasks, housekeeping, extras, folio, survey | Domain-complete | Complete and automate the authenticated browser journey plus exception handling | A seeded stay completes through checkout with persisted operational and financial effects |
 | Produce invoice and reports | Template/configuration records, finance dashboards, export record list | Scaffold | Real PDF renderer; legal invoice numbering/tax fields; download/email; credit note; actual CSV/PDF export generation and access control | Client downloads an invoice and a filtered report generated from live data |
 | Sync an OTA/channel manager | Private one-way iCalendar export only | Missing | Provider auth; property/room/rate mapping; ARI push; booking import/change/cancel; deduplication; cursor; retries; reconciliation; health and last-sync UI | A sandbox booking imports once and inventory/rate updates reconcile |
@@ -95,7 +95,7 @@ Minimum capabilities:
 
 Suggested new records are `payment_attempts`, `provider_events`, `refunds`, and `settlement_entries`. Sensitive credentials should remain in the deployment secret store and be referenced by tenant configuration.
 
-#### 4. Reservation change, move, cancellation, and refund commands
+#### 4. Reservation change, move, cancellation, and refund commands — implemented; P3-01 hardening remains
 
 Create explicit application commands instead of relying on independent form edits:
 
@@ -104,7 +104,7 @@ Create explicit application commands instead of relying on independent form edit
 - Cancel/no-show with policy snapshot, fee, released inventory, refund requirement, and communication.
 - Protect all commands with idempotency and permissions, and make the financial result append-only.
 
-#### 5. Authenticated acceptance journeys — baseline implemented; remaining closed-loop journeys follow PR-05 through PR-08
+#### 5. Authenticated acceptance journeys — N2 mutation journey implemented; remaining journeys follow phase 3
 
 Add Playwright coverage for the actual client promise:
 
@@ -190,7 +190,7 @@ These are not required to show a strong single-lodge operational product.
 | Email | Laravel transport plus queued outbound automations | Domain-complete locally | Production provider, delivery events, bounces/complaints, resend UI |
 | Calendar | Private per-resource iCalendar export | Domain-complete one-way feed | Feed rotation/revocation and, only if required, inbound import with deduplication |
 | Payment gateway | Connection/configuration record; no gateway client | Scaffold | One hosted-checkout adapter, signed webhooks, refunds, receipts, reconciliation |
-| Manual bank transfer | Guest evidence upload, controlled review, private download, exact-once payment/folio creation, and deposit reconciliation | Client-complete | Production storage retention and external malware scanner configuration |
+| Manual bank transfer | Guest evidence upload, controlled review, private download, exact-once payment/folio creation, and deposit reconciliation | Domain and UI implemented; closed-loop browser UAT pending | State-changing browser journey, production storage retention, and external malware scanner configuration |
 | Accounting | Connection/configuration record | Scaffold | One provider or validated export package with mappings and reconciliation |
 | E-signature | Template/connection boundary and native acknowledgements | Scaffold | Provider envelope lifecycle, signed artifact, webhook, audit trail if legally required |
 | Generic webhooks | Connection/configuration boundary | Scaffold | Signed outbound subscriptions, delivery attempts, retries, dead letters, replay and inbound verification |

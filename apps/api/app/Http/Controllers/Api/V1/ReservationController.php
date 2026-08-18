@@ -2,26 +2,22 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreReservationRequest;
 use App\Http\Requests\UpdateReservationRequest;
 use App\Http\Resources\ReservationResource;
-use App\Models\Allocation;
-use App\Models\Program;
+use App\Models\BookingQuote;
 use App\Models\Reservation;
 use App\Models\ReservationGuest;
-use App\Services\AllocationWorkflowService;
-use App\Services\AvailabilityService;
+use App\Services\CommitBookingQuote;
 use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
-use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -46,56 +42,42 @@ class ReservationController extends Controller
         return ReservationResource::collection($reservations);
     }
 
-    public function store(StoreReservationRequest $request, AllocationWorkflowService $allocationsService): ReservationResource
+    public function store(StoreReservationRequest $request, CommitBookingQuote $commit): JsonResponse
     {
         $this->authorize('create', Reservation::class);
         $data = $request->validated();
-        $this->assertMembershipProperty($data['property_id']);
+        $quote = BookingQuote::query()->findOrFail($data['quote_id']);
+        $this->assertMembershipProperty($quote->property_id);
+        $reservation = $commit->handle(
+            $quote,
+            $data['primary_guest_id'] ?? null,
+            [
+                'first_name' => $data['guest_first_name'] ?? null,
+                'last_name' => $data['guest_last_name'] ?? null,
+                'email' => $data['guest_email'] ?? null,
+                'phone' => $data['guest_phone'] ?? null,
+                'language' => $data['guest_language'] ?? null,
+                'dietary' => $data['guest_dietary'] ?? null,
+            ],
+            $data['companion_guest_ids'] ?? [],
+            $data['source'] ?? null,
+            $data['notes'] ?? null,
+        );
 
-        $reservation = DB::transaction(function () use ($data, $allocationsService): Reservation {
-            $allocations = Arr::pull($data, 'allocations', []);
-            $guestIds = Arr::pull($data, 'guest_ids', []);
-            $this->assertProgramProperty($data['program_id'] ?? null, $data['property_id']);
-            $data['confirmation_number'] = 'RSV-'.Str::upper((string) Str::ulid());
-            $data['status'] = ReservationStatus::Draft;
-            $data['total_minor'] = ($data['subtotal_minor'] ?? 0) + ($data['tax_minor'] ?? 0);
-
-            $reservation = Reservation::query()->create($data);
-
-            $guestIds = array_values(array_unique(array_filter([...$guestIds, $reservation->primary_guest_id])));
-            foreach ($guestIds as $guestId) {
-                ReservationGuest::query()->create([
-                    'reservation_id' => $reservation->id,
-                    'guest_id' => $guestId,
-                    'role' => $guestId === $reservation->primary_guest_id ? 'primary' : 'guest',
-                ]);
-            }
-
-            foreach ($allocations as $allocation) {
-                $allocationsService->create($reservation, [
-                    ...$allocation,
-                    'starts_at' => $allocation['starts_at'] ?? $reservation->starts_at,
-                    'ends_at' => $allocation['ends_at'] ?? $reservation->ends_at,
-                ]);
-            }
-
-            return $reservation;
-        });
-
-        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence']));
+        return (new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence'])))
+            ->response()->setStatusCode(201);
     }
 
     public function show(Reservation $reservation): ReservationResource
     {
         $this->authorize('view', $reservation);
 
-        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor', 'noteTimeline.creator']));
+        return new ReservationResource($reservation->load(['primaryGuest', 'program', 'guests', 'allocations.requestedCategory', 'allocations.resource', 'allocations.serviceOccurrence', 'statusHistory.actor', 'noteTimeline.creator', 'changes.actor']));
     }
 
     public function update(
         UpdateReservationRequest $request,
         Reservation $reservation,
-        AvailabilityService $availability,
     ): ReservationResource {
         $this->authorize('update', $reservation);
 
@@ -108,7 +90,7 @@ class ReservationController extends Controller
             throw ValidationException::withMessages(['If-Match' => 'The If-Match header must contain the observed numeric revision.']);
         }
 
-        $reservation = DB::transaction(function () use ($request, $reservation, $expectedRevision, $availability): Reservation {
+        $reservation = DB::transaction(function () use ($request, $reservation, $expectedRevision): Reservation {
             $locked = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
             if (! in_array($locked->status, [ReservationStatus::Draft, ReservationStatus::Hold], true)) {
                 throw ValidationException::withMessages(['status' => 'Only draft or held reservations may be edited.']);
@@ -120,73 +102,8 @@ class ReservationController extends Controller
             $data = $request->validated();
             $guestIds = Arr::pull($data, 'guest_ids', null);
             $originalPrimaryGuestId = $locked->primary_guest_id;
-            $originalStartsAt = $locked->starts_at;
-            $originalEndsAt = $locked->ends_at;
-            $propertyId = $data['property_id'] ?? $locked->property_id;
-            $startsAt = array_key_exists('starts_at', $data)
-                ? CarbonImmutable::parse($data['starts_at'])
-                : $originalStartsAt;
-            $endsAt = array_key_exists('ends_at', $data)
-                ? CarbonImmutable::parse($data['ends_at'])
-                : $originalEndsAt;
-            $allocations = Allocation::query()
-                ->where('reservation_id', $locked->id)
-                ->lockForUpdate()
-                ->get();
-
-            if ($startsAt->greaterThanOrEqualTo($endsAt)) {
-                throw ValidationException::withMessages([
-                    'ends_at' => 'The reservation end must be after its start.',
-                ]);
-            }
-            $this->assertMembershipProperty($propertyId);
-            if ($propertyId !== $locked->property_id && $allocations->isNotEmpty()) {
-                throw ValidationException::withMessages([
-                    'property_id' => 'A reservation with allocation history cannot change property. Create a new reservation for the other property.',
-                ]);
-            }
-            $this->assertProgramProperty(
-                $data['program_id'] ?? $locked->program_id,
-                $propertyId,
-            );
-
-            $activeAllocations = $allocations->filter(
-                fn ($allocation): bool => $allocation->status !== AllocationStatus::Released,
-            );
-            $datesChanged = ! $startsAt->equalTo($originalStartsAt) || ! $endsAt->equalTo($originalEndsAt);
-            if ($datesChanged) {
-                foreach ($activeAllocations as $allocation) {
-                    $followsStayDates = $allocation->getAttribute('service_occurrence_id') === null
-                        && $allocation->starts_at->equalTo($originalStartsAt)
-                        && $allocation->ends_at->equalTo($originalEndsAt);
-                    if (! $followsStayDates && ($allocation->starts_at->lessThan($startsAt) || $allocation->ends_at->greaterThan($endsAt))) {
-                        throw ValidationException::withMessages([
-                            'starts_at' => 'The edited stay must continue to contain every dated allocation.',
-                        ]);
-                    }
-                }
-            }
-            if (array_key_exists('subtotal_minor', $data) || array_key_exists('tax_minor', $data)) {
-                $data['total_minor'] = ($data['subtotal_minor'] ?? $locked->subtotal_minor) + ($data['tax_minor'] ?? $locked->tax_minor);
-            }
             $data['revision'] = $locked->revision + 1;
             $locked->forceFill($data)->save();
-
-            if ($datesChanged) {
-                foreach ($activeAllocations as $allocation) {
-                    if ($allocation->getAttribute('service_occurrence_id') !== null
-                        || ! $allocation->starts_at->equalTo($originalStartsAt)
-                        || ! $allocation->ends_at->equalTo($originalEndsAt)) {
-                        continue;
-                    }
-
-                    $allocation->forceFill(['starts_at' => $startsAt, 'ends_at' => $endsAt]);
-                    if ($locked->status === ReservationStatus::Hold) {
-                        $availability->assertAvailable($allocation);
-                    }
-                    $allocation->save();
-                }
-            }
 
             $primaryGuestChanged = array_key_exists('primary_guest_id', $data)
                 && $locked->primary_guest_id !== $originalPrimaryGuestId;
@@ -240,13 +157,6 @@ class ReservationController extends Controller
             $validated['hold_minutes'] ?? null,
             ['reason' => $validated['reason'] ?? null],
         ));
-    }
-
-    private function assertProgramProperty(?string $programId, string $propertyId): void
-    {
-        if ($programId !== null && ! Program::query()->whereKey($programId)->where('property_id', $propertyId)->where('is_active', true)->exists()) {
-            throw ValidationException::withMessages(['program_id' => 'The program must be active and belong to the reservation property.']);
-        }
     }
 
     private function assertMembershipProperty(string $propertyId): void

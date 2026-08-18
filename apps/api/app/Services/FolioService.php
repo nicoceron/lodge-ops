@@ -9,6 +9,7 @@ use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\FolioLine;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Models\ReservationChange;
 use Illuminate\Support\Facades\DB;
 
 final class FolioService
@@ -70,6 +71,33 @@ final class FolioService
             actorId: $actorId,
             paymentId: $payment->id,
             metadata: ['payment_status' => $payment->status->value],
+        );
+    }
+
+    public function postRefund(Payment $payment, ReservationChange $refund, ?int $actorId): FolioLine
+    {
+        $existing = FolioLine::query()
+            ->where('metadata->refund_change_id', $refund->id)
+            ->where('type', FolioLineType::Refund)
+            ->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+        $this->assertOpen($payment->reservation);
+
+        return $this->createLine(
+            reservation: $payment->reservation,
+            type: FolioLineType::Refund,
+            description: 'Refund completed · '.str_replace('_', ' ', $payment->method),
+            quantityThousandths: 1000,
+            unitAmountMinor: $refund->amount_minor,
+            actorId: $actorId,
+            paymentId: $payment->id,
+            metadata: [
+                'refund_change_id' => $refund->id,
+                'refund_request_id' => $refund->parent_change_id,
+                'reference' => $refund->reference,
+            ],
         );
     }
 
