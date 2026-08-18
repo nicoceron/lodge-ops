@@ -1,4 +1,4 @@
-.PHONY: bootstrap up down logs doctor build-api test test-api test-web test-client lint analyse-api contract verify migrate seed shell-api
+.PHONY: bootstrap up down logs doctor build-api test test-api test-api-postgres test-web test-client lint analyse-api contract verify migrate seed shell-api
 
 bootstrap:
 	test -f .env || cp .env.example .env
@@ -29,7 +29,7 @@ doctor:
 	curl --fail --silent --show-error http://localhost:$${API_PORT:-8000}/manage/login >/dev/null
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/css/filament/filament/app.css)" = "200"
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/js/filament/filament/app.js)" = "200"
-	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | rg --quiet 'Inn'
+	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | grep --quiet 'Inn'
 	@echo "Inn public site and Laravel/Filament application are reachable."
 
 build-api:
@@ -39,6 +39,10 @@ test: test-api test-web
 
 test-api:
 	cd apps/api && php artisan test --compact
+
+test-api-postgres:
+	docker compose exec -T postgres sh -lc 'psql -U "$${POSTGRES_USER:-inn}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''inn_test'\''" | grep -q 1 || createdb -U "$${POSTGRES_USER:-inn}" inn_test'
+	docker compose run --rm --no-deps -e APP_ENV=testing -e DB_DATABASE=inn_test api ./vendor/bin/phpunit --configuration phpunit.pgsql.xml
 
 test-web:
 	cd apps/web && npm run e2e

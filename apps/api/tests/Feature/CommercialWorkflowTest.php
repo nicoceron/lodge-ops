@@ -156,6 +156,8 @@ class CommercialWorkflowTest extends TestCase
                 'amount_minor' => 25000,
             ])->assertCreated()->assertJsonPath('data.status', 'pending')->json('data');
 
+        $this->assertSame('manual', $payment['origin']);
+
         $this->withHeader('X-Tenant-ID', $tenant->id)
             ->postJson("/api/v1/payments/{$payment['id']}/reconcile", ['deposit_id' => $deposit['id']])
             ->assertOk()

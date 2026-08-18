@@ -115,6 +115,9 @@ final class ReallocateResource
                         'to_resource_id' => $oldResourceId,
                     ],
                 ]);
+                if ($otherReservation->status === ReservationStatus::CheckedIn) {
+                    $this->housekeeping->update(Resource::query()->findOrFail($other->resource_id), HousekeepingStatus::Dirty, $actorId);
+                }
             }
 
             if ($primary->status === ReservationStatus::CheckedIn && $oldResourceId !== null) {

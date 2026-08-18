@@ -93,9 +93,9 @@ test("N2 guarded amendment, room move, cancellation fee, and refund close the fi
   await page.getByRole("option", { name: confirmation, exact: true }).click();
   await payment.getByRole("combobox", { name: "Method*" }).selectOption("bank_transfer");
   await payment.getByRole("spinbutton", { name: "Amount (minor units)*" }).fill(String(totalMinor));
-  await payment.getByRole("textbox", { name: "Provider", exact: true }).fill("playwright");
+  await payment.getByRole("textbox", { name: "External processor", exact: true }).fill("playwright");
   const paymentReference = `n2-payment-${run}`;
-  await payment.getByRole("textbox", { name: "Provider reference", exact: true }).fill(paymentReference);
+  await payment.getByRole("textbox", { name: "External reference", exact: true }).fill(paymentReference);
   await payment.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(payment).toHaveCount(0);
 

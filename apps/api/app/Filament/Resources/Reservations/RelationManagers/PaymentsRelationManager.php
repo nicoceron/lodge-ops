@@ -30,6 +30,7 @@ class PaymentsRelationManager extends RelationManager
             TextColumn::make('amount_minor')->label('Amount')
                 ->money(fn (Payment $record): string => $record->currency, divideBy: 100),
             TextColumn::make('method')->formatStateUsing(InnPresentation::label(...)),
+            TextColumn::make('origin')->badge()->formatStateUsing(InnPresentation::label(...)),
             TextColumn::make('provider_reference')->label('Reference')->placeholder('—')->copyable(),
         ])->defaultSort('processed_at', 'desc');
     }
