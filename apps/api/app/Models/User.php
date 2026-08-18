@@ -37,6 +37,16 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         return $this->hasMany(Membership::class);
     }
 
+    public function documentGenerationRequests(): HasMany
+    {
+        return $this->hasMany(DocumentGenerationRequest::class, 'requested_by');
+    }
+
+    public function reportExports(): HasMany
+    {
+        return $this->hasMany(ReportExport::class, 'requested_by');
+    }
+
     public function guideResources()
     {
         return $this->hasMany(Resource::class);

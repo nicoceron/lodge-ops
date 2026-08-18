@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DocumentGenerationStatus;
+use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
 use App\Enums\PaymentStatus;
+use App\Enums\ReportExportFormat;
+use App\Enums\ReportExportKind;
+use App\Enums\ReportExportStatus;
 use App\Http\Middleware\EnsureIdempotentCommand;
 use App\Models\Membership;
 use App\Models\Payment;
@@ -136,6 +141,77 @@ class PostgresFinancialConcurrencyTest extends TestCase
         $this->assertDatabaseHas('idempotency_keys', ['key' => $key, 'status_code' => 201]);
         $this->assertSame('201:replayed:1', $this->runIdempotentProbe($reservation->id, $key));
         $this->assertDatabaseCount('idempotency_keys', 1);
+    }
+
+    public function test_concurrent_document_request_deduplication_claims_create_one_request(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, , $user, $membership] = $this->tenantEnvironment();
+        $deduplicationKey = 'postgres-document-request-race-0001';
+
+        $claim = function () use ($tenant, $user, $deduplicationKey): string {
+            $id = (string) Str::uuid();
+            DB::table('document_generation_requests')->insert([
+                'id' => $id,
+                'tenant_id' => $tenant->id,
+                'requested_by' => $user->id,
+                'kind' => DocumentKind::Itinerary->value,
+                'locale' => 'en',
+                'status' => DocumentGenerationStatus::Pending->value,
+                'source_snapshot' => '{}',
+                'source_checksum' => str_repeat('a', 64),
+                'deduplication_key' => $deduplicationKey,
+                'attempts' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return $id;
+        };
+
+        $results = $this->concurrently([$claim, $claim], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, DB::table('document_generation_requests')->where('deduplication_key', $deduplicationKey)->count());
+    }
+
+    public function test_concurrent_report_export_deduplication_claims_create_one_export(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $deduplicationKey = 'postgres-report-export-race-0001';
+
+        $claim = function () use ($tenant, $property, $user, $deduplicationKey): string {
+            $id = (string) Str::uuid();
+            DB::table('report_exports')->insert([
+                'id' => $id,
+                'tenant_id' => $tenant->id,
+                'requested_by' => $user->id,
+                'property_id' => $property->id,
+                'kind' => ReportExportKind::Arrivals->value,
+                'format' => ReportExportFormat::Csv->value,
+                'locale' => 'en',
+                'filters' => '{}',
+                'filter_checksum' => str_repeat('b', 64),
+                'deduplication_key' => $deduplicationKey,
+                'status' => ReportExportStatus::Pending->value,
+                'row_count' => 0,
+                'attempts' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return $id;
+        };
+
+        $results = $this->concurrently([$claim, $claim], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, DB::table('report_exports')->where('deduplication_key', $deduplicationKey)->count());
     }
 
     /** @return array{Tenant, Reservation, Payment, User, Membership} */

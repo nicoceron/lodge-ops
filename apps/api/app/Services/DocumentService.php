@@ -44,6 +44,7 @@ class DocumentService
         $tenantId = app(TenantContext::class)->tenant()->id;
         $subject = $reservation?->id ?? $guest?->id ?? 'unassigned';
         $path = "tenants/{$tenantId}/documents/{$subject}/".Str::uuid().'.pdf';
+        $checksum = hash('sha256', $contents);
         Storage::disk('local')->put($path, $contents);
 
         return GeneratedDocument::query()->create([
@@ -53,7 +54,17 @@ class DocumentService
             'kind' => $template->kind,
             'status' => 'generated',
             'storage_path' => $path,
-            'checksum' => hash('sha256', $contents),
+            'checksum' => $checksum,
+            'storage_disk' => 'local',
+            'file_name' => basename($path),
+            'mime_type' => 'application/pdf',
+            'size_bytes' => strlen($contents),
+            'source_checksum' => $checksum,
+            'renderer' => 'legacy-caller-supplied',
+            'renderer_version' => 'legacy',
+            'template_version' => $template->version,
+            'locale' => app()->getLocale(),
+            'generated_at' => now(),
             'metadata' => $metadata + ['template_version' => $template->version],
         ]);
     }

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ReportExports;
 
+use App\Enums\ReportExportStatus;
 use App\Filament\Resources\ReportExports\Pages\ManageReportExports;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
@@ -68,7 +69,7 @@ class ReportExportResource extends TenantResource
                 TextColumn::make('row_count')->label('Rows')->numeric()->sortable(),
                 TextColumn::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('—'),
             ])
-            ->filters([SelectFilter::make('status')->options(fn (): array => ReportExport::query()->distinct()->pluck('status', 'status')->mapWithKeys(fn (string $value): array => [$value => InnPresentation::label($value)])->all())])
+            ->filters([SelectFilter::make('status')->options(InnPresentation::enumOptions(ReportExportStatus::cases()))])
             ->recordActions([ViewAction::make()])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No report exports requested');

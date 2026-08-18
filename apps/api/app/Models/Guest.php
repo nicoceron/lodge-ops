@@ -39,6 +39,16 @@ class Guest extends TenantModel
         return $this->hasMany(Communication::class);
     }
 
+    public function documentGenerationRequests(): HasMany
+    {
+        return $this->hasMany(DocumentGenerationRequest::class);
+    }
+
+    public function generatedDocuments(): HasMany
+    {
+        return $this->hasMany(GeneratedDocument::class);
+    }
+
     public function guestPortalProfiles(): HasMany
     {
         return $this->hasMany(GuestPortalProfile::class);
