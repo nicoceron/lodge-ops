@@ -107,6 +107,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - name: Install real PDF acceptance tools
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: Install authenticated UAT browser
         run: cd apps/web && npm ci && npx playwright install --with-deps chromium
       - run: cp .env.example .env && cp apps/api/.env.example apps/api/.env
