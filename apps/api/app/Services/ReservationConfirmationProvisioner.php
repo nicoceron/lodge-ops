@@ -55,15 +55,20 @@ class ReservationConfirmationProvisioner
 
     private function paymentSchedule(Reservation $reservation): void
     {
-        $depositAmount = intdiv($reservation->total_minor + 1, 2);
+        $policy = $reservation->deposit_policy_snapshot ?? [];
+        $depositScheduleType = $policy === [] ? 'deposit_50' : 'deposit';
+        $depositAmount = match ($policy['requirement_type'] ?? 'percentage') {
+            'fixed' => min($reservation->total_minor, (int) ($policy['fixed_amount_minor'] ?? 0)),
+            default => intdiv(($reservation->total_minor * (int) ($policy['percentage_basis_points'] ?? 5000)) + 9999, 10000),
+        };
         $balanceAmount = $reservation->total_minor - $depositAmount;
-        $balanceDue = $reservation->starts_at->subDays(30);
+        $balanceDue = $reservation->starts_at->subDays((int) ($policy['balance_due_offset_days'] ?? 30));
         if ($balanceDue->isPast()) {
             $balanceDue = now();
         }
 
         foreach ([
-            'deposit_50' => [$depositAmount, now()],
+            $depositScheduleType => [$depositAmount, now()->addDays((int) ($policy['deposit_due_offset_days'] ?? 0))],
             'balance' => [$balanceAmount, $balanceDue],
         ] as $type => [$amount, $dueAt]) {
             $deposit = $reservation->deposits()->firstOrCreate(

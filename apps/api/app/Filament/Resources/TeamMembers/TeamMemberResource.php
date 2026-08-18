@@ -7,7 +7,7 @@ use App\Filament\Resources\TeamMembers\Pages\CreateTeamMember;
 use App\Filament\Resources\TeamMembers\Pages\EditTeamMember;
 use App\Filament\Resources\TeamMembers\Pages\ListTeamMembers;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Membership;
 use BackedEnum;
 use Filament\Actions\EditAction;
@@ -62,12 +62,12 @@ class TeamMemberResource extends TenantResource
                         ->dehydrated(fn (string $operation): bool => $operation === 'create')
                         ->maxLength(255),
                     Select::make('role')
-                        ->options(LodgeOpsPresentation::enumOptions(MembershipRole::cases()))
+                        ->options(InnPresentation::enumOptions(MembershipRole::cases()))
                         ->native(false)
                         ->required(),
                     Select::make('property_id')
                         ->label('Property scope')
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->placeholder('All properties')
                         ->searchable()
                         ->preload(),

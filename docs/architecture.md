@@ -2,7 +2,7 @@
 
 ## Decision summary
 
-LodgeOps is a modular monolith. Laravel is the sole owner of authentication, domain rules, authorization, transactions, audit history, pricing, availability, persistence, and the secure guest workflow. Filament is the tenant-aware staff product UI over that application layer. Next.js is a separate public marketing site only.
+Inn is a modular monolith. Laravel is the sole owner of authentication, domain rules, authorization, transactions, audit history, pricing, availability, persistence, and the secure guest workflow. Filament is the tenant-aware staff product UI over that application layer. Next.js is a separate public marketing site only.
 
 Filament resources handle record-centric workflows; Filament custom Livewire pages handle the master calendar, live operations board, and finance dashboard. Shared calendar, dashboard, operations, and finance projections live in application services so Filament and JSON controllers never invoke one another. The guest stay center uses server-rendered Laravel views and the same hardened guest-portal actions as the JSON API. The Next.js site has no login implementation, protected routes, tenant selection, API proxy, Sanctum state, or guest magic-link workflow.
 

@@ -1,6 +1,6 @@
-# LodgeOps public website
+# Inn public website
 
-This Next.js application is deliberately public-only. It contains the LodgeOps homepage, feature, pricing, and security content.
+This Next.js application is deliberately public-only. It contains the Inn homepage, feature, pricing, and security content.
 
 It must not contain:
 

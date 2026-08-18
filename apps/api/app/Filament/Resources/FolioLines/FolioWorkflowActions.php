@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\FolioLines;
 
 use App\Enums\FolioLineType;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\FolioLine;
 use App\Models\Reservation;
 use App\Services\FolioService;
@@ -24,7 +24,7 @@ final class FolioWorkflowActions
             ->visible(FolioLineResource::canAppend(...))
             ->schema([
                 Select::make('reservation_id')
-                    ->options(LodgeOpsPresentation::reservationOptions(...))
+                    ->options(InnPresentation::reservationOptions(...))
                     ->searchable()
                     ->required(),
                 Select::make('type')

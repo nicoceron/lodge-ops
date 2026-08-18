@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Security", description: "How LodgeOps isolates tenants, protects guest access, and keeps authenticated workflows in Laravel and Filament." };
+export const metadata: Metadata = { title: "Security", description: "How Inn isolates tenants, protects guest access, and keeps authenticated workflows in Laravel and Filament." };
 
 export default function SecurityPage() {
   return <>

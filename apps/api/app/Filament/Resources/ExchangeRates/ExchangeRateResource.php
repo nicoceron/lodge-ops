@@ -4,7 +4,7 @@ namespace App\Filament\Resources\ExchangeRates;
 
 use App\Filament\Resources\ExchangeRates\Pages\ManageExchangeRates;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\ExchangeRate;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
@@ -46,7 +46,7 @@ class ExchangeRateResource extends TenantResource
                 Select::make('property_id')
                     ->label('Rate scope')
                     ->placeholder('Tenant-wide default')
-                    ->options(LodgeOpsPresentation::propertyOptions(...))
+                    ->options(InnPresentation::propertyOptions(...))
                     ->default(fn (): ?string => app(TenantContext::class)->membership()?->property_id)
                     ->disabled(fn (): bool => app(TenantContext::class)->membership()?->property_id !== null)
                     ->dehydrated()
@@ -69,7 +69,7 @@ class ExchangeRateResource extends TenantResource
                 TextEntry::make('quote_currency')->label('Quote'),
                 TextEntry::make('rate')->numeric(decimalPlaces: 10)->weight('bold'),
                 TextEntry::make('source'),
-                TextEntry::make('effective_at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                TextEntry::make('effective_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
             ]),
         ]);
     }
@@ -78,7 +78,7 @@ class ExchangeRateResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('effective_at')->label('Effective')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('effective_at')->label('Effective')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('property.name')->label('Scope')->placeholder('Tenant-wide'),
                 TextColumn::make('base_currency')->label('Base')->badge(),
                 TextColumn::make('quote_currency')->label('Quote')->badge(),

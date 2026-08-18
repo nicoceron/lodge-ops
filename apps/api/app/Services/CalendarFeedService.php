@@ -58,7 +58,7 @@ class CalendarFeedService
         $lines = [
             'BEGIN:VCALENDAR',
             'VERSION:2.0',
-            'PRODID:-//LodgeOps//Channel Availability//EN',
+            'PRODID:-//Inn//Channel Availability//EN',
             'CALSCALE:GREGORIAN',
             'METHOD:PUBLISH',
             'X-WR-CALNAME:'.$this->escape($feed->name),
@@ -66,7 +66,7 @@ class CalendarFeedService
 
         foreach ($allocations as $allocation) {
             $lines = [...$lines, ...$this->event(
-                "allocation-{$allocation->id}@lodgeops",
+                "allocation-{$allocation->id}@inn",
                 $allocation->starts_at,
                 $allocation->ends_at,
                 'Unavailable · '.$allocation->reservation->confirmation_number,
@@ -74,7 +74,7 @@ class CalendarFeedService
         }
         foreach ($blocks as $block) {
             $lines = [...$lines, ...$this->event(
-                "block-{$block->id}@lodgeops",
+                "block-{$block->id}@inn",
                 $block->starts_at,
                 $block->ends_at,
                 'Unavailable · '.$block->reason,

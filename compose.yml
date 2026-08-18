@@ -1,4 +1,4 @@
-name: lodge-ops
+name: inn
 
 x-api-common: &api-common
   build:
@@ -7,15 +7,15 @@ x-api-common: &api-common
   working_dir: /app
   environment:
     APP_ENV: local
-    APP_NAME: LodgeOps
+    APP_NAME: Inn
     APP_DEBUG: "true"
     APP_URL: http://localhost:${API_PORT:-8000}
     DB_CONNECTION: pgsql
     DB_HOST: postgres
     DB_PORT: 5432
-    DB_DATABASE: ${POSTGRES_DB:-lodge_ops}
-    DB_USERNAME: ${POSTGRES_USER:-lodge_ops}
-    DB_PASSWORD: ${POSTGRES_PASSWORD:-lodge_ops_local}
+    DB_DATABASE: ${POSTGRES_DB:-inn}
+    DB_USERNAME: ${POSTGRES_USER:-inn}
+    DB_PASSWORD: ${POSTGRES_PASSWORD:-inn_local}
     CACHE_STORE: redis
     QUEUE_CONNECTION: redis
     SESSION_DRIVER: redis
@@ -37,11 +37,11 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-lodge_ops}
-      POSTGRES_USER: ${POSTGRES_USER:-lodge_ops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lodge_ops_local}
+      POSTGRES_DB: ${POSTGRES_DB:-inn}
+      POSTGRES_USER: ${POSTGRES_USER:-inn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-inn_local}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lodge_ops} -d ${POSTGRES_DB:-lodge_ops}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inn} -d ${POSTGRES_DB:-inn}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -76,7 +76,7 @@ services:
 
   api:
     <<: *api-common
-    command: sh -lc 'rm -rf public/build && mkdir -p public/build && cp -R /opt/lodgeops-public-build/. public/build/ && exec php artisan serve --host=0.0.0.0 --port=8000 --no-reload'
+    command: sh -lc 'rm -rf public/build && mkdir -p public/build && cp -R /opt/inn-public-build/. public/build/ && exec php artisan serve --host=0.0.0.0 --port=8000 --no-reload'
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

@@ -118,7 +118,12 @@ class GuestPortalReservationResource extends JsonResource
                 'balance_minor' => $balanceMinor,
                 'evidence' => $evidence === null ? null : [
                     'file_name' => $evidence->file_name,
-                    'status' => $evidence->status,
+                    'status' => $evidence->status->value,
+                    'amount_minor' => $evidence->amount_minor,
+                    'currency' => $evidence->currency,
+                    'transfer_reference' => $evidence->transfer_reference,
+                    'reviewer_note' => $evidence->reviewer_note,
+                    'requested_information_note' => $evidence->requested_information_note,
                     'submitted_at' => $evidence->submitted_at->toIso8601String(),
                 ],
             ],

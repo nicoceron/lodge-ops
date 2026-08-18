@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Resources\Schemas;
 
 use App\Enums\MembershipRole;
 use App\Enums\ResourceKind;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Membership;
 use App\Models\ResourceCategory;
 use Filament\Forms\Components\Select;
@@ -25,7 +25,7 @@ class ResourceForm
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->live()

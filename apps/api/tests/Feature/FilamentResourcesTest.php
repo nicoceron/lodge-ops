@@ -35,12 +35,15 @@ use App\Filament\Resources\RetailSales\RetailSaleResource;
 use App\Filament\Resources\ServiceOccurrences\ServiceOccurrenceResource;
 use App\Filament\Resources\StockLocations\StockLocationResource;
 use App\Filament\Resources\TeamMembers\TeamMemberResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Guest;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\Proposal;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
+use App\Models\Resource;
 use App\Models\StockLocation;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
@@ -138,6 +141,22 @@ class FilamentResourcesTest extends TestCase
         $this->get(ProposalResource::getUrl('view', ['tenant' => $tenant, 'record' => $proposal]))
             ->assertOk()
             ->assertSee('Regression proposal');
+    }
+
+    public function test_reservation_view_renders_the_operational_hub_under_strict_authorization(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(authenticate: false);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'confirmation_number' => 'RSV-HUB-VIEW',
+        ]);
+        $this->actingAs($user);
+
+        $this->get(ReservationResource::getUrl('view', ['tenant' => $tenant, 'record' => $reservation]))
+            ->assertOk()
+            ->assertSee('RSV-HUB-VIEW')
+            ->assertSee('Communications')
+            ->assertSee('Documents');
     }
 
     public function test_guest_stay_history_includes_primary_and_companion_reservations(): void
@@ -242,10 +261,14 @@ class FilamentResourcesTest extends TestCase
         ]);
     }
 
-    public function test_reservation_form_calculates_integer_total_and_forces_draft_workflow(): void
+    public function test_reservation_composer_uses_server_pricing_and_creates_a_hold(): void
     {
         [$tenant, $property, $user, $membership] = $this->tenantEnvironment(authenticate: false);
         $guest = Guest::factory()->create();
+        $category = $this->category($property, 'room');
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 3]);
+        $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Filament rate', 'currency' => 'USD']);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
         $this->actingAs($user);
         Filament::setCurrentPanel(filament()->getPanel('admin'));
         Filament::setTenant($tenant, isQuiet: true);
@@ -255,25 +278,24 @@ class FilamentResourcesTest extends TestCase
             ->fillForm([
                 'property_id' => $property->id,
                 'primary_guest_id' => $guest->id,
-                'confirmation_number' => 'RSV-FILAMENT-001',
-                'starts_at' => now()->addDay()->format('Y-m-d H:i:s'),
-                'ends_at' => now()->addDays(3)->format('Y-m-d H:i:s'),
+                'resource_category_id' => $category->id,
+                'resource_id' => $room->id,
+                'rate_plan_id' => $plan->id,
+                'starts_at' => now()->addMonth()->format('Y-m-d H:i:s'),
+                'ends_at' => now()->addMonth()->addDays(2)->format('Y-m-d H:i:s'),
                 'adults' => 2,
                 'children' => 1,
-                'currency' => 'usd',
-                'subtotal_minor' => 10000,
-                'tax_minor' => 1900,
             ])
             ->call('create')
             ->assertHasNoFormErrors();
 
         $this->assertDatabaseHas('reservations', [
             'tenant_id' => $tenant->id,
-            'confirmation_number' => 'RSV-FILAMENT-001',
-            'status' => 'draft',
+            'status' => 'hold',
             'currency' => 'USD',
-            'total_minor' => 11900,
+            'total_minor' => 20000,
         ]);
+        $this->assertNotNull(Reservation::query()->latest()->value('booking_quote_id'));
     }
 
     public function test_property_scoped_membership_cannot_create_a_reservation_for_another_property(): void
@@ -281,6 +303,10 @@ class FilamentResourcesTest extends TestCase
         [$tenant, , $user, $membership] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
         $otherProperty = Property::factory()->create();
         $guest = Guest::factory()->create();
+        $category = $this->category($otherProperty, 'room');
+        $room = Resource::factory()->create(['property_id' => $otherProperty->id, 'category_id' => $category->id]);
+        $plan = RatePlan::query()->create(['property_id' => $otherProperty->id, 'name' => 'Other rate', 'currency' => 'USD']);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
         $this->actingAs($user);
         Filament::setCurrentPanel(filament()->getPanel('admin'));
         Filament::setTenant($tenant, isQuiet: true);
@@ -290,19 +316,18 @@ class FilamentResourcesTest extends TestCase
             ->fillForm([
                 'property_id' => $otherProperty->id,
                 'primary_guest_id' => $guest->id,
-                'confirmation_number' => 'RSV-CROSS-PROPERTY',
+                'resource_category_id' => $category->id,
+                'resource_id' => $room->id,
+                'rate_plan_id' => $plan->id,
                 'starts_at' => now()->addDay()->format('Y-m-d H:i:s'),
                 'ends_at' => now()->addDays(3)->format('Y-m-d H:i:s'),
                 'adults' => 1,
                 'children' => 0,
-                'currency' => 'USD',
-                'subtotal_minor' => 10000,
-                'tax_minor' => 0,
             ])
             ->call('create')
             ->assertHasFormErrors(['property_id']);
 
-        $this->assertDatabaseMissing('reservations', ['confirmation_number' => 'RSV-CROSS-PROPERTY']);
+        $this->assertDatabaseMissing('reservations', ['property_id' => $otherProperty->id]);
     }
 
     public function test_automation_rule_form_exposes_the_runtime_milestone_triggers(): void
@@ -326,8 +351,8 @@ class FilamentResourcesTest extends TestCase
         $location = StockLocation::query()->create(['property_id' => $property->id, 'name' => 'Own stock', 'code' => 'OWN']);
         StockLocation::query()->create(['property_id' => $otherProperty->id, 'name' => 'Other stock', 'code' => 'OTHER']);
 
-        $this->assertSame([$reservation->id], array_keys(LodgeOpsPresentation::reservationOptions()));
-        $this->assertSame([$location->id], array_keys(LodgeOpsPresentation::stockLocationOptions()));
+        $this->assertSame([$reservation->id], array_keys(InnPresentation::reservationOptions()));
+        $this->assertSame([$location->id], array_keys(InnPresentation::stockLocationOptions()));
     }
 
     /** @return array<class-string> */

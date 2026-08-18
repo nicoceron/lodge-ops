@@ -4,7 +4,7 @@ namespace App\Filament\Resources\CatalogItems;
 
 use App\Filament\Resources\CatalogItems\Pages\ManageCatalogItems;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CatalogItem;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
@@ -70,7 +70,7 @@ class CatalogItemResource extends TenantResource
             Section::make('Catalog item')->columns(2)->schema([
                 TextEntry::make('sku')->label('SKU')->copyable(),
                 TextEntry::make('name'),
-                TextEntry::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('price_minor')->label('Selling price')->money(fn (CatalogItem $record): string => $record->currency, divideBy: 100),
                 TextEntry::make('cost_minor')->label('Unit cost')->money(fn (CatalogItem $record): string => $record->currency, divideBy: 100)->visible(static::canSeeCosts(...)),
                 IconEntry::make('track_stock')->boolean(),
@@ -85,7 +85,7 @@ class CatalogItemResource extends TenantResource
             ->columns([
                 TextColumn::make('sku')->label('SKU')->searchable()->copyable(),
                 TextColumn::make('name')->searchable()->sortable()->weight('medium'),
-                TextColumn::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('price_minor')->label('Price')->money(fn (CatalogItem $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('cost_minor')->label('Cost')->money(fn (CatalogItem $record): string => $record->currency, divideBy: 100)->visible(static::canSeeCosts(...))->sortable(),
                 IconColumn::make('track_stock')->label('Stock')->boolean(),

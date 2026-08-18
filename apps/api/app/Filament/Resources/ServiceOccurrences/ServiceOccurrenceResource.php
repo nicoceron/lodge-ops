@@ -4,7 +4,7 @@ namespace App\Filament\Resources\ServiceOccurrences;
 
 use App\Filament\Resources\ServiceOccurrences\Pages\ManageServiceOccurrences;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\ServiceOccurrence;
@@ -67,8 +67,8 @@ class ServiceOccurrenceResource extends TenantResource
             ->columns([
                 TextColumn::make('program.name')->label('Activity')->searchable()->weight('medium'),
                 TextColumn::make('property.name')->label('Property'),
-                TextColumn::make('starts_at')->label('Starts')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('ends_at')->label('Ends')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('starts_at')->label('Starts')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('ends_at')->label('Ends')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('capacity')->numeric(),
                 TextColumn::make('meeting_point')->placeholder('—'),
                 IconColumn::make('is_cancelled')->label('Cancelled')->boolean(),

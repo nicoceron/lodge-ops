@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Reservations\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -22,9 +22,9 @@ class StatusHistoryRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table->columns([
-            TextColumn::make('changed_at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-            TextColumn::make('from_status')->badge()->placeholder('Created')->formatStateUsing(LodgeOpsPresentation::label(...)),
-            TextColumn::make('to_status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+            TextColumn::make('changed_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+            TextColumn::make('from_status')->badge()->placeholder('Created')->formatStateUsing(InnPresentation::label(...)),
+            TextColumn::make('to_status')->badge()->formatStateUsing(InnPresentation::label(...)),
             TextColumn::make('actor.name')->placeholder('System'),
         ])->defaultSort('changed_at', 'desc');
     }

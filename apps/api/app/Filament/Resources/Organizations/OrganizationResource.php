@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Organizations;
 
 use App\Filament\Resources\Organizations\Pages\ManageOrganizations;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Organization;
 use BackedEnum;
 use Filament\Actions\EditAction;
@@ -62,7 +62,7 @@ class OrganizationResource extends TenantResource
         return $schema->components([
             Section::make('Organization')->columns(2)->schema([
                 TextEntry::make('name'),
-                TextEntry::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('email')->placeholder('—'),
                 TextEntry::make('phone')->placeholder('—'),
                 TextEntry::make('commission_basis_points')->label('Commission')->formatStateUsing(fn (int $state): string => number_format($state / 100, 2).'%'),
@@ -77,7 +77,7 @@ class OrganizationResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('name')->searchable()->sortable()->weight('medium'),
-                TextColumn::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->sortable(),
+                TextColumn::make('type')->badge()->formatStateUsing(InnPresentation::label(...))->sortable(),
                 TextColumn::make('email')->searchable()->placeholder('—'),
                 TextColumn::make('commission_basis_points')->label('Commission')->formatStateUsing(fn (int $state): string => number_format($state / 100, 2).'%')->sortable(),
                 IconColumn::make('is_active')->label('Active')->boolean(),

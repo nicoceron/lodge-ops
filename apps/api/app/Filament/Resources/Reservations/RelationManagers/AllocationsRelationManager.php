@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Reservations\RelationManagers;
 
 use App\Enums\AllocationStatus;
 use App\Enums\ReservationStatus;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Allocation;
 use App\Models\Reservation;
 use App\Models\Resource;
@@ -76,7 +76,7 @@ class AllocationsRelationManager extends RelationManager
             DateTimePicker::make('ends_at')->default(fn () => $this->ownerReservation()->ends_at)->required()->seconds(false)->after('starts_at'),
             TextInput::make('quantity')->integer()->minValue(1)->default(1)->required(),
             Select::make('status')
-                ->options(LodgeOpsPresentation::enumOptions(AllocationStatus::cases()))
+                ->options(InnPresentation::enumOptions(AllocationStatus::cases()))
                 ->disabled(fn (): bool => $this->ownerReservation()->status === ReservationStatus::Confirmed)
                 ->dehydrated(),
         ]);
@@ -94,10 +94,10 @@ class AllocationsRelationManager extends RelationManager
                     ->placeholder('—'),
                 TextColumn::make('resource.name')->label('Assigned instance')->placeholder('Pending assignment')->searchable(),
                 TextColumn::make('serviceOccurrence.program.name')->label('Activity')->placeholder('—'),
-                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('quantity')->numeric(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...)),
             ])
             ->headerActions([
                 Action::make('suggestResource')

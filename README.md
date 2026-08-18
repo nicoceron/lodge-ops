@@ -1,6 +1,6 @@
-# LodgeOps
+# Inn
 
-LodgeOps is a multi-tenant operating system for lodges and outfitters. It coordinates sales, reservations, accommodations, guides, shared resources, guest preparation, kitchen operations, payments, communications, tasks, and reporting in one system.
+Inn is a multi-tenant operating system for lodges and outfitters. It coordinates sales, reservations, accommodations, guides, shared resources, guest preparation, kitchen operations, payments, communications, tasks, and reporting in one system.
 
 The product intentionally improves on the legacy LodgeRunner workflow instead of reproducing its duplicate room/group/guide booking variants:
 
@@ -47,6 +47,12 @@ Run the complete formatter, contract, HTTP, Filament, domain, public build, and 
 make verify
 ```
 
+With the seeded Compose application running, execute the authenticated client-UAT gate separately:
+
+```bash
+make test-client
+```
+
 If ports 5432 or 6379 are already occupied, Compose supports explicit alternatives:
 
 ```bash
@@ -63,6 +69,8 @@ The backend suite is also exercised against PostgreSQL in CI; SQLite remains a f
 - A Laravel-rendered mobile-first guest reservation center with itinerary, pre-arrival data, consent, waivers, payment evidence, final folio, and post-stay survey flows.
 - Native Filament authentication with verified-email enforcement, password recovery, TOTP/recovery-code MFA, explicit tenant selection, role-separated permissions, database-enforced tenant relationships, and Sanctum bearer tokens for explicit API integrations.
 - Transaction-safe reservation confirmation, category and instance capacity checks, half-open intervals, holds/status transitions, actual check-in/check-out facts, housekeeping handoff, reasoned cancellation/no-show closure, optimistic revisions, minor-unit money, net/tax/gross folios, close/reopen controls, and retry-safe commands.
+- Availability-first staff booking with deterministic server-priced quotes, immutable rate/tax/deposit/cancellation snapshots, inline or repeat guests, and atomic category or exact-room holds.
+- A controlled manual bank-transfer loop from guest evidence through authorized staff review to idempotent payment, folio, and deposit reconciliation.
 - Tenant-aware Filament resources and custom Livewire pages for day-to-day operations, commercial workflows, finance, inventory, communications, documents, integrations, and exception work.
 - After-commit outbox delivery with tenant-context restoration, retries, observable failures, and idempotent automation actions for tasks, communications, and deposit reminders.
 - A checked-in OpenAPI contract, deterministic fixtures, Docker runtime, and CI gates spanning Laravel, Filament, tenant isolation, the complete guest workflow, and public-site browser journeys.

@@ -78,7 +78,7 @@
                                         {{ $arrival['party_size'] }} guests · {{ $arrival['nights'] }} nights
                                     </div>
                                 </div>
-                                <x-filament::badge :color="\App\Filament\Support\LodgeOpsPresentation::statusColor($arrival['readiness'])">
+                                <x-filament::badge :color="\App\Filament\Support\InnPresentation::statusColor($arrival['readiness'])">
                                     {{ str($arrival['readiness'])->headline() }}
                                 </x-filament::badge>
                             </div>
@@ -106,7 +106,7 @@
                             <a href="{{ $urls['tasks'] }}" wire:navigate class="block rounded-xl border border-gray-200 p-3 transition hover:border-primary-500 dark:border-white/10">
                                 <div class="flex items-start justify-between gap-3">
                                     <div class="font-semibold">{{ $task['title'] }}</div>
-                                    <x-filament::badge :color="\App\Filament\Support\LodgeOpsPresentation::priorityColor($task['priority'])">
+                                    <x-filament::badge :color="\App\Filament\Support\InnPresentation::priorityColor($task['priority'])">
                                         {{ str($task['priority'])->headline() }}
                                     </x-filament::badge>
                                 </div>

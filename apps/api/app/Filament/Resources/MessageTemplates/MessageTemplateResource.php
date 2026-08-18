@@ -8,7 +8,7 @@ use App\Filament\Resources\MessageTemplates\Pages\ListMessageTemplates;
 use App\Filament\Resources\MessageTemplates\Pages\ViewMessageTemplate;
 use App\Filament\Resources\MessageTemplates\RelationManagers\VersionsRelationManager;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\MessageTemplate;
 use BackedEnum;
 use Filament\Actions\EditAction;
@@ -65,7 +65,7 @@ class MessageTemplateResource extends TenantResource
             Section::make('Template')->columns(2)->schema([
                 TextEntry::make('name')->weight('bold'),
                 TextEntry::make('key')->copyable(),
-                TextEntry::make('channel')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('channel')->badge()->formatStateUsing(InnPresentation::label(...)),
                 IconEntry::make('is_active')->label('Active')->boolean(),
                 TextEntry::make('versions_count')->label('Versions')->state(fn (MessageTemplate $record): int => $record->versions()->count()),
                 TextEntry::make('published_versions_count')->label('Published')->state(fn (MessageTemplate $record): int => $record->versions()->whereNotNull('published_at')->count()),
@@ -79,7 +79,7 @@ class MessageTemplateResource extends TenantResource
             ->columns([
                 TextColumn::make('name')->searchable()->weight('medium'),
                 TextColumn::make('key')->searchable()->copyable(),
-                TextColumn::make('channel')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('channel')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('versions_count')->counts('versions')->label('Versions')->sortable(),
                 IconColumn::make('is_active')->label('Active')->boolean(),
                 TextColumn::make('updated_at')->label('Updated')->since()->sortable(),

@@ -1,8 +1,8 @@
-# Mews vs LodgeOps — up-to-date technology-by-feature audit
+# Mews vs Inn — up-to-date technology-by-feature audit
 
 Audit date: 2026-08-13.
 
-This companion audit records the public technology evidence for each Mews feature surface, then compares it with the implementation actually present in LodgeOps.
+This companion audit records the public technology evidence for each Mews feature surface, then compares it with the implementation actually present in Inn.
 
 ## Evidence rules
 
@@ -49,7 +49,7 @@ The platform page does not publish the core PMS repositories, per-feature servic
 
 ### PMS, reservations, front desk, and operations
 
-| Mews feature | Mews technology evidence | LodgeOps comparison |
+| Mews feature | Mews technology evidence | Inn comparison |
 |---|---|---|
 | PMS/Operations core | React/TypeScript web, C#/.NET backend, Azure serverless SaaS; internal service topology unknown | Laravel 13/PHP 8.3, Filament 5; internal analogue only |
 | Reservations/service orders | Connector HTTPS POST, JSON bodies, OpenAPI/Swagger, UTC serialization, cursor pagination | Laravel models/controllers/services; no Mews Connector client |
@@ -68,7 +68,7 @@ The platform page does not publish the core PMS repositories, per-feature servic
 
 ### Booking Engine, guest journey, and self-service
 
-| Mews feature | Mews technology evidence | LodgeOps comparison |
+| Mews feature | Mews technology evidence | Inn comparison |
 |---|---|---|
 | Booking Engine API | HTTPS POST at api/distributor/v1, registered Client, JSON, demo/production environments | No public booking engine/distributor client |
 | Booking Engine Widget | CDN JavaScript loader at api.mews.com/distributor/distributor.min.js; global Mews.Distributor; async browser initialization | Next.js/React public site; no widget |
@@ -88,7 +88,7 @@ The platform page does not publish the core PMS repositories, per-feature servic
 
 ### Payments, finance, and revenue
 
-| Mews feature | Mews technology evidence | LodgeOps comparison |
+| Mews feature | Mews technology evidence | Inn comparison |
 |---|---|---|
 | Payments Checkout | JavaScript SDK at cdn.mews.com/payments/checkout-embed.js; Mews.PaymentCheckout; responsive iframe; load/destroy/callbacks | No checkout SDK/processor adapter |
 | Checkout flows | Connector payment/payment-method requests or direct enterprise/amount/currency context; card capture, 3DS, posting to Mews | Deposits/manual payments only |
@@ -105,7 +105,7 @@ The platform page does not publish the core PMS repositories, per-feature servic
 
 ### APIs, integrations, POS, and distribution
 
-| Mews feature | Mews technology evidence | LodgeOps comparison |
+| Mews feature | Mews technology evidence | Inn comparison |
 |---|---|---|
 | Connector transport/auth | HTTPS POST, JSON, ClientToken + AccessToken + Client, UTC, demo/production, OpenAPI/Swagger | Laravel internal REST/Sanctum; no external client |
 | Connector resilience | Cursor/count limits, HTTP 429, Retry-After, exponential backoff, caching, circuit breakers, graceful degradation | Internal queues/idempotency; no Mews retry client |
@@ -129,9 +129,9 @@ The platform page does not publish the core PMS repositories, per-feature servic
 | [n8n Mews node](https://github.com/Velocity-BPA/n8n-nodes-mews) | TypeScript/Node/n8n, POST JSON, Connector auth/cursor patterns | Unofficial client only |
 | [Mews MCP](https://github.com/code-rabi/mews-mcp) | TypeScript/Node, npm/npx MCP server, Connector credentials | Unofficial partial client only |
 
-## LodgeOps technology baseline
+## Inn technology baseline
 
-| LodgeOps surface | Verified local technology | Gap |
+| Inn surface | Verified local technology | Gap |
 |---|---|---|
 | Staff/PMS app | PHP 8.3, Laravel 13, Filament 5, Sanctum, Eloquent, queues/scheduler | No Mews Azure/C#/.NET/React compatibility or token contract |
 | Public web | Next.js 16, React 19.2, TypeScript, Playwright | No Distributor widget/booking engine/CSP/PCI Proxy/GA4-GTM contract |

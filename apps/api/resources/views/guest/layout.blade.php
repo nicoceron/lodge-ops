@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow,noarchive">
-    <title>@yield('title', 'Guest stay') · LodgeOps</title>
+    <title>@yield('title', 'Guest stay') · Inn</title>
     <style>
         :root { color-scheme: light; --ink:#18211b; --muted:#647067; --line:#dce3dd; --brand:#246b47; --brand-dark:#174b32; --paper:#fff; --wash:#f3f6f3; --danger:#a32929; }
         * { box-sizing:border-box; }
@@ -52,7 +52,7 @@
 <header>
     <div class="shell">
         <div class="topbar">
-            <a class="brand" href="{{ route('guest.portal.home') }}">LodgeOps · Guest stay</a>
+            <a class="brand" href="{{ route('guest.portal.home') }}">Inn · Guest stay</a>
             <nav aria-label="Guest portal">
                 <a href="{{ route('guest.portal.home') }}" @if(request()->routeIs('guest.portal.home')) aria-current="page" @endif>Stay</a>
                 <a href="{{ route('guest.portal.pre-arrival') }}" @if(request()->routeIs('guest.portal.pre-arrival*')) aria-current="page" @endif>Pre-arrival</a>

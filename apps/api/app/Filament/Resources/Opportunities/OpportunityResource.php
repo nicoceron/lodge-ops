@@ -8,7 +8,7 @@ use App\Filament\Resources\Opportunities\Pages\ListOpportunities;
 use App\Filament\Resources\Opportunities\Pages\ViewOpportunity;
 use App\Filament\Resources\Opportunities\RelationManagers\ActivitiesRelationManager;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Guest;
 use App\Models\Opportunity;
 use App\Models\Proposal;
@@ -54,7 +54,7 @@ class OpportunityResource extends TenantResource
         return $schema->components([
             Section::make('Opportunity')->columns(2)->schema([
                 TextInput::make('title')->required()->maxLength(200)->columnSpanFull(),
-                Select::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions(...))->required()->searchable()->preload(),
+                Select::make('property_id')->label('Property')->options(InnPresentation::propertyOptions(...))->required()->searchable()->preload(),
                 Select::make('owner_id')->label('Owner')->relationship('owner', 'name')->searchable()->preload()->default(auth()->id()),
                 Select::make('guest_id')->label('Guest')->relationship('guest', 'email')->getOptionLabelFromRecordUsing(fn (Guest $record): string => trim("{$record->first_name} {$record->last_name}").($record->email ? " · {$record->email}" : ''))->searchable(['first_name', 'last_name', 'email'])->preload(),
                 Select::make('organization_id')->label('Organization')->relationship('organization', 'name')->searchable()->preload(),
@@ -73,7 +73,7 @@ class OpportunityResource extends TenantResource
         return $schema->components([
             Section::make('Pipeline summary')->columns(2)->schema([
                 TextEntry::make('title')->columnSpanFull()->weight('bold'),
-                TextEntry::make('stage')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => self::stageColor($state)),
+                TextEntry::make('stage')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => self::stageColor($state)),
                 TextEntry::make('value_minor')->label('Estimated value')->money(fn (Opportunity $record): string => $record->currency, divideBy: 100),
                 TextEntry::make('property.name')->label('Property'),
                 TextEntry::make('owner.name')->label('Owner')->placeholder('Unassigned'),
@@ -92,7 +92,7 @@ class OpportunityResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('title')->searchable()->weight('medium')->limit(45),
-                TextColumn::make('stage')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => self::stageColor($state))->sortable(),
+                TextColumn::make('stage')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => self::stageColor($state))->sortable(),
                 TextColumn::make('value_minor')->label('Value')->money(fn (Opportunity $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('organization.name')->label('Organization')->searchable()->placeholder('—'),
                 TextColumn::make('guest.email')->label('Guest')->searchable()->placeholder('—'),
@@ -101,7 +101,7 @@ class OpportunityResource extends TenantResource
             ])
             ->filters([
                 SelectFilter::make('stage')->options(['inquiry' => 'Inquiry', 'qualified' => 'Qualified', 'proposal' => 'Proposal', 'won' => 'Won', 'lost' => 'Lost'])->multiple(),
-                SelectFilter::make('property_id')->label('Property')->options(LodgeOpsPresentation::propertyOptions()),
+                SelectFilter::make('property_id')->label('Property')->options(InnPresentation::propertyOptions()),
                 SelectFilter::make('owner_id')->label('Owner')->relationship('owner', 'name'),
             ])
             ->recordActions([
@@ -149,7 +149,7 @@ class OpportunityResource extends TenantResource
     private static function transition(Opportunity $record, string $stage, ?string $reason = null): void
     {
         app(OpportunityService::class)->transition($record, $stage, $reason);
-        Notification::make()->success()->title('Opportunity moved to '.LodgeOpsPresentation::label($stage))->send();
+        Notification::make()->success()->title('Opportunity moved to '.InnPresentation::label($stage))->send();
     }
 
     private static function stageColor(?string $stage): string

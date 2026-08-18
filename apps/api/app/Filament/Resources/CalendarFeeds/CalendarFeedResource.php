@@ -4,7 +4,7 @@ namespace App\Filament\Resources\CalendarFeeds;
 
 use App\Filament\Resources\CalendarFeeds\Pages\ManageCalendarFeeds;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CalendarFeed;
 use App\Models\Resource;
 use App\Services\CalendarFeedService;
@@ -47,7 +47,7 @@ class CalendarFeedResource extends TenantResource
                 ->columns(2)
                 ->schema([
                     TextInput::make('name')->placeholder('Airbnb · River Cabin')->required()->maxLength(160),
-                    Select::make('property_id')->options(LodgeOpsPresentation::propertyOptions(...))->live()->required(),
+                    Select::make('property_id')->options(InnPresentation::propertyOptions(...))->live()->required(),
                     Select::make('resource_id')
                         ->label('Exported resource')
                         ->options(fn (Get $get): array => Resource::query()
@@ -75,7 +75,7 @@ class CalendarFeedResource extends TenantResource
                     ->copyable()
                     ->limit(42),
                 IconColumn::make('is_active')->boolean(),
-                TextColumn::make('last_accessed_at')->label('Last pulled')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never'),
+                TextColumn::make('last_accessed_at')->label('Last pulled')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never'),
             ])
             ->recordActions([
                 EditAction::make(),

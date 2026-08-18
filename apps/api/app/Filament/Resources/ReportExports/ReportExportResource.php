@@ -4,7 +4,7 @@ namespace App\Filament\Resources\ReportExports;
 
 use App\Filament\Resources\ReportExports\Pages\ManageReportExports;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\ReportExport;
 use BackedEnum;
 use Filament\Actions\ViewAction;
@@ -45,12 +45,12 @@ class ReportExportResource extends TenantResource
     {
         return $schema->components([
             Section::make('Export job')->columns(2)->schema([
-                TextEntry::make('kind')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
-                TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                TextEntry::make('kind')->badge()->formatStateUsing(InnPresentation::label(...)),
+                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextEntry::make('requestedBy.name')->label('Requested by'),
                 TextEntry::make('row_count')->label('Rows')->numeric(),
-                TextEntry::make('created_at')->label('Requested')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
-                TextEntry::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Pending'),
+                TextEntry::make('created_at')->label('Requested')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
+                TextEntry::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Pending'),
                 TextEntry::make('storage_path')->label('Private storage path')->copyable()->placeholder('Not ready')->columnSpanFull(),
                 KeyValueEntry::make('filters')->columnSpanFull()->placeholder('No filters'),
             ]),
@@ -61,14 +61,14 @@ class ReportExportResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('created_at')->label('Requested')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('kind')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->searchable(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                TextColumn::make('created_at')->label('Requested')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('kind')->badge()->formatStateUsing(InnPresentation::label(...))->searchable(),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextColumn::make('requestedBy.name')->label('Requested by')->searchable(),
                 TextColumn::make('row_count')->label('Rows')->numeric()->sortable(),
-                TextColumn::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('—'),
+                TextColumn::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('—'),
             ])
-            ->filters([SelectFilter::make('status')->options(fn (): array => ReportExport::query()->distinct()->pluck('status', 'status')->mapWithKeys(fn (string $value): array => [$value => LodgeOpsPresentation::label($value)])->all())])
+            ->filters([SelectFilter::make('status')->options(fn (): array => ReportExport::query()->distinct()->pluck('status', 'status')->mapWithKeys(fn (string $value): array => [$value => InnPresentation::label($value)])->all())])
             ->recordActions([ViewAction::make()])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No report exports requested');

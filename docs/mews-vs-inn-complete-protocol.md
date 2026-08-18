@@ -1,6 +1,6 @@
 <!-- Generated from the completed row-level audit worker output. Statuses and claims are preserved verbatim from the worker; verify live Mews URLs before using this as a product contract. -->
 
-This is the baseline Worker C protocol audit, one operation/event at a time, followed by a live GitHub/OpenAPI re-audit addendum. The addendum supersedes stale operation counts where the current first-party contract has moved ahead of the original saved index. Technology by feature is tracked in the [up-to-date technology audit](mews-vs-lodgeops-technology-audit.md).
+This is the baseline Worker C protocol audit, one operation/event at a time, followed by a live GitHub/OpenAPI re-audit addendum. The addendum supersedes stale operation counts where the current first-party contract has moved ahead of the original saved index. Technology by feature is tracked in the [up-to-date technology audit](mews-vs-inn-technology-audit.md).
 
 The baseline pass enumerated:
 
@@ -20,18 +20,18 @@ No application files were edited during the original baseline pass; this documen
 
 ## Evidence keys
 
-Every row’s evidence code expands to exact LodgeOps route/controller/service evidence.
+Every row’s evidence code expands to exact Inn route/controller/service evidence.
 
-- **E0 — no Mews/provider implementation:** [api.php:45](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:45), [composer.json:8](/Users/ceron/Developer/Projects/lodge-ops/apps/api/composer.json:8), [IntegrationConnection.php:5](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Models/IntegrationConnection.php:5), [IntegrationConnectionService.php:8](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/IntegrationConnectionService.php:8)
-- **E1 — guests/CRM:** [api.php:53](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:53), [GuestController.php:20](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/GuestController.php:20), [ExtendedOperationsController.php:285](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:285), [GuestMergeService.php:11](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/GuestMergeService.php:11)
-- **E2 — reservations:** [api.php:58](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:58), [ReservationController.php:31](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ReservationController.php:31), [ReservationController.php:49](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ReservationController.php:49), [ReservationController.php:217](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ReservationController.php:217), [ReservationService.php:27](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/ReservationService.php:27)
-- **E3 — resources/blocks/tasks/services:** [api.php:55](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:55), [api.php:56](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:56), [api.php:67](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:67), [api.php:69](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:69), [api.php:80](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:80), [AvailabilityService.php:17](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/AvailabilityService.php:17)
-- **E4 — finance/folios/payments:** [api.php:71](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:71), [FolioController.php:17](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/FolioController.php:17), [PaymentController.php:22](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/PaymentController.php:22), [PaymentService.php:23](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/PaymentService.php:23), [FinancialReportingService.php:19](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/FinancialReportingService.php:19)
-- **E5 — catalog/retail:** [api.php:88](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:88), [ExtendedOperationsController.php:33](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:33), [ExtendedOperationsController.php:102](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:102), [RetailPostingService.php:17](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/RetailPostingService.php:17)
-- **E6 — organizations/CRM opportunities:** [api.php:96](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:96), [ExtendedOperationsController.php:211](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:211), [ExtendedOperationsController.php:218](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:218)
-- **E7 — guest portal:** [api.php:32](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:32), [GuestPortalController.php:22](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/GuestPortalController.php:22), [GuestPortalService.php:21](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/GuestPortalService.php:21), [GuestPortalTokenService.php:17](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/GuestPortalTokenService.php:17)
-- **E8 — automation/comms/outbox/calendar:** [AutomationActionExecutor.php:32](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/Automation/AutomationActionExecutor.php:32), [CommunicationDeliveryService.php:18](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/CommunicationDeliveryService.php:18), [OutboxBatchPublisher.php:21](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/Automation/OutboxBatchPublisher.php:21), [CalendarFeedService.php:15](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/CalendarFeedService.php:15)
-- **E9 — LodgeOps protocol mechanics:** [api.php:45](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php:45), [EnsureIdempotentCommand.php:18](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Middleware/EnsureIdempotentCommand.php:18), [GuestController.php:34](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/GuestController.php:34), [PaymentController.php:34](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Http/Controllers/Api/V1/PaymentController.php:34)
+- **E0 — no Mews/provider implementation:** [api.php:45](../apps/api/routes/api.php:45), [composer.json:8](../apps/api/composer.json:8), [IntegrationConnection.php:5](../apps/api/app/Models/IntegrationConnection.php:5), [IntegrationConnectionService.php:8](../apps/api/app/Services/IntegrationConnectionService.php:8)
+- **E1 — guests/CRM:** [api.php:53](../apps/api/routes/api.php:53), [GuestController.php:20](../apps/api/app/Http/Controllers/Api/V1/GuestController.php:20), [ExtendedOperationsController.php:285](../apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:285), [GuestMergeService.php:11](../apps/api/app/Services/GuestMergeService.php:11)
+- **E2 — reservations:** [api.php:58](../apps/api/routes/api.php:58), [ReservationController.php:31](../apps/api/app/Http/Controllers/Api/V1/ReservationController.php:31), [ReservationController.php:49](../apps/api/app/Http/Controllers/Api/V1/ReservationController.php:49), [ReservationController.php:217](../apps/api/app/Http/Controllers/Api/V1/ReservationController.php:217), [ReservationService.php:27](../apps/api/app/Services/ReservationService.php:27)
+- **E3 — resources/blocks/tasks/services:** [api.php:55](../apps/api/routes/api.php:55), [api.php:56](../apps/api/routes/api.php:56), [api.php:67](../apps/api/routes/api.php:67), [api.php:69](../apps/api/routes/api.php:69), [api.php:80](../apps/api/routes/api.php:80), [AvailabilityService.php:17](../apps/api/app/Services/AvailabilityService.php:17)
+- **E4 — finance/folios/payments:** [api.php:71](../apps/api/routes/api.php:71), [FolioController.php:17](../apps/api/app/Http/Controllers/Api/V1/FolioController.php:17), [PaymentController.php:22](../apps/api/app/Http/Controllers/Api/V1/PaymentController.php:22), [PaymentService.php:23](../apps/api/app/Services/PaymentService.php:23), [FinancialReportingService.php:19](../apps/api/app/Services/FinancialReportingService.php:19)
+- **E5 — catalog/retail:** [api.php:88](../apps/api/routes/api.php:88), [ExtendedOperationsController.php:33](../apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:33), [ExtendedOperationsController.php:102](../apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:102), [RetailPostingService.php:17](../apps/api/app/Services/RetailPostingService.php:17)
+- **E6 — organizations/CRM opportunities:** [api.php:96](../apps/api/routes/api.php:96), [ExtendedOperationsController.php:211](../apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:211), [ExtendedOperationsController.php:218](../apps/api/app/Http/Controllers/Api/V1/ExtendedOperationsController.php:218)
+- **E7 — guest portal:** [api.php:32](../apps/api/routes/api.php:32), [GuestPortalController.php:22](../apps/api/app/Http/Controllers/Api/V1/GuestPortalController.php:22), [GuestPortalService.php:21](../apps/api/app/Services/GuestPortalService.php:21), [GuestPortalTokenService.php:17](../apps/api/app/Services/GuestPortalTokenService.php:17)
+- **E8 — automation/comms/outbox/calendar:** [AutomationActionExecutor.php:32](../apps/api/app/Services/Automation/AutomationActionExecutor.php:32), [CommunicationDeliveryService.php:18](../apps/api/app/Services/CommunicationDeliveryService.php:18), [OutboxBatchPublisher.php:21](../apps/api/app/Services/Automation/OutboxBatchPublisher.php:21), [CalendarFeedService.php:15](../apps/api/app/Services/CalendarFeedService.php:15)
+- **E9 — Inn protocol mechanics:** [api.php:45](../apps/api/routes/api.php:45), [EnsureIdempotentCommand.php:18](../apps/api/app/Http/Middleware/EnsureIdempotentCommand.php:18), [GuestController.php:34](../apps/api/app/Http/Controllers/Api/V1/GuestController.php:34), [PaymentController.php:34](../apps/api/app/Http/Controllers/Api/V1/PaymentController.php:34)
 
 Status: **INT** = internal analogue only; **PART** = partial; **ABS** = absent; **ADAPT** = configuration boundary without provider execution; **DEP** = Mews operation documented as deprecated.
 
@@ -41,7 +41,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Accounts
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 1 | [Merge accounts](https://docs.mews.com/connector-api/operations/accounts#merge-accounts) | PART | E1 — only guest merging; no company/general-account merge |
 | 2 | [Update accounts](https://docs.mews.com/connector-api/operations/accounts#update-accounts) | PART | E1/E6 — guest update exists; company update absent |
@@ -57,7 +57,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Billing automations
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 12 | [Get all billing automations](https://docs.mews.com/connector-api/operations/billingautomations#get-all-billing-automations) | PART | E8 — reservation milestone automation, not Mews billing automation |
 | 13 | [Add billing automations](https://docs.mews.com/connector-api/operations/billingautomations#add-billing-automations) | PART | E8 — internal automation actions only |
@@ -67,7 +67,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Configuration
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 17 | [Get configuration](https://docs.mews.com/connector-api/operations/configuration#get-configuration) | PART | E0 — property/tenant configuration exists, not Mews configuration |
 | 18 | [Get all countries](https://docs.mews.com/connector-api/operations/countries#get-all-countries) | ABS | E0 — no country catalog API |
@@ -80,7 +80,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Customers and identity documents
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 25 | [Get all customers](https://docs.mews.com/connector-api/operations/customers#get-all-customers) | INT | E1 — `/v1/guests`; different entity and response contract |
 | 26 | [Search customers](https://docs.mews.com/connector-api/operations/customers#search-customers) | INT | E1 — guest search by name/email/phone |
@@ -98,7 +98,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Device integration
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 38 | [Get all devices](https://docs.mews.com/connector-api/operations/devices#get-all-devices) | ABS | E0 — no device model |
 | 39 | [Get all commands](https://docs.mews.com/connector-api/operations/commands#get-all-commands) | ABS | E0 — no command lifecycle |
@@ -111,7 +111,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Enterprises, resources, and tasks
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 46 | [Get all enterprises](https://docs.mews.com/connector-api/operations/enterprises#get-all-enterprises) | PART | E0 — tenants/properties exist, no Mews enterprise/access-token semantics |
 | 47 | [Get all companies](https://docs.mews.com/connector-api/operations/companies#get-all-companies) | PART | E6 — organizations exist, not Mews company API |
@@ -142,14 +142,14 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Exports
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 72 | [Get all exports](https://docs.mews.com/connector-api/operations/exports#get-all-exports) | PART | E4 — ReportExport/CSV/PDF exports, not restricted Mews exports |
 | 73 | [Add export](https://docs.mews.com/connector-api/operations/exports#add-export) | PART | E4 — internal report export only |
 
 ## Finance, bills, payments, and ledger
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 74 | [Get all exchange rates](https://docs.mews.com/connector-api/operations/exchangerates#get-all-exchange-rates) | INT | E4 — ExchangeRate/ExchangeRateService internal FX |
 | 75 | [Get all cashiers](https://docs.mews.com/connector-api/operations/cashiers#get-all-cashiers) | ABS | E0 — no cashier model |
@@ -185,7 +185,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Loyalty
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 105 | [Get all loyalty programs](https://docs.mews.com/connector-api/operations/loyaltyprograms#get-all-loyalty-programs) | ABS | E0 — no loyalty model |
 | 106 | [Add loyalty programs](https://docs.mews.com/connector-api/operations/loyaltyprograms#add-loyalty-programs) | ABS | E0 — no loyalty model |
@@ -202,7 +202,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Messaging
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 117 | [Get all message threads](https://docs.mews.com/connector-api/operations/messagethreads#get-all-message-threads) | ABS | E8 — no conversational thread model/API |
 | 118 | [Add message thread](https://docs.mews.com/connector-api/operations/messagethreads#add-message-thread) | ABS | E8 — no thread creation |
@@ -211,7 +211,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Reservations
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 121 | [Get all reservations, 2023-06-06](https://docs.mews.com/connector-api/operations/reservations#get-all-reservations-ver-2023-06-06) | INT | E2 — `/v1/reservations` |
 | 122 | [Get all reservations, 2017-04-12](https://docs.mews.com/connector-api/operations/reservations#get-all-reservations-ver-2017-04-12) **DEP** | ABS | E0 — no legacy Mews contract |
@@ -240,7 +240,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 ## Service orders and services
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 145 | [Get all product service orders](https://docs.mews.com/connector-api/operations/productserviceorders#get-all-product-service-orders) | PART | E2/E5 — service occurrences/catalog, not Mews product service orders |
 | 146 | [Get all service-order notes](https://docs.mews.com/connector-api/operations/serviceordernotes#get-all-service-order-notes) | PART | E2 — reservation notes only |
@@ -299,7 +299,7 @@ Official inventory: [Mews Connector API operations](https://docs.mews.com/connec
 
 Official inventory: [Booking Engine API operations](https://docs.mews.com/booking-engine-guide/booking-engine-api/operations).
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 197 | [Get availability](https://docs.mews.com/booking-engine-guide/booking-engine-api/operations/hotels#get-availability) | ABS | E0 — no public availability endpoint |
 | 198 | [Get availability blocks](https://docs.mews.com/booking-engine-guide/booking-engine-api/operations/availability-blocks#get-availability-blocks) | ABS | E0 — no public availability-block endpoint |
@@ -322,7 +322,7 @@ The Channel Manager API has two separate surfaces: Mews-side operations and part
 
 ## Mews-side operations
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 211 | [Get properties](https://docs.mews.com/channel-manager-api/mews-operations/configuration#get-properties) | PART | E0 — `/v1/properties` exists, but no Channel Manager connection tokens/details |
 | 212 | [Get configuration](https://docs.mews.com/channel-manager-api/mews-operations/configuration#get-configuration) | ABS | E0 — no CHM configuration endpoint |
@@ -339,7 +339,7 @@ The Channel Manager API has two separate surfaces: Mews-side operations and part
 
 ## Channel Manager-side operations
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 223 | [Update prices](https://docs.mews.com/channel-manager-api/channel-manager-operations/inventory#update-prices) | ABS | E0 — no endpoint receiving Mews price pushes |
 | 224 | [Update availability](https://docs.mews.com/channel-manager-api/channel-manager-operations/inventory#update-availability) | ABS | E0 — no endpoint receiving availability pushes |
@@ -349,13 +349,13 @@ The Channel Manager API has two separate surfaces: Mews-side operations and part
 | 228 | [Confirm booking](https://docs.mews.com/channel-manager-api/channel-manager-operations/reservations#confirm-booking) | ABS | E0 — no booking confirmation endpoint |
 | 229 | [Change notification](https://docs.mews.com/channel-manager-api/channel-manager-operations/notifications#change-notification) | ABS | E0 — no connection-change notification endpoint |
 
-Mews explicitly requires a two-way implementation: the Mews side processes reservations and the Channel Manager side receives inventory updates. LodgeOps implements neither side. [Channel Manager API overview](https://docs.mews.com/channel-manager-api).
+Mews explicitly requires a two-way implementation: the Mews side processes reservations and the Channel Manager side receives inventory updates. Inn implements neither side. [Channel Manager API overview](https://docs.mews.com/channel-manager-api).
 
 # 4. POS API
 
 Official inventory: [Mews POS API operations](https://docs.mews.com/pos-api/operations). The POS API is documented as active and subject to change: [Mews POS API](https://docs.mews.com/pos-api).
 
-| # | Mews operation | Status | LodgeOps mismatch/evidence |
+| # | Mews operation | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 230 | [Get invoices](https://docs.mews.com/pos-api/operations/invoices) | ABS | E4 — no invoice model; generated documents are not POS invoices |
 | 231 | [Get registers](https://docs.mews.com/pos-api/operations/registers) | ABS | E0 — no register model |
@@ -399,7 +399,7 @@ The POS Models page contains schemas rather than executable operations, so it is
 
 Official source: [Mews General Webhooks](https://docs.mews.com/connector-api/events/wh-general).
 
-| # | Event | Status | LodgeOps mismatch/evidence |
+| # | Event | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 265 | `ServiceOrderUpdated` | ABS | E0/E8 — no inbound Mews webhook controller |
 | 266 | `ResourceUpdated` | ABS | E0/E8 — internal outbox is outbound/internal, not Mews ingress |
@@ -409,13 +409,13 @@ Official source: [Mews General Webhooks](https://docs.mews.com/connector-api/eve
 | 270 | `CustomerUpdated` | ABS | E0/E8 — no webhook receiver |
 | 271 | `PaymentUpdated` | ABS | E0/E8 — no webhook receiver |
 
-Mews General Webhooks require an externally accessible POST endpoint, quick acknowledgement, asynchronous processing, and event-specific fetching. LodgeOps has no such endpoint.
+Mews General Webhooks require an externally accessible POST endpoint, quick acknowledgement, asynchronous processing, and event-specific fetching. Inn has no such endpoint.
 
 # 6. Connector Integration Webhooks
 
 Official source: [Mews Integration Webhooks](https://docs.mews.com/connector-api/events/wh-integration).
 
-| # | Event | Status | LodgeOps mismatch/evidence |
+| # | Event | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 272 | `IntegrationCreated` | ABS | E0 — no integration lifecycle webhook |
 | 273 | `IntegrationEnabled` | ABS | E0 — no integration lifecycle webhook |
@@ -429,20 +429,20 @@ Official source: [Mews Integration Webhooks](https://docs.mews.com/connector-api
 
 Official source: [Mews WebSockets](https://docs.mews.com/connector-api/websockets).
 
-| # | Event | Status | LodgeOps mismatch/evidence |
+| # | Event | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 279 | `DeviceCommand` | ABS | E0 — no WebSocket client/server or device-command consumer |
 | 280 | `Reservation` | ABS | E0 — no real-time Mews reservation consumer |
 | 281 | `Resource` | ABS | E0 — no real-time Mews resource consumer |
 | 282 | `PriceUpdate` | ABS | E0 — no rate-price event consumer |
 
-Mews WebSockets use a separate `wss://` domain, cookie authentication, and a persistent event connection. LodgeOps has no WebSocket implementation.
+Mews WebSockets use a separate `wss://` domain, cookie authentication, and a persistent event connection. Inn has no WebSocket implementation.
 
 # 8. POS Webhooks
 
 Official source: [Mews POS Webhooks](https://docs.mews.com/pos-api/events/webhooks).
 
-| # | Event | Status | LodgeOps mismatch/evidence |
+| # | Event | Status | Inn mismatch/evidence |
 |---:|---|---|---|
 | 283 | `booking.status.updated` | ABS | E0 — no POS webhook endpoint |
 | 284 | `order.state.updated` | ABS | E0 — no POS order/event consumer |
@@ -451,25 +451,25 @@ Official source: [Mews POS Webhooks](https://docs.mews.com/pos-api/events/webhoo
 | 287 | `order.total.updated` | ABS | E0 — no POS order event consumer |
 | 288 | `orders.payments.added` | ABS | E0 — no POS payment event consumer |
 
-POS Webhooks use outgoing HTTP POST requests and `X-Signature` HMAC-SHA256 validation. LodgeOps has no webhook endpoint, signature verifier, or event consumer.
+POS Webhooks use outgoing HTTP POST requests and `X-Signature` HMAC-SHA256 validation. Inn has no webhook endpoint, signature verifier, or event consumer.
 
 # 9. Authentication and protocol mechanics
 
-| Mews surface | Official requirement | LodgeOps status | Exact mismatch |
+| Mews surface | Official requirement | Inn status | Exact mismatch |
 |---|---|---|---|
-| Connector authentication | `ClientToken`, `AccessToken`, and `Client` in every POST body | ABS | LodgeOps uses Sanctum bearer authentication on internal routes: E9 |
-| Connector request format | `POST [PlatformAddress]/api/connector/v1/{Resource}/{Action}`, JSON body | ABS | LodgeOps uses Laravel REST-style `/api/v1/...` routes: E9 |
+| Connector authentication | `ClientToken`, `AccessToken`, and `Client` in every POST body | ABS | Inn uses Sanctum bearer authentication on internal routes: E9 |
+| Connector request format | `POST [PlatformAddress]/api/connector/v1/{Resource}/{Action}`, JSON body | ABS | Inn uses Laravel REST-style `/api/v1/...` routes: E9 |
 | Connector optional localization | `LanguageCode` and `CultureCode` together | ABS | No equivalent protocol fields |
 | Booking Engine authentication | Registered `Client` value in every request | ABS | No public Booking Engine endpoint |
 | Booking Engine request format | `POST [ApiBaseUrl]/api/distributor/v1/{Resource}/{Operation}` | ABS | No public distributor/booking-engine route |
 | Channel Manager authentication | `clientToken` plus `connectionToken` | ABS | No CHM client or connection-token handling |
-| POS authentication | Bearer API key | ABS | LodgeOps Sanctum is an internal user/session API, not POS bearer API-key integration |
-| POS response contract | JSON:API media type and JSON:API resource structures | ABS | LodgeOps Laravel JSON resources, no JSON:API POS contract |
+| POS authentication | Bearer API key | ABS | Inn Sanctum is an internal user/session API, not POS bearer API-key integration |
+| POS response contract | JSON:API media type and JSON:API resource structures | ABS | Inn Laravel JSON resources, no JSON:API POS contract |
 | POS webhook authentication | HMAC-SHA256 `X-Signature` | ABS | No webhook receiver/signature verifier |
 | WebSocket authentication | Connector tokens supplied as cookies to a separate WebSocket host | ABS | No WebSocket client/server |
-| Connector cursor pagination | `Limitation.Cursor`, `Limitation.Count`, maximum count 1,000, response cursor | ABS | LodgeOps uses Laravel `paginate`, with local `per_page` limits such as 100: E9 |
+| Connector cursor pagination | `Limitation.Cursor`, `Limitation.Count`, maximum count 1,000, response cursor | ABS | Inn uses Laravel `paginate`, with local `per_page` limits such as 100: E9 |
 | POS pagination | `page[size]`, `page[before]`, `page[after]`, maximum 1,000 | ABS | No POS client or JSON:API pagination |
-| Connector throttling | Production guidance: 200 requests per AccessToken per 30 seconds; handle `429` and `Retry-After` | ABS | LodgeOps has inbound `throttle:120,1`; no outbound Mews rate budget/retry client |
+| Connector throttling | Production guidance: 200 requests per AccessToken per 30 seconds; handle `429` and `Retry-After` | ABS | Inn has inbound `throttle:120,1`; no outbound Mews rate budget/retry client |
 | POS demo throttling | 200 requests per token per 15-minute window | ABS | No POS client or throttle handling |
 | Booking Engine throttling | `429` plus `Retry-After`; anti-scraping protection | ABS | No Booking Engine client |
 | Connector environments | Demo and Production; separate platform and WebSocket addresses | ABS | No Mews demo/prod configuration |
@@ -479,14 +479,14 @@ POS Webhooks use outgoing HTTP POST requests and `X-Signature` HMAC-SHA256 valid
 | Channel Manager certification | Inventory push, reservation, error, invalid reservation, and inactive connection tests | ABS | No CHM endpoint implementation or certification harness |
 | POS development environment | Mews provides POS demo web/Android app and linked PMS property | ABS | No POS app/client or end-to-end fixture |
 | Webhook delivery | Externally reachable POST endpoint, timely response, retry on failure | ABS | No inbound webhook route |
-| Integration lifecycle | Mews can emit integration enable/disable/cancel/reinstate/delete/key events | ABS | LodgeOps integration records only store local configuration |
-| External provider execution | Mews integration requires actual API client behavior | ADAPT | [IntegrationConnectionService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/IntegrationConnectionService.php:11) validates and stores configuration only |
+| Integration lifecycle | Mews can emit integration enable/disable/cancel/reinstate/delete/key events | ABS | Inn integration records only store local configuration |
+| External provider execution | Mews integration requires actual API client behavior | ADAPT | [IntegrationConnectionService.php](../apps/api/app/Services/IntegrationConnectionService.php:11) validates and stores configuration only |
 
 Official protocol references: [Connector authentication](https://docs.mews.com/connector-api/guidelines/authentication), [Connector requests](https://docs.mews.com/connector-api/guidelines/requests), [Connector pagination](https://docs.mews.com/connector-api/guidelines/pagination), [Connector environments](https://docs.mews.com/connector-api/guidelines/environments), [Booking Engine authentication](https://docs.mews.com/booking-engine-guide/booking-engine-api/guidelines/authentication), [Booking Engine requests](https://docs.mews.com/booking-engine-guide/booking-engine-api/guidelines/requests), [Channel Manager authentication](https://docs.mews.com/channel-manager-api/guidelines/authentication), and [POS environments](https://docs.mews.com/pos-api/guidelines/environments).
 
 ## Final Worker C conclusion
 
-LodgeOps has internal analogues for guests, reservations, resources, blocks, tasks, service occurrences, folios, deposits, manual payments, catalog items, retail sales, proposals, CRM organizations, and internal reports.
+Inn has internal analogues for guests, reservations, resources, blocks, tasks, service occurrences, folios, deposits, manual payments, catalog items, retail sales, proposals, CRM organizations, and internal reports.
 
 It does not implement:
 
@@ -504,13 +504,13 @@ It does not implement:
 - Mews external-provider rate-limit handling
 - Mews demo/certification workflows
 
-The generic LodgeOps integration model is therefore **ADAPT-only**, not an integration implementation.
+The generic Inn integration model is therefore **ADAPT-only**, not an integration implementation.
 
 ## 10. Live GitHub/OpenAPI re-audit addendum
 
 The attached Mews research links were checked against the [current first-party Mews API repository](https://github.com/MewsSystems/open-api-docs) and the [live Connector Swagger](https://api.mews.com/Swagger/connector/swagger.yaml). The live contract parses as OpenAPI 3.0.4 with 205 paths and 205 operations. The earlier saved Connector rows did not include the following current operations:
 
-| Current Mews operation | Endpoint | LodgeOps status | Exact gap |
+| Current Mews operation | Endpoint | Inn status | Exact gap |
 |---|---|---|---|
 | Get all preauthorizations by customers | `POST /api/connector/v1/preauthorizations/getAllByCustomers` | ABSENT | No customer preauthorization model, card reference, state, or provider operation. |
 | Get current cancellation policies, version 2026-07-31 | `POST /api/connector/v1/cancellationPolicies/getAll/2026-07-31` | ABSENT | No versioned cancellation-policy catalog or retrieval contract. |
@@ -520,13 +520,13 @@ The attached Mews research links were checked against the [current first-party M
 | Add resource categories | `POST /api/connector/v1/resourceCategories/add` | ABSENT | No Mews-compatible category creation with capacity, localization, classification, ordering, or accounting fields. |
 | Update resource categories | `POST /api/connector/v1/resourceCategories/update` | ABSENT | Internal resource editing is not the Connector category update contract. |
 | Delete resource categories | `POST /api/connector/v1/resourceCategories/delete` | ABSENT | No dependency-aware category deletion. |
-| Generate Guest Portal links | `POST /api/connector/v1/reservations/generateGuestPortalLinks` | PARTIAL | LodgeOps has a portal, but not Mews’ single-use, expiring Homepage/CheckIn/CheckOut/Chat/Keys link contract. |
+| Generate Guest Portal links | `POST /api/connector/v1/reservations/generateGuestPortalLinks` | PARTIAL | Inn has a portal, but not Mews’ single-use, expiring Homepage/CheckIn/CheckOut/Chat/Keys link contract. |
 
-The repository’s restrictions `add` and `delete` pages are discontinued and are not counted as current features; Mews’ current model is `set`/`clear` restrictions. Full request/response detail and source links are in the [GitHub/OpenAPI re-audit](mews-vs-lodgeops-github-openapi-audit.md).
+The repository’s restrictions `add` and `delete` pages are discontinued and are not counted as current features; Mews’ current model is `set`/`clear` restrictions. Full request/response detail and source links are in the [GitHub/OpenAPI re-audit](mews-vs-inn-github-openapi-audit.md).
 
 ### Booking Engine and integration surfaces missed by the baseline rows
 
-| Current Mews surface | LodgeOps status | Feature-level gap |
+| Current Mews surface | Inn status | Feature-level gap |
 |---|---|---|
 | Booking Engine `Get promoted services` | ABSENT | No public operation returning promoted services, promoted rates, resource categories, availability, ordering, and prices. |
 | Booking Engine Widget loader and `Mews.Distributor` control API | ABSENT | No CDN loader, configuration-ID embedding, iframe/overlay lifecycle, date/language/currency/voucher/occupancy controls, or tracking controls. |
@@ -536,4 +536,4 @@ The repository’s restrictions `add` and `delete` pages are discontinued and ar
 | POS JSON:API mechanics | ABSENT | No `application/vnd.api+json`, relationships/includes, sparse fieldsets, cursor links, or `Idempotency-Key` implementation. |
 | POS restricted use cases | ABSENT | No Mews digital ordering, restaurant table booking, inventory synchronization, or associated payment/room-charge workflows. |
 
-These are additional API surfaces, not substitutes for the 288 baseline operation/event rows. See the [GitHub/OpenAPI re-audit](mews-vs-lodgeops-github-openapi-audit.md) for the exact first-party source files and the implementation-oriented repository cross-checks.
+These are additional API surfaces, not substitutes for the 288 baseline operation/event rows. See the [GitHub/OpenAPI re-audit](mews-vs-inn-github-openapi-audit.md) for the exact first-party source files and the implementation-oriented repository cross-checks.

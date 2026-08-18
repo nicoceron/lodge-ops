@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ResourceKind;
+use App\Models\Resource as ResourceModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
@@ -50,9 +51,10 @@ class ResourceCategory extends TenantModel
         return $this->belongsTo(Property::class);
     }
 
+    /** @return HasMany<ResourceModel, $this> */
     public function resources(): HasMany
     {
-        return $this->hasMany(Resource::class);
+        return $this->hasMany(ResourceModel::class, 'category_id');
     }
 
     public function requirements(): HasMany

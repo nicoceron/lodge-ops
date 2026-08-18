@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Proposals\Tables;
 
 use App\Enums\ProposalStatus;
 use App\Filament\Resources\Proposals\ProposalWorkflowActions;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Proposal;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
@@ -27,15 +27,15 @@ class ProposalsTable
                         : 'Unassigned')
                     ->searchable(['first_name', 'last_name', 'email']),
                 TextColumn::make('status')->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
-                TextColumn::make('starts_at')->label('Arrival')->date('M j, Y', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn ($state): string => InnPresentation::statusColor($state)),
+                TextColumn::make('starts_at')->label('Arrival')->date('M j, Y', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('total_minor')->label('Total')
                     ->money(fn (Proposal $record): string => $record->currency, divideBy: 100)->sortable(),
-                TextColumn::make('expires_at')->label('Valid until')->date('M j, Y', timezone: LodgeOpsPresentation::timezone())->placeholder('No expiry')->sortable(),
+                TextColumn::make('expires_at')->label('Valid until')->date('M j, Y', timezone: InnPresentation::timezone())->placeholder('No expiry')->sortable(),
             ])
             ->filters([
-                SelectFilter::make('status')->options(LodgeOpsPresentation::enumOptions(ProposalStatus::cases()))->multiple(),
+                SelectFilter::make('status')->options(InnPresentation::enumOptions(ProposalStatus::cases()))->multiple(),
                 SelectFilter::make('property')->relationship('property', 'name')->searchable()->preload(),
             ])
             ->recordActions([

@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\OperationalTasks\Schemas;
 
 use App\Enums\TaskStatus;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Support\Tenancy\TenantContext;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -32,14 +32,14 @@ class OperationalTaskForm
                         ->columnSpanFull(),
                     Select::make('property_id')
                         ->disabled($detailsAreReadOnly)
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
                     Select::make('reservation_id')
                         ->disabled($detailsAreReadOnly)
                         ->label('Reservation')
-                        ->options(fn (Get $get): array => LodgeOpsPresentation::reservationOptions($get('property_id')))
+                        ->options(fn (Get $get): array => InnPresentation::reservationOptions($get('property_id')))
                         ->searchable()
                         ->preload(),
                     Select::make('assignee_id')
@@ -65,7 +65,7 @@ class OperationalTaskForm
                         ->searchable()
                         ->preload(),
                     Select::make('status')
-                        ->options(LodgeOpsPresentation::enumOptions(TaskStatus::cases()))
+                        ->options(InnPresentation::enumOptions(TaskStatus::cases()))
                         ->default(TaskStatus::Todo->value)
                         ->native(false)
                         ->required(),
@@ -82,7 +82,7 @@ class OperationalTaskForm
                         ->required(),
                     DateTimePicker::make('due_at')
                         ->disabled($detailsAreReadOnly)
-                        ->timezone(LodgeOpsPresentation::timezone())
+                        ->timezone(InnPresentation::timezone())
                         ->seconds(false),
                     Textarea::make('description')
                         ->disabled($detailsAreReadOnly)

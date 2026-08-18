@@ -7,7 +7,7 @@ use App\Filament\Resources\RetailSales\Pages\ListRetailSales;
 use App\Filament\Resources\RetailSales\Pages\ViewRetailSale;
 use App\Filament\Resources\RetailSales\RelationManagers\LinesRelationManager;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CatalogItem;
 use App\Models\RetailSale;
 use BackedEnum;
@@ -48,8 +48,8 @@ class RetailSaleResource extends TenantResource
     {
         return $schema->components([
             Section::make('Post retail sale')->description('Posting is atomic: stock, sale lines, and any reservation folio charge are created together.')->columns(2)->schema([
-                Select::make('stock_location_id')->label('Stock location')->options(LodgeOpsPresentation::stockLocationOptions(...))->required()->searchable()->preload(),
-                Select::make('reservation_id')->label('Reservation folio · optional')->options(LodgeOpsPresentation::reservationOptions(...))->searchable()->preload(),
+                Select::make('stock_location_id')->label('Stock location')->options(InnPresentation::stockLocationOptions(...))->required()->searchable()->preload(),
+                Select::make('reservation_id')->label('Reservation folio · optional')->options(InnPresentation::reservationOptions(...))->searchable()->preload(),
                 TextInput::make('reference')->required()->maxLength(160)->unique(ignoreRecord: true),
                 TextInput::make('tax_minor')->label('Tax · minor units')->numeric()->minValue(0)->default(0)->required(),
                 Repeater::make('lines')->minItems(1)->defaultItems(1)->columns(2)->schema([
@@ -65,13 +65,13 @@ class RetailSaleResource extends TenantResource
         return $schema->components([
             Section::make('Immutable posted sale')->description('Corrections are posted as new transactions; this record never changes in place.')->columns(2)->schema([
                 TextEntry::make('reference')->copyable()->weight('bold'),
-                TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color('success'),
+                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color('success'),
                 TextEntry::make('stockLocation.name')->label('Stock location'),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation folio')->placeholder('Walk-in sale'),
                 TextEntry::make('subtotal_minor')->label('Subtotal')->money(fn (RetailSale $record): string => $record->currency, divideBy: 100),
                 TextEntry::make('tax_minor')->label('Tax')->money(fn (RetailSale $record): string => $record->currency, divideBy: 100),
                 TextEntry::make('total_minor')->label('Total')->money(fn (RetailSale $record): string => $record->currency, divideBy: 100)->weight('bold'),
-                TextEntry::make('posted_at')->label('Posted')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                TextEntry::make('posted_at')->label('Posted')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
             ]),
         ]);
     }
@@ -80,12 +80,12 @@ class RetailSaleResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('posted_at')->label('Posted')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('posted_at')->label('Posted')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('reference')->copyable()->searchable()->weight('medium'),
                 TextColumn::make('stockLocation.name')->label('Location')->searchable(),
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->searchable()->placeholder('Walk-in'),
                 TextColumn::make('total_minor')->label('Total')->money(fn (RetailSale $record): string => $record->currency, divideBy: 100)->sortable(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color('success'),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color('success'),
             ])
             ->filters([
                 SelectFilter::make('stock_location_id')->label('Location')->relationship('stockLocation', 'name'),

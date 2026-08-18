@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\DocumentTemplates\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -26,7 +26,7 @@ class DocumentsRelationManager extends RelationManager
         return $schema->components([
             Section::make('Immutable generated document')->columns(2)->schema([
                 TextEntry::make('kind')->badge(),
-                TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->placeholder('—'),
                 TextEntry::make('guest.email')->label('Guest')->placeholder('—'),
                 TextEntry::make('storage_path')->copyable()->columnSpanFull(),
@@ -40,7 +40,7 @@ class DocumentsRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('created_at')->label('Generated')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('created_at')->label('Generated')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('kind')->badge(),
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->placeholder('—'),
                 TextColumn::make('guest.email')->label('Guest')->placeholder('—'),

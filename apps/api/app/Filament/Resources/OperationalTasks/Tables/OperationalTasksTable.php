@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\OperationalTasks\Tables;
 
 use App\Enums\TaskStatus;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -24,13 +24,13 @@ class OperationalTasksTable
                     ->sortable(),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state))
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn ($state): string => InnPresentation::statusColor($state))
                     ->sortable(),
                 TextColumn::make('priority')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn (?string $state): string => LodgeOpsPresentation::priorityColor($state))
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn (?string $state): string => InnPresentation::priorityColor($state))
                     ->sortable(),
                 TextColumn::make('assignee.name')
                     ->label('Owner')
@@ -42,7 +42,7 @@ class OperationalTasksTable
                     ->searchable(),
                 TextColumn::make('due_at')
                     ->label('Due')
-                    ->dateTime('M j · H:i', timezone: LodgeOpsPresentation::timezone())
+                    ->dateTime('M j · H:i', timezone: InnPresentation::timezone())
                     ->placeholder('No deadline')
                     ->sortable()
                     ->color(fn ($record): string => $record->due_at?->isPast() && ! in_array($record->status, [TaskStatus::Done, TaskStatus::Cancelled], true)
@@ -51,7 +51,7 @@ class OperationalTasksTable
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->options(LodgeOpsPresentation::enumOptions(TaskStatus::cases()))
+                    ->options(InnPresentation::enumOptions(TaskStatus::cases()))
                     ->multiple(),
                 SelectFilter::make('priority')
                     ->options([

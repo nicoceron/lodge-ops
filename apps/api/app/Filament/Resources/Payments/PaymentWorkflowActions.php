@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Payments;
 
 use App\Enums\DepositStatus;
 use App\Enums\PaymentStatus;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Deposit;
 use App\Models\Payment;
 use App\Services\PaymentService;
@@ -74,7 +74,7 @@ final class PaymentWorkflowActions
             ->visible(PaymentResource::canRecordManual(...))
             ->schema([
                 Select::make('reservation_id')
-                    ->options(LodgeOpsPresentation::reservationOptions(...))
+                    ->options(InnPresentation::reservationOptions(...))
                     ->searchable()
                     ->required(),
                 Select::make('method')

@@ -72,7 +72,7 @@ class GuestPortalController extends Controller
         abort_unless($upload instanceof UploadedFile, 422, 'Invalid evidence file.');
 
         try {
-            $result = $portal->storePaymentEvidence($this->access($request), $upload);
+            $result = $portal->storePaymentEvidence($this->access($request), $upload, $request->validated());
         } catch (GuestPortalStorageException $exception) {
             return response()->json(['message' => $exception->getMessage()], 503);
         }

@@ -10,7 +10,7 @@ use BackedEnum;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
-final class LodgeOpsPresentation
+final class InnPresentation
 {
     /** @param array<BackedEnum> $cases */
     public static function enumOptions(array $cases): array

@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Resources\Tables;
 
 use App\Enums\HousekeepingStatus;
 use App\Enums\ResourceKind;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Services\HousekeepingService;
@@ -59,7 +59,7 @@ class ResourcesTable
                     ->preload(),
                 SelectFilter::make('kind')
                     ->label('Kind')
-                    ->options(LodgeOpsPresentation::enumOptions(ResourceKind::cases()))
+                    ->options(InnPresentation::enumOptions(ResourceKind::cases()))
                     ->query(fn ($query, array $data) => filled($data['value'] ?? null)
                         ? $query->whereHas('category', fn ($category) => $category->where('kind', $data['value']))
                         : $query),

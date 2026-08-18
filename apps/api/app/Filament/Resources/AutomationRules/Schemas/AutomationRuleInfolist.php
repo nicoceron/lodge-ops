@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\AutomationRules\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -16,7 +16,7 @@ class AutomationRuleInfolist
         return $schema->components([
             Section::make('Automation rule')->columns(2)->schema([
                 TextEntry::make('name'),
-                TextEntry::make('trigger')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color('info'),
+                TextEntry::make('trigger')->badge()->formatStateUsing(InnPresentation::label(...))->color('info'),
                 IconEntry::make('is_active')->label('Enabled')->boolean(),
                 TextEntry::make('last_ran_at')->label('Last run')->since()->placeholder('Never'),
                 KeyValueEntry::make('conditions')->placeholder('No conditions')->columnSpanFull(),

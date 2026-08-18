@@ -4,7 +4,7 @@ namespace App\Filament\Resources\GeneratedDocuments;
 
 use App\Filament\Resources\GeneratedDocuments\Pages\ManageGeneratedDocuments;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\GeneratedDocument;
 use BackedEnum;
 use Filament\Actions\ViewAction;
@@ -50,11 +50,11 @@ class GeneratedDocumentResource extends TenantResource
         return $schema->components([
             Section::make('Immutable generated document')->description('The checksum and private storage reference provide a permanent audit record.')->columns(2)->schema([
                 TextEntry::make('kind')->badge(),
-                TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->placeholder('—'),
                 TextEntry::make('guest.email')->label('Guest')->placeholder('—'),
                 TextEntry::make('template.name')->label('Template')->placeholder('Version unavailable'),
-                TextEntry::make('signed_at')->label('Signed')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Not signed'),
+                TextEntry::make('signed_at')->label('Signed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Not signed'),
                 TextEntry::make('storage_path')->label('Private storage path')->copyable()->columnSpanFull(),
                 TextEntry::make('checksum')->copyable()->columnSpanFull(),
                 KeyValueEntry::make('metadata')->columnSpanFull()->placeholder('No metadata'),
@@ -66,9 +66,9 @@ class GeneratedDocumentResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('created_at')->label('Generated')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('created_at')->label('Generated')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('kind')->badge()->searchable(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->searchable()->placeholder('—'),
                 TextColumn::make('guest.email')->label('Guest')->searchable()->placeholder('—'),
                 TextColumn::make('template.name')->label('Template')->placeholder('—'),
@@ -76,7 +76,7 @@ class GeneratedDocumentResource extends TenantResource
             ])
             ->filters([
                 SelectFilter::make('kind')->options(fn (): array => GeneratedDocument::query()->distinct()->pluck('kind', 'kind')->all()),
-                SelectFilter::make('status')->options(fn (): array => GeneratedDocument::query()->distinct()->pluck('status', 'status')->mapWithKeys(fn (string $value): array => [$value => LodgeOpsPresentation::label($value)])->all()),
+                SelectFilter::make('status')->options(fn (): array => GeneratedDocument::query()->distinct()->pluck('status', 'status')->mapWithKeys(fn (string $value): array => [$value => InnPresentation::label($value)])->all()),
             ])
             ->recordActions([ViewAction::make()])
             ->defaultSort('created_at', 'desc')

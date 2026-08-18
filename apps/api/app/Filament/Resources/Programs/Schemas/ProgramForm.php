@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\Programs\Schemas;
 
 use App\Enums\MembershipRole;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\ResourceCategory;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Repeater;
@@ -25,7 +25,7 @@ class ProgramForm
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
@@ -118,7 +118,7 @@ class ProgramForm
                             TextInput::make('title')->required()->maxLength(255),
                             Select::make('assignee_role')
                                 ->label('Default role')
-                                ->options(LodgeOpsPresentation::enumOptions(MembershipRole::cases()))
+                                ->options(InnPresentation::enumOptions(MembershipRole::cases()))
                                 ->searchable(),
                             Textarea::make('description')->rows(3)->columnSpanFull(),
                             Select::make('priority')

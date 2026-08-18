@@ -62,7 +62,7 @@ class SingleAppArchitectureTest extends TestCase
         $this->assertIsString($apiDockerfile);
         $this->assertStringContainsString('npm ci', $apiDockerfile);
         $this->assertStringContainsString('npm run build', $apiDockerfile);
-        $this->assertStringContainsString('/opt/lodgeops-public-build', $apiDockerfile);
+        $this->assertStringContainsString('/opt/inn-public-build', $apiDockerfile);
         $this->assertIsString($guestWebController);
         $this->assertStringContainsString('GuestPortalService', $guestWebController);
         $this->assertStringNotContainsString('Controllers\\Api', $guestWebController);

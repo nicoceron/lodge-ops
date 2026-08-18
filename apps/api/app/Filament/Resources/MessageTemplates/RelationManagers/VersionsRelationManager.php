@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\MessageTemplates\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\MessageTemplateVersion;
 use App\Services\MessageTemplateService;
 use Filament\Actions\Action;
@@ -41,7 +41,7 @@ class VersionsRelationManager extends RelationManager
             Section::make('Message version')->columns(2)->schema([
                 TextEntry::make('version')->prefix('v'),
                 TextEntry::make('language')->badge(),
-                TextEntry::make('published_at')->label('Published')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Draft'),
+                TextEntry::make('published_at')->label('Published')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Draft'),
                 TextEntry::make('subject')->placeholder('No subject')->columnSpanFull(),
                 TextEntry::make('body')->markdown()->columnSpanFull(),
             ]),
@@ -56,7 +56,7 @@ class VersionsRelationManager extends RelationManager
                 TextColumn::make('language')->badge(),
                 TextColumn::make('subject')->placeholder('No subject')->limit(50),
                 IconColumn::make('published_at')->label('Published')->boolean(fn (?string $state): bool => filled($state)),
-                TextColumn::make('published_at')->label('Published at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Draft')->sortable(),
+                TextColumn::make('published_at')->label('Published at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Draft')->sortable(),
             ])
             ->filters([TernaryFilter::make('published')->queries(true: fn ($query) => $query->whereNotNull('published_at'), false: fn ($query) => $query->whereNull('published_at'))])
             ->headerActions([

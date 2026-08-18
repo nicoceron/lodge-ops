@@ -1,4 +1,4 @@
-# Mews vs LodgeOps — GitHub/OpenAPI re-audit
+# Mews vs Inn — GitHub/OpenAPI re-audit
 
 Audit date: 2026-08-13.
 
@@ -34,17 +34,17 @@ The live Swagger currently parses as OpenAPI 3.0.4 with **205 paths and 205 oper
 
 These are the exact additions that must be considered in a feature-by-feature parity review:
 
-| Current Mews operation | Exact endpoint | Mews contract detail | LodgeOps status | LodgeOps mismatch |
+| Current Mews operation | Exact endpoint | Mews contract detail | Inn status | Inn mismatch |
 |---|---|---|---|---|
 | Get all preauthorizations by customers | `POST /api/connector/v1/preauthorizations/getAllByCustomers` | Returns customer preauthorizations with card ID, amount/tax breakdown, reservation ID, state, code, customer ID, and active flag. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/preauthorizations.md) | ABSENT | No preauthorization model, card reference, or provider operation. |
 | Get current cancellation policies, version 2026-07-31 | `POST /api/connector/v1/cancellationPolicies/getAll/2026-07-31` | Current policy versions, including unassigned policies; supports policy IDs, updated interval, activity state, pagination, and portfolio access. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/cancellationpolicies.md#get-all-cancellation-policies-ver-2026-07-31) | ABSENT | No cancellation-policy catalog or versioned policy retrieval. |
 | Add cancellation policies | `POST /api/connector/v1/cancellationPolicies/add` | Creates enterprise policies with applicability, fee extents, offsets, absolute/relative fees, names, and external identifiers. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/cancellationpolicies.md#add-cancellation-policies) | ABSENT | No cancellation-policy creation or fee-rule engine. |
 | Update cancellation policies | `POST /api/connector/v1/cancellationPolicies/update` | Partial updates of policy fees, applicability, offsets, names, and external identifiers; portfolio-managed policies cannot be changed. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/cancellationpolicies.md#update-cancellation-policies) | ABSENT | Reservation cancellation state is not a policy-management API. |
 | Delete cancellation policies | `POST /api/connector/v1/cancellationPolicies/delete` | Deletes policies subject to portfolio and active-dependency rules. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/cancellationpolicies.md#delete-cancellation-policies) | ABSENT | No policy deletion lifecycle. |
-| Add resource categories | `POST /api/connector/v1/resourceCategories/add` | Creates space/room categories with service, type, capacity, extra capacity, localized names, classification, ordering, external ID, and accounting category. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/resourcecategories.md#add-resource-categories) | ABSENT | LodgeOps has resource/category concepts but no Mews Connector contract or category creation API. |
+| Add resource categories | `POST /api/connector/v1/resourceCategories/add` | Creates space/room categories with service, type, capacity, extra capacity, localized names, classification, ordering, external ID, and accounting category. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/resourcecategories.md#add-resource-categories) | ABSENT | Inn has resource/category concepts but no Mews Connector contract or category creation API. |
 | Update resource categories | `POST /api/connector/v1/resourceCategories/update` | Partial updates to localized text, type, capacity, classification, ordering, external ID, and accounting category. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/resourcecategories.md#update-resource-categories) | ABSENT | Internal resource edits are not Mews API-compatible category updates. |
 | Delete resource categories | `POST /api/connector/v1/resourceCategories/delete` | Deletes categories only when active resources, reservations, mappings, restrictions, and related dependencies permit it. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/resourcecategories.md#delete-resource-categories) | ABSENT | No dependency-aware category deletion. |
-| Generate Guest Portal links | `POST /api/connector/v1/reservations/generateGuestPortalLinks` | Generates single-use, expiring links for Homepage, CheckIn, CheckOut, Chat, and Keys for a reservation/customer pair. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/reservations.md#generate-guest-portal-links) | PARTIAL | LodgeOps has a secure guest portal, but not Mews link types, expiry contract, single-use behavior, or Connector endpoint. |
+| Generate Guest Portal links | `POST /api/connector/v1/reservations/generateGuestPortalLinks` | Generates single-use, expiring links for Homepage, CheckIn, CheckOut, Chat, and Keys for a reservation/customer pair. Restricted/beta. [Source](https://github.com/MewsSystems/open-api-docs/blob/main/connector-api/operations/reservations.md#generate-guest-portal-links) | PARTIAL | Inn has a secure guest portal, but not Mews link types, expiry contract, single-use behavior, or Connector endpoint. |
 
 The restrictions `add` and `delete` pages in the repository are explicitly discontinued; they are not counted as current live operations. The preferred current path is `set`/`clear` restrictions.
 
@@ -52,13 +52,13 @@ The restrictions `add` and `delete` pages in the repository are explicitly disco
 
 The active Booking Engine operation index has 15 entries. The saved protocol matrix had 14. The missing operation is:
 
-| Mews operation | Exact source | LodgeOps status |
+| Mews operation | Exact source | Inn status |
 |---|---|---|
-| Get promoted services | [Booking Engine services operation](https://github.com/MewsSystems/open-api-docs/blob/main/booking-engine/booking-engine-api/operations/services.md#get-promoted-services) | ABSENT as an API contract; LodgeOps has internal catalog/upsell concepts but no public Booking Engine operation returning promoted services, rates, resource categories, availability, and prices. |
+| Get promoted services | [Booking Engine services operation](https://github.com/MewsSystems/open-api-docs/blob/main/booking-engine/booking-engine-api/operations/services.md#get-promoted-services) | ABSENT as an API contract; Inn has internal catalog/upsell concepts but no public Booking Engine operation returning promoted services, rates, resource categories, availability, and prices. |
 
 The detailed web surfaces are also API-like contracts and were not individually enumerated in the earlier protocol matrix:
 
-| Mews surface | Detailed capability | LodgeOps status |
+| Mews surface | Detailed capability | Inn status |
 |---|---|---|
 | Booking Engine Widget loader | CDN loader, `Mews.Distributor`, configuration IDs, `openElements`, iframe overlay, HTTPS-only behavior, CSP requirements, anti-cache rules | ABSENT |
 | Widget JavaScript control API | `open`, `close`, language/currency/date/voucher/adult/child setters, tracking enable/disable | ABSENT |
@@ -74,7 +74,7 @@ Sources: [Widget getting started](https://github.com/MewsSystems/open-api-docs/b
 
 The current first-party docs contain a separate embeddable JavaScript checkout, not just the Connector payment operations already listed in the finance matrix.
 
-| SDK/API surface | Detailed capability | LodgeOps status |
+| SDK/API surface | Detailed capability | Inn status |
 |---|---|---|
 | Embedded loader | `https://cdn.mews.com/payments/checkout-embed.js`, responsive iframe, `Mews.PaymentCheckout.load()` | ABSENT |
 | Flow 1 — payment request | Capture a pre-created Connector payment request; the checkout handles method selection, PCI card capture, 3DS, and posting the payment to Mews | ABSENT |
@@ -94,7 +94,7 @@ Source: [Mews Payments Checkout](https://github.com/MewsSystems/open-api-docs/bl
 
 This is not a normal outbound Connector API. It is a reverse API: the loyalty provider exposes endpoints and Mews calls them from Mews Operations.
 
-| Partner surface | Detailed contract/workflow | LodgeOps status |
+| Partner surface | Detailed contract/workflow | Inn status |
 |---|---|---|
 | Reverse API deployment | Partner supplies demo and production base URLs; Mews calls the partner API | ABSENT |
 | Authentication | Bearer token supplied by the partner; one token covers the integration; current docs describe one-year tokens and manual rotation accepting both tokens during rollover | ABSENT |
@@ -114,7 +114,7 @@ The Connector API's separate loyalty operations were already counted in the prot
 
 The earlier protocol matrix counted POS operation rows and POS webhooks, but the current GitHub docs add important implementation behavior and restricted use cases:
 
-| POS surface | Detailed capability | LodgeOps status |
+| POS surface | Detailed capability | Inn status |
 |---|---|---|
 | JSON:API request/response contract | `application/vnd.api+json`, resource objects, attributes, relationships, included resources, JSON:API errors | ABSENT |
 | Relationships and includes | `include=...` loads linked tables, customers, invoices, registers, order items, and related resources | ABSENT |
@@ -135,7 +135,7 @@ The current Connector use-case index includes Accounting, Allowances, Customer l
 
 The most material previously unscored use case is Allowances:
 
-| Allowance behavior | LodgeOps status | Mismatch |
+| Allowance behavior | Inn status | Mismatch |
 |---|---|---|
 | Allowance product as a bill liability | ABSENT | No allowance product/order-item discriminator. |
 | Automatic discount by permitted accounting category | ABSENT | No category-matched automatic discounting. |

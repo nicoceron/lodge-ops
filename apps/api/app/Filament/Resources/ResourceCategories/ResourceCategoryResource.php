@@ -5,7 +5,7 @@ namespace App\Filament\Resources\ResourceCategories;
 use App\Enums\ResourceKind;
 use App\Filament\Resources\ResourceCategories\Pages\ManageResourceCategories;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\ResourceCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
@@ -44,12 +44,12 @@ class ResourceCategoryResource extends TenantResource
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
                     Select::make('kind')
-                        ->options(LodgeOpsPresentation::enumOptions(ResourceKind::cases()))
+                        ->options(InnPresentation::enumOptions(ResourceKind::cases()))
                         ->required(),
                     TextInput::make('name')->required()->maxLength(80),
                     TextInput::make('slug')->maxLength(40)->helperText('Leave blank to generate from the name.'),
@@ -69,14 +69,14 @@ class ResourceCategoryResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('name')->searchable()->sortable(),
-                TextColumn::make('kind')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('kind')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('property.name')->label('Property')->sortable(),
                 IconColumn::make('counts_as_stay')->label('Stay')->boolean(),
                 IconColumn::make('is_active')->label('Active')->boolean(),
                 TextColumn::make('sort_order')->numeric()->sortable(),
             ])
             ->filters([
-                SelectFilter::make('kind')->options(LodgeOpsPresentation::enumOptions(ResourceKind::cases())),
+                SelectFilter::make('kind')->options(InnPresentation::enumOptions(ResourceKind::cases())),
                 SelectFilter::make('property')->relationship('property', 'name'),
             ])
             ->recordActions([

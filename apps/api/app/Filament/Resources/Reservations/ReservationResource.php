@@ -8,7 +8,13 @@ use App\Filament\Resources\Reservations\Pages\EditReservation;
 use App\Filament\Resources\Reservations\Pages\ListReservations;
 use App\Filament\Resources\Reservations\Pages\ViewReservation;
 use App\Filament\Resources\Reservations\RelationManagers\AllocationsRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\CommunicationsRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\DepositsRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\FolioLinesRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\GeneratedDocumentsRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\NotesRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\OperationalTasksRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\StatusHistoryRelationManager;
 use App\Filament\Resources\Reservations\Schemas\ReservationForm;
 use App\Filament\Resources\Reservations\Schemas\ReservationInfolist;
@@ -91,6 +97,12 @@ class ReservationResource extends TenantResource
     {
         return [
             AllocationsRelationManager::class,
+            DepositsRelationManager::class,
+            PaymentsRelationManager::class,
+            FolioLinesRelationManager::class,
+            OperationalTasksRelationManager::class,
+            CommunicationsRelationManager::class,
+            GeneratedDocumentsRelationManager::class,
             NotesRelationManager::class,
             StatusHistoryRelationManager::class,
         ];

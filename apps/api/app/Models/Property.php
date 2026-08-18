@@ -26,6 +26,16 @@ class Property extends TenantModel
         return $this->hasMany(Reservation::class);
     }
 
+    public function ratePlans(): HasMany
+    {
+        return $this->hasMany(RatePlan::class);
+    }
+
+    public function taxRules(): HasMany
+    {
+        return $this->hasMany(TaxRule::class);
+    }
+
     public function guestPortalDocuments(): HasMany
     {
         return $this->hasMany(GuestPortalDocument::class);

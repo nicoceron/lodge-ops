@@ -4,7 +4,7 @@ namespace App\Filament\Resources\IntegrationConnections;
 
 use App\Filament\Resources\IntegrationConnections\Pages\ManageIntegrationConnections;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\IntegrationConnection;
 use App\Services\IntegrationConnectionService;
 use BackedEnum;
@@ -56,9 +56,9 @@ class IntegrationConnectionResource extends TenantResource
         return $schema->components([
             Section::make('Connection health')->columns(2)->schema([
                 TextEntry::make('name'),
-                TextEntry::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? LodgeOpsPresentation::label($state)),
-                TextEntry::make('status')->badge()->formatStateUsing(fn (string $state): string => LodgeOpsPresentation::label($state))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
-                TextEntry::make('last_synced_at')->label('Last synchronized')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never'),
+                TextEntry::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? InnPresentation::label($state)),
+                TextEntry::make('status')->badge()->formatStateUsing(fn (string $state): string => InnPresentation::label($state))->color(fn ($state): string => InnPresentation::statusColor($state)),
+                TextEntry::make('last_synced_at')->label('Last synchronized')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never'),
                 TextEntry::make('last_error')->label('Last error')->placeholder('No errors')->columnSpanFull(),
                 KeyValueEntry::make('configuration')->label('Non-secret configuration')->columnSpanFull()->placeholder('No configuration'),
             ]),
@@ -70,9 +70,9 @@ class IntegrationConnectionResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('name')->searchable()->weight('medium'),
-                TextColumn::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? LodgeOpsPresentation::label($state)),
-                TextColumn::make('status')->badge()->formatStateUsing(fn (string $state): string => LodgeOpsPresentation::label($state))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
-                TextColumn::make('last_synced_at')->label('Last sync')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never')->sortable(),
+                TextColumn::make('type')->badge()->formatStateUsing(fn (string $state): string => IntegrationConnection::TYPES[$state] ?? InnPresentation::label($state)),
+                TextColumn::make('status')->badge()->formatStateUsing(fn (string $state): string => InnPresentation::label($state))->color(fn ($state): string => InnPresentation::statusColor($state)),
+                TextColumn::make('last_synced_at')->label('Last sync')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
                 TextColumn::make('health')->label('Health')
                     ->state(fn (IntegrationConnection $record): string => filled($record->last_error)
                         ? 'Needs attention'
@@ -96,7 +96,7 @@ class IntegrationConnectionResource extends TenantResource
             ])
             ->defaultSort('type')
             ->emptyStateHeading('No integrations configured')
-            ->emptyStateDescription('Add a calendar, accounting, payment, signature, email, or webhook adapter without storing provider credentials in LodgeOps.');
+            ->emptyStateDescription('Add a calendar, accounting, payment, signature, email, or webhook adapter without storing provider credentials in Inn.');
     }
 
     public static function getPages(): array

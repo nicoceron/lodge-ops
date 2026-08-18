@@ -4,7 +4,7 @@ test("public site links directly to the Filament application", async ({ page }) 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Run the whole lodge/i })).toBeVisible();
   await expect(page.locator('a[href="http://localhost:8000/manage/login"]').first()).toHaveAttribute("href", "http://localhost:8000/manage/login");
-  await expect(page.getByRole("link", { name: "Open LodgeOps", exact: true }).first()).toHaveAttribute("href", "http://localhost:8000/manage");
+  await expect(page.getByRole("link", { name: "Open Inn", exact: true }).first()).toHaveAttribute("href", "http://localhost:8000/manage");
 });
 
 test("public navigation contains marketing pages and no protected workspace", async ({ page }) => {

@@ -13,7 +13,7 @@ const sections = [
 
 export default function FeaturesPage() {
   return <>
-    <section className="page-hero"><div className="shell"><div className="eyebrow">Platform</div><h1>Every workflow around the stay, connected.</h1><p className="lede">LodgeOps replaces fragmented spreadsheets and booking variants with a coherent operating model from first inquiry through post-stay closeout.</p></div></section>
+    <section className="page-hero"><div className="shell"><div className="eyebrow">Platform</div><h1>Every workflow around the stay, connected.</h1><p className="lede">Inn replaces fragmented spreadsheets and booking variants with a coherent operating model from first inquiry through post-stay closeout.</p></div></section>
     <section className="section"><div className="shell detail-grid">{sections.map(([title, heading, items]) => <article className="detail-card" key={title as string}><div className="eyebrow">{title as string}</div><h3>{heading as string}</h3><ul>{(items as string[]).map(item => <li key={item}>{item}</li>)}</ul></article>)}</div></section>
   </>;
 }

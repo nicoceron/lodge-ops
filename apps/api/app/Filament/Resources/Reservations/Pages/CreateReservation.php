@@ -2,41 +2,39 @@
 
 namespace App\Filament\Resources\Reservations\Pages;
 
-use App\Enums\ReservationStatus;
 use App\Filament\Resources\Reservations\ReservationResource;
-use App\Models\ReservationGuest;
+use App\Services\BookingQuoteService;
+use App\Services\CommitBookingQuote;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 
 class CreateReservation extends CreateRecord
 {
     protected static string $resource = ReservationResource::class;
 
-    protected function mutateFormDataBeforeCreate(array $data): array
+    protected function handleRecordCreation(array $data): Model
     {
-        $data['status'] = ReservationStatus::Draft;
-        $data['currency'] = strtoupper($data['currency']);
-        $data['total_minor'] = $data['subtotal_minor'] + $data['tax_minor'];
+        $quote = app(BookingQuoteService::class)->create($data);
 
-        return $data;
+        return app(CommitBookingQuote::class)->handle(
+            $quote,
+            $data['primary_guest_id'] ?? null,
+            [
+                'first_name' => $data['guest_first_name'] ?? null,
+                'last_name' => $data['guest_last_name'] ?? null,
+                'email' => $data['guest_email'] ?? null,
+                'phone' => $data['guest_phone'] ?? null,
+                'language' => $data['guest_language'] ?? null,
+                'dietary' => $data['guest_dietary'] ?? null,
+            ],
+            $data['companion_guest_ids'] ?? [],
+            $data['source'] ?? null,
+            $data['notes'] ?? null,
+        );
     }
 
-    protected function afterCreate(): void
+    protected function getCreatedNotificationTitle(): ?string
     {
-        $this->syncGuests();
-    }
-
-    private function syncGuests(): void
-    {
-        $guestIds = array_values(array_unique(array_filter([
-            $this->record->primary_guest_id,
-            ...($this->data['companion_guest_ids'] ?? []),
-        ])));
-        foreach ($guestIds as $guestId) {
-            ReservationGuest::query()->create([
-                'reservation_id' => $this->record->id,
-                'guest_id' => $guestId,
-                'role' => $guestId === $this->record->primary_guest_id ? 'primary' : 'guest',
-            ]);
-        }
+        return 'Priced reservation hold created';
     }
 }

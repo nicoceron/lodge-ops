@@ -6,7 +6,7 @@ use App\Filament\Resources\CommissionAccruals\Pages\CreateCommissionAccrual;
 use App\Filament\Resources\CommissionAccruals\Pages\ListCommissionAccruals;
 use App\Filament\Resources\CommissionAccruals\Pages\ViewCommissionAccrual;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CommissionAccrual;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -47,7 +47,7 @@ class CommissionAccrualResource extends TenantResource
     {
         return $schema->components([
             Section::make('Accrue commission')->description('The commission base is frozen from the selected reservation total.')->columns(2)->schema([
-                Select::make('reservation_id')->label('Reservation')->options(LodgeOpsPresentation::reservationOptions(...))->required()->searchable()->preload()->columnSpanFull(),
+                Select::make('reservation_id')->label('Reservation')->options(InnPresentation::reservationOptions(...))->required()->searchable()->preload()->columnSpanFull(),
                 Select::make('payee_type')->options(['agency' => 'Agency', 'staff' => 'Staff', 'guide' => 'Guide', 'partner' => 'Partner'])->required(),
                 TextInput::make('payee_name')->label('Payee')->required()->maxLength(160),
                 TextInput::make('rate_basis_points')->label('Rate')->numeric()->minValue(0)->maxValue(10000)->suffix('basis points')->required(),
@@ -60,13 +60,13 @@ class CommissionAccrualResource extends TenantResource
         return $schema->components([
             Section::make('Commission accrual')->columns(2)->schema([
                 TextEntry::make('payee_name')->label('Payee')->weight('bold'),
-                TextEntry::make('payee_type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('payee_type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation'),
                 TextEntry::make('rate_basis_points')->label('Rate')->formatStateUsing(fn (int $state): string => number_format($state / 100, 2).'%'),
                 TextEntry::make('base_amount_minor')->label('Commission base')->money(fn (CommissionAccrual $record): string => $record->currency, divideBy: 100),
                 TextEntry::make('amount_minor')->label('Commission')->money(fn (CommissionAccrual $record): string => $record->currency, divideBy: 100)->weight('bold'),
-                TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
-                TextEntry::make('paid_at')->label('Paid')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Outstanding'),
+                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
+                TextEntry::make('paid_at')->label('Paid')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Outstanding'),
             ]),
         ]);
     }
@@ -76,11 +76,11 @@ class CommissionAccrualResource extends TenantResource
         return $table
             ->columns([
                 TextColumn::make('payee_name')->label('Payee')->searchable()->weight('medium'),
-                TextColumn::make('payee_type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('payee_type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->searchable(),
                 TextColumn::make('amount_minor')->label('Commission')->money(fn (CommissionAccrual $record): string => $record->currency, divideBy: 100)->sortable(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
-                TextColumn::make('paid_at')->label('Paid')->dateTime('M j, Y', timezone: LodgeOpsPresentation::timezone())->placeholder('—')->sortable(),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
+                TextColumn::make('paid_at')->label('Paid')->dateTime('M j, Y', timezone: InnPresentation::timezone())->placeholder('—')->sortable(),
             ])
             ->filters([SelectFilter::make('status')->options(['accrued' => 'Accrued', 'paid' => 'Paid'])])
             ->recordActions([ViewAction::make(), self::markPaidAction()])

@@ -4,7 +4,7 @@ namespace App\Filament\Resources\CommunicationSuppressions;
 
 use App\Filament\Resources\CommunicationSuppressions\Pages\ManageCommunicationSuppressions;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CommunicationSuppression;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
@@ -51,10 +51,10 @@ class CommunicationSuppressionResource extends TenantResource
     {
         return $schema->components([
             Section::make('Suppression')->columns(2)->schema([
-                TextEntry::make('channel')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
-                TextEntry::make('reason')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('channel')->badge()->formatStateUsing(InnPresentation::label(...)),
+                TextEntry::make('reason')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('recipient_hash')->label('Recipient SHA-256')->copyable()->columnSpanFull(),
-                TextEntry::make('expires_at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never expires'),
+                TextEntry::make('expires_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never expires'),
             ]),
         ]);
     }
@@ -63,10 +63,10 @@ class CommunicationSuppressionResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('channel')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('channel')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('recipient_hash')->label('Recipient hash')->limit(16)->copyable()->searchable(),
-                TextColumn::make('reason')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
-                TextColumn::make('expires_at')->label('Expires')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Never')->sortable(),
+                TextColumn::make('reason')->badge()->formatStateUsing(InnPresentation::label(...)),
+                TextColumn::make('expires_at')->label('Expires')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
                 TextColumn::make('created_at')->label('Added')->since()->sortable(),
             ])
             ->filters([SelectFilter::make('channel')->options(['email' => 'Email', 'sms' => 'SMS', 'whatsapp' => 'WhatsApp'])])

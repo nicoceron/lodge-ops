@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\SurveyResponses\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Survey;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -21,7 +21,7 @@ class SurveyResponseInfolist
                     TextEntry::make('reservation.program.name')->label('Program')->placeholder('No program'),
                     TextEntry::make('responded_at')
                         ->label('Response date')
-                        ->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                        ->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
                     TextEntry::make('score')
                         ->label('Rating')
                         ->badge()
@@ -31,7 +31,7 @@ class SurveyResponseInfolist
                             $state === 3 => 'warning',
                             default => 'danger',
                         }),
-                    TextEntry::make('kind')->label('Survey type')->formatStateUsing(LodgeOpsPresentation::label(...)),
+                    TextEntry::make('kind')->label('Survey type')->formatStateUsing(InnPresentation::label(...)),
                 ]),
             Section::make('Guest comments')
                 ->schema([

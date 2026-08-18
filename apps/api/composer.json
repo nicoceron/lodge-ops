@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "inn/api",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Inn hospitality operations application.",
+    "keywords": ["laravel", "filament", "hospitality", "pms"],
     "license": "MIT",
     "require": {
         "php": "^8.3",

@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Proposals\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Program;
 use App\Support\Tenancy\TenantContext;
 use Filament\Forms\Components\DateTimePicker;
@@ -24,7 +24,7 @@ class ProposalForm
                 ->columns(2)
                 ->schema([
                     Select::make('property_id')
-                        ->options(LodgeOpsPresentation::propertyOptions(...))
+                        ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
@@ -45,12 +45,12 @@ class ProposalForm
                         ->preload(),
                     DateTimePicker::make('starts_at')
                         ->label('Arrival')
-                        ->timezone(LodgeOpsPresentation::timezone())
+                        ->timezone(InnPresentation::timezone())
                         ->seconds(false)
                         ->required(),
                     DateTimePicker::make('ends_at')
                         ->label('Departure')
-                        ->timezone(LodgeOpsPresentation::timezone())
+                        ->timezone(InnPresentation::timezone())
                         ->seconds(false)
                         ->after('starts_at')
                         ->required(),
@@ -62,7 +62,7 @@ class ProposalForm
                         ->required(),
                     DateTimePicker::make('expires_at')
                         ->label('Valid until')
-                        ->timezone(LodgeOpsPresentation::timezone())
+                        ->timezone(InnPresentation::timezone())
                         ->seconds(false)
                         ->after('now'),
                     TextInput::make('title')->default('Lodge stay proposal')->maxLength(255)->columnSpanFull(),

@@ -112,8 +112,14 @@ class GuestPortalService
     }
 
     /** @return array{file_name: string, status: string, submitted_at: string} */
-    public function storePaymentEvidence(GuestPortalAccessToken $access, UploadedFile $upload): array
+    public function storePaymentEvidence(GuestPortalAccessToken $access, UploadedFile $upload, array $data): array
     {
+        $reservation = $this->reservation($access);
+        $currency = strtoupper((string) ($data['currency'] ?? $reservation->currency));
+        if ($currency !== $reservation->currency) {
+            abort(422, 'Evidence currency must match the reservation currency.');
+        }
+        $amountMinor = (int) ($data['amount_minor'] ?? max(1, app(FolioService::class)->summary($reservation)['balance_minor']));
         $realPath = $upload->getRealPath();
         $contentType = (new \finfo(FILEINFO_MIME_TYPE))->file($realPath);
         $sizeBytes = filesize($realPath);
@@ -128,6 +134,7 @@ class GuestPortalService
             'image/png' => 'png',
             default => abort(422, 'Unsupported evidence type.'),
         };
+        app(PaymentEvidenceScanner::class)->assertSafe($upload);
         $directory = "guest-payment-evidence/{$access->tenant_id}/{$access->reservation_id}";
         $storagePath = Storage::disk('local')->putFileAs($directory, $upload, Str::uuid().'.'.$extension);
 
@@ -146,6 +153,10 @@ class GuestPortalService
                 'sha256' => hash_file('sha256', $realPath),
                 'storage_path' => $storagePath,
                 'status' => 'review_pending',
+                'amount_minor' => $amountMinor,
+                'currency' => $currency,
+                'transfer_reference' => trim((string) ($data['transfer_reference'] ?? '')) ?: null,
+                'scan_status' => 'accepted',
                 'submitted_at' => $submittedAt,
             ]);
         } catch (Throwable $exception) {
@@ -155,7 +166,7 @@ class GuestPortalService
 
         return [
             'file_name' => $evidence->file_name,
-            'status' => $evidence->status,
+            'status' => $evidence->status->value,
             'submitted_at' => $submittedAt->toIso8601String(),
         ];
     }

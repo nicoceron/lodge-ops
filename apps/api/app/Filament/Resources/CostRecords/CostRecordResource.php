@@ -4,7 +4,7 @@ namespace App\Filament\Resources\CostRecords;
 
 use App\Filament\Resources\CostRecords\Pages\ManageCostRecords;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CostRecord;
 use App\Models\Program;
 use App\Models\Reservation;
@@ -99,9 +99,9 @@ class CostRecordResource extends TenantResource
             Section::make('Cost record')->columns(2)->schema([
                 TextEntry::make('description')->columnSpanFull()->weight('bold'),
                 TextEntry::make('amount_minor')->label('Amount')->money(fn (CostRecord $record): string => $record->currency, divideBy: 100),
-                TextEntry::make('kind')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('kind')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('category'),
-                TextEntry::make('occurred_at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                TextEntry::make('occurred_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->placeholder('—'),
                 TextEntry::make('program.name')->label('Program')->placeholder('—'),
                 TextEntry::make('staffUser.name')->label('Staff member')->placeholder('—'),
@@ -114,16 +114,16 @@ class CostRecordResource extends TenantResource
     {
         return $table
             ->columns([
-                TextColumn::make('occurred_at')->label('Date')->dateTime('M j, Y', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('occurred_at')->label('Date')->dateTime('M j, Y', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('description')->searchable()->limit(45)->weight('medium'),
-                TextColumn::make('category')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->searchable(),
-                TextColumn::make('kind')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('category')->badge()->formatStateUsing(InnPresentation::label(...))->searchable(),
+                TextColumn::make('kind')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('amount_minor')->label('Amount')->money(fn (CostRecord $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->placeholder('—')->searchable(),
             ])
             ->filters([
                 SelectFilter::make('kind')->options(['estimated' => 'Estimated', 'actual' => 'Actual']),
-                SelectFilter::make('reservation_id')->label('Reservation')->options(LodgeOpsPresentation::reservationOptions(...))->searchable(),
+                SelectFilter::make('reservation_id')->label('Reservation')->options(InnPresentation::reservationOptions(...))->searchable(),
             ])
             ->recordActions([ViewAction::make(), EditAction::make()])
             ->defaultSort('occurred_at', 'desc')

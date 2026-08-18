@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Opportunities\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\CrmActivity;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
@@ -36,10 +36,10 @@ class ActivitiesRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('subject')->searchable()->weight('medium')->wrap(),
-                TextColumn::make('due_at')->label('Due')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('—')->sortable(),
-                TextColumn::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Open'),
+                TextColumn::make('due_at')->label('Due')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('—')->sortable(),
+                TextColumn::make('completed_at')->label('Completed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Open'),
                 TextColumn::make('actor.name')->label('Owner')->placeholder('—'),
             ])
             ->filters([TernaryFilter::make('completed')->queries(true: fn ($query) => $query->whereNotNull('completed_at'), false: fn ($query) => $query->whereNull('completed_at'))])

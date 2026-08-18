@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Controllers\PaymentEvidenceDownloadController;
 use App\Http\Middleware\ResolveFilamentTenant;
 use App\Models\Tenant;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
@@ -19,6 +20,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -29,7 +31,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('manage')
-            ->brandName('LodgeOps')
+            ->brandName('Inn')
             ->maxContentWidth(Width::Full)
             ->spa(hasPrefetching: true)
             ->unsavedChangesAlerts()
@@ -46,6 +48,10 @@ class AdminPanelProvider extends PanelProvider
             ->tenant(Tenant::class, slugAttribute: 'slug', ownershipRelationship: 'tenant')
             ->tenantRoutePrefix('workspace')
             ->tenantMiddleware([ResolveFilamentTenant::class], isPersistent: true)
+            ->authenticatedTenantRoutes(fn () => Route::get(
+                'payment-evidence/{evidence}/download',
+                PaymentEvidenceDownloadController::class,
+            )->name('payment-evidence.download'))
             ->colors([
                 'primary' => Color::Amber,
             ])

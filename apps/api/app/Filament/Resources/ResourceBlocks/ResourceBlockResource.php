@@ -5,7 +5,7 @@ namespace App\Filament\Resources\ResourceBlocks;
 use App\Enums\MembershipRole;
 use App\Filament\Resources\ResourceBlocks\Pages\ManageResourceBlocks;
 use App\Filament\Resources\TenantResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
 use App\Support\Tenancy\TenantContext;
@@ -70,8 +70,8 @@ class ResourceBlockResource extends TenantResource
             ->columns([
                 TextColumn::make('resource.name')->label('Resource')->searchable()->weight('medium'),
                 TextColumn::make('resource.category.name')->label('Category')->badge(),
-                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('reason')->searchable()->wrap(),
             ])
             ->recordActions([EditAction::make(), DeleteAction::make()])

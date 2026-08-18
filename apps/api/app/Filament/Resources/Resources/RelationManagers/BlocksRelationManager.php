@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Resources\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -34,8 +34,8 @@ class BlocksRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('starts_at')->label('From')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('ends_at')->label('Until')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('reason')->searchable()->wrap(),
                 TextColumn::make('notes')->limit(60)->placeholder('—'),
             ])

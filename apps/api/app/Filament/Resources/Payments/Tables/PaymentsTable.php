@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Payments\Tables;
 
 use App\Enums\PaymentStatus;
 use App\Filament\Resources\Payments\PaymentWorkflowActions;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Payment;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
@@ -20,7 +20,7 @@ class PaymentsTable
             ->columns([
                 TextColumn::make('processed_at')
                     ->label('Processed')
-                    ->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())
+                    ->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())
                     ->placeholder('Pending')
                     ->sortable(),
                 TextColumn::make('reservation.confirmation_number')
@@ -29,15 +29,15 @@ class PaymentsTable
                     ->sortable(),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state))
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn ($state): string => InnPresentation::statusColor($state))
                     ->sortable(),
                 TextColumn::make('amount_minor')
                     ->label('Amount')
                     ->money(fn (Payment $record): string => $record->currency, divideBy: 100)
                     ->sortable(),
                 TextColumn::make('method')
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
+                    ->formatStateUsing(InnPresentation::label(...))
                     ->searchable(),
                 TextColumn::make('provider_reference')
                     ->label('Reference')
@@ -47,7 +47,7 @@ class PaymentsTable
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->options(LodgeOpsPresentation::enumOptions(PaymentStatus::cases()))
+                    ->options(InnPresentation::enumOptions(PaymentStatus::cases()))
                     ->multiple(),
                 SelectFilter::make('method')
                     ->options([

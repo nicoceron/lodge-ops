@@ -15,10 +15,13 @@ use App\Enums\TaskStatus;
 use App\Models\Allocation;
 use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
+use App\Models\CancellationPolicy;
+use App\Models\CancellationPolicyTier;
 use App\Models\CommissionAccrual;
 use App\Models\CostRecord;
 use App\Models\CrmActivity;
 use App\Models\Deposit;
+use App\Models\DepositPolicy;
 use App\Models\ExchangeRate;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -36,12 +39,15 @@ use App\Models\ProgramResourceRequirement;
 use App\Models\ProgramTaskTemplate;
 use App\Models\Property;
 use App\Models\Proposal;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
 use App\Models\ReservationNote;
 use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Models\ServiceOccurrence;
 use App\Models\Survey;
+use App\Models\TaxRule;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CalendarFeedService;
@@ -70,7 +76,7 @@ class DatabaseSeeder extends Seeder
         DB::transaction(function (): void {
             $user = User::query()->updateOrCreate(
                 ['email' => 'admin@example.com'],
-                ['name' => 'LodgeOps Owner', 'password' => 'password', 'email_verified_at' => now()],
+                ['name' => 'Inn Owner', 'password' => 'password', 'email_verified_at' => now()],
             );
             $tenant = Tenant::query()->where('slug', 'demo-lodge')->first()
                 ?? Tenant::query()->forceCreate([
@@ -101,6 +107,7 @@ class DatabaseSeeder extends Seeder
             $catalog = app(ResourceCatalog::class)->ensure($property, $this->demoResourceCategories());
             $programs = $this->seedPrograms($property->id, $catalog);
             $resources = $this->seedResources($property->id, $staff, $catalog);
+            $this->seedBookingPoliciesAndRates($property, $catalog);
             $this->seedAutomation();
 
             $guest = Guest::query()->firstOrCreate(
@@ -333,6 +340,52 @@ class DatabaseSeeder extends Seeder
         }
 
         return $created;
+    }
+
+    /** @param Collection<string, ResourceCategory> $catalog */
+    private function seedBookingPoliciesAndRates(Property $property, Collection $catalog): void
+    {
+        $deposit = DepositPolicy::query()->updateOrCreate(
+            ['property_id' => $property->id, 'name' => 'Standard 50% deposit'],
+            [
+                'requirement_type' => 'percentage',
+                'percentage_basis_points' => 5000,
+                'deposit_due_offset_days' => 0,
+                'balance_due_offset_days' => 30,
+                'confirmation_requires_payment' => false,
+                'is_default' => true,
+                'is_active' => true,
+            ],
+        );
+        $cancellation = CancellationPolicy::query()->updateOrCreate(
+            ['property_id' => $property->id, 'name' => 'Standard lodge cancellation'],
+            ['summary' => 'Twenty percent retained inside thirty days; fifty percent inside fourteen days.', 'is_default' => true, 'is_active' => true],
+        );
+        foreach ([[30, 2000], [14, 5000], [0, 10000]] as $index => [$days, $retained]) {
+            CancellationPolicyTier::query()->updateOrCreate(
+                ['cancellation_policy_id' => $cancellation->id, 'days_before_arrival' => $days],
+                ['retained_basis_points' => $retained, 'minimum_fee_minor' => 0, 'sort_order' => $index],
+            );
+        }
+        $plan = RatePlan::query()->updateOrCreate(
+            ['property_id' => $property->id, 'name' => 'Flexible lodge rate', 'currency' => 'USD'],
+            [
+                'deposit_policy_id' => $deposit->id,
+                'cancellation_policy_id' => $cancellation->id,
+                'minimum_occupancy' => 1,
+                'maximum_occupancy' => 4,
+                'inclusions' => ['Breakfast', 'Lodge operations support'],
+                'is_active' => true,
+            ],
+        );
+        RateRule::query()->updateOrCreate(
+            ['rate_plan_id' => $plan->id, 'resource_category_id' => $catalog['room']->id, 'priority' => 0],
+            ['price_type' => 'per_night', 'amount_minor' => 300_000, 'minimum_stay' => 1, 'stop_sell' => false],
+        );
+        TaxRule::query()->updateOrCreate(
+            ['property_id' => $property->id, 'name' => 'Demo VAT'],
+            ['calculation_type' => 'percentage', 'percentage_basis_points' => 1900, 'is_inclusive' => false, 'priority' => 0, 'is_active' => true],
+        );
     }
 
     /**

@@ -1,4 +1,4 @@
-# Mews vs LodgeOps — complete feature-by-feature audit index
+# Mews vs Inn — complete feature-by-feature audit index
 
 Audit date: 2026-08-13.
 
@@ -6,39 +6,39 @@ This is the complete handoff from the row-level verification passes. The compari
 
 ## Complete matrices
 
-- [PMS, reservations, front desk, rates, space, guest journey, housekeeping, upsells, Digital Key, kiosk, concierge, groups, MICE, and current Mews OS additions](mews-vs-lodgeops-complete-pms.md)
+- [PMS, reservations, front desk, rates, space, guest journey, housekeeping, upsells, Digital Key, kiosk, concierge, groups, MICE, and current Mews OS additions](mews-vs-inn-complete-pms.md)
   - 295 original product-capability rows plus 9 current Mews OS additions.
-- [Payments, payment methods, processing, tokenization, reconciliation, accounting, AR, multicurrency, terminals, financing, revenue management, rates, BI, and finance API parity](mews-vs-lodgeops-complete-finance.md)
+- [Payments, payment methods, processing, tokenization, reconciliation, accounting, AR, multicurrency, terminals, financing, revenue management, rates, BI, and finance API parity](mews-vs-inn-complete-finance.md)
   - Row-level finance/revenue inventory, including every separately identified payment method and reporting/rate capability.
-- [Connector API, Booking Engine API, Channel Manager API, POS API, webhooks, WebSockets, authentication, pagination, retries, and certification mechanics](mews-vs-lodgeops-complete-protocol.md)
-  - 288 baseline protocol/event/operation rows, plus the live-contract and SDK/API-space addendum in the [GitHub/OpenAPI re-audit](mews-vs-lodgeops-github-openapi-audit.md).
-- [Marketplace, integration classes, Mews first-party products, groups/chains, security/compliance, Open API, and public website stack](mews-vs-lodgeops-complete-ecosystem.md)
+- [Connector API, Booking Engine API, Channel Manager API, POS API, webhooks, WebSockets, authentication, pagination, retries, and certification mechanics](mews-vs-inn-complete-protocol.md)
+  - 288 baseline protocol/event/operation rows, plus the live-contract and SDK/API-space addendum in the [GitHub/OpenAPI re-audit](mews-vs-inn-github-openapi-audit.md).
+- [Marketplace, integration classes, Mews first-party products, groups/chains, security/compliance, Open API, and public website stack](mews-vs-inn-complete-ecosystem.md)
   - Marketplace, enterprise, security, and public-stack rows.
-- [GitHub/OpenAPI re-audit of the attached research links](mews-vs-lodgeops-github-openapi-audit.md)
+- [GitHub/OpenAPI re-audit of the attached research links](mews-vs-inn-github-openapi-audit.md)
   - Live Connector Swagger comparison, first-party API repository, Booking Engine web surfaces, Payments Checkout, Loyalty Partner, POS mechanics/use cases, allowances, VAT/restrictions, and public Mews repositories.
-- [Up-to-date technology-by-feature audit](mews-vs-lodgeops-technology-audit.md)
+- [Up-to-date technology-by-feature audit](mews-vs-inn-technology-audit.md)
   - Mews’ disclosed Azure/C#/.NET/React/TypeScript/Flutter/Kotlin platform stack, every public API/browser/device/payment technology surface, public repository signals, and the remaining private-architecture boundary.
 
 ## Status definitions
 
-- **FULL** — a materially equivalent executable LodgeOps capability exists.
-- **PARTIAL** — LodgeOps has a narrower or internal analogue, but not the Mews workflow or scope.
+- **FULL** — a materially equivalent executable Inn capability exists.
+- **PARTIAL** — Inn has a narrower or internal analogue, but not the Mews workflow or scope.
 - **ABSENT** — no executable implementation was found.
 - **ADAPTER-ONLY** — configuration or secret storage exists, but no provider adapter/execution path exists.
 
-## LodgeOps evidence baseline
+## Inn evidence baseline
 
 The workers checked the implementation, not just the intended feature documentation:
 
-- [API routes](/Users/ceron/Developer/Projects/lodge-ops/apps/api/routes/api.php)
-- [API package manifest](/Users/ceron/Developer/Projects/lodge-ops/apps/api/composer.json)
-- [IntegrationConnection.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Models/IntegrationConnection.php)
-- [IntegrationConnectionService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/IntegrationConnectionService.php)
-- [PaymentService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/PaymentService.php)
-- [FinancialReportingService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/FinancialReportingService.php)
-- [ReservationService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/ReservationService.php)
-- [GuestPortalService.php](/Users/ceron/Developer/Projects/lodge-ops/apps/api/app/Services/GuestPortalService.php)
-- [web package manifest](/Users/ceron/Developer/Projects/lodge-ops/apps/web/package.json)
+- [API routes](../apps/api/routes/api.php)
+- [API package manifest](../apps/api/composer.json)
+- [IntegrationConnection.php](../apps/api/app/Models/IntegrationConnection.php)
+- [IntegrationConnectionService.php](../apps/api/app/Services/IntegrationConnectionService.php)
+- [PaymentService.php](../apps/api/app/Services/PaymentService.php)
+- [FinancialReportingService.php](../apps/api/app/Services/FinancialReportingService.php)
+- [ReservationService.php](../apps/api/app/Services/ReservationService.php)
+- [GuestPortalService.php](../apps/api/app/Services/GuestPortalService.php)
+- [web package manifest](../apps/web/package.json)
 
 ## Official Mews source families used
 
@@ -85,10 +85,10 @@ The current Mews catalog and 2026 Mews OS launch material exposed additional exp
 
 ## GitHub/OpenAPI re-audit result
 
-The two newly supplied Mews research attachments were checked against the current first-party repository and live machine-readable contract. The pass found nine current Connector operations absent from the earlier saved matrix, one omitted Booking Engine operation (`Get promoted services`), and additional uncounted contracts for the Booking Engine widget/standalone integrations, Payments Checkout, the reverse Loyalty Partner API, POS JSON:API mechanics/use cases, Connector allowances, VAT-code handling, and detailed restriction behavior. The full feature-by-feature deltas and source links are in the [GitHub/OpenAPI re-audit](mews-vs-lodgeops-github-openapi-audit.md).
+The two newly supplied Mews research attachments were checked against the current first-party repository and live machine-readable contract. The pass found nine current Connector operations absent from the earlier saved matrix, one omitted Booking Engine operation (`Get promoted services`), and additional uncounted contracts for the Booking Engine widget/standalone integrations, Payments Checkout, the reverse Loyalty Partner API, POS JSON:API mechanics/use cases, Connector allowances, VAT-code handling, and detailed restriction behavior. The full feature-by-feature deltas and source links are in the [GitHub/OpenAPI re-audit](mews-vs-inn-github-openapi-audit.md).
 
 Third-party repositories such as `api-evangelist/mews`, the n8n node, and the MCP server were checked as implementation cross-checks. They are not treated as authoritative; the live Swagger and first-party Mews repository control the comparison. Cloudbeds and Apaleo links were checked as separate benchmark sources, not counted as Mews features.
 
 This is the honest completeness boundary: the matrices cover the public first-party Mews catalog, current Mews OS announcements, official API indexes, help-center product surfaces, and Marketplace categories. They cannot prove private roadmap features, tenant-specific entitlements, gated rollouts, unpublished contracts, or every feature of every third-party Marketplace partner.
 
-The decisive product conclusion is unchanged: LodgeOps has a real internal PMS/operations core, but the Mews parity gaps are concentrated in public booking/distribution, processor payments/tokenization/terminals, accounting/AR, RMS/dynamic pricing, hotel POS/ePOS, guest self-service/messaging/AI automation, Mews-compatible APIs/events, enterprise groups/chains, and the Marketplace ecosystem.
+The decisive product conclusion is unchanged: Inn has a real internal PMS/operations core, but the Mews parity gaps are concentrated in public booking/distribution, processor payments/tokenization/terminals, accounting/AR, RMS/dynamic pricing, hotel POS/ePOS, guest self-service/messaging/AI automation, Mews-compatible APIs/events, enterprise groups/chains, and the Marketplace ecosystem.

@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\StockLocations\RelationManagers;
 
 use App\Filament\Resources\CatalogItems\CatalogItemResource;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\StockMovement;
 use Filament\Actions\CreateAction;
 use Filament\Actions\ViewAction;
@@ -38,11 +38,11 @@ class MovementsRelationManager extends RelationManager
         return $schema->components([
             Section::make('Immutable stock movement')->columns(2)->schema([
                 TextEntry::make('item.name')->label('Item'),
-                TextEntry::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextEntry::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('quantity')->numeric(decimalPlaces: 3),
                 TextEntry::make('unit_cost_minor')->label('Unit cost')->money(fn (StockMovement $record): string => $record->item->currency, divideBy: 100)->visible(CatalogItemResource::canSeeCosts(...)),
                 TextEntry::make('reference')->copyable(),
-                TextEntry::make('occurred_at')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone()),
+                TextEntry::make('occurred_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone()),
                 TextEntry::make('sale.reference')->label('Sale')->placeholder('—'),
             ]),
         ]);
@@ -52,9 +52,9 @@ class MovementsRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('occurred_at')->label('Occurred')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
+                TextColumn::make('occurred_at')->label('Occurred')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
                 TextColumn::make('item.name')->label('Item')->searchable()->weight('medium'),
-                TextColumn::make('type')->badge()->formatStateUsing(LodgeOpsPresentation::label(...)),
+                TextColumn::make('type')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextColumn::make('quantity')->numeric(decimalPlaces: 3)->sortable(),
                 TextColumn::make('reference')->copyable()->searchable(),
                 TextColumn::make('sale.reference')->label('Sale')->placeholder('—'),

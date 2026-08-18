@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Deposits\Tables;
 
 use App\Enums\DepositStatus;
 use App\Filament\Resources\Deposits\DepositWorkflowActions;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Deposit;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -19,15 +19,15 @@ class DepositsTable
         return $table
             ->columns([
                 TextColumn::make('reservation.confirmation_number')->label('Reservation')->searchable()->copyable(),
-                TextColumn::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextColumn::make('amount_minor')->label('Amount')
                     ->money(fn (Deposit $record): string => $record->currency, divideBy: 100)->sortable(),
-                TextColumn::make('due_at')->label('Due')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('On request')->sortable(),
+                TextColumn::make('due_at')->label('Due')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('On request')->sortable(),
                 TextColumn::make('payment.provider_reference')->label('Payment reference')->placeholder('Not paid')->searchable(),
             ])
             ->filters([
-                SelectFilter::make('status')->options(LodgeOpsPresentation::enumOptions(DepositStatus::cases()))->multiple(),
+                SelectFilter::make('status')->options(InnPresentation::enumOptions(DepositStatus::cases()))->multiple(),
             ])
             ->recordActions([
                 ViewAction::make(),

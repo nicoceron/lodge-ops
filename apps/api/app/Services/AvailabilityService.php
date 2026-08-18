@@ -90,7 +90,9 @@ class AvailabilityService
             }
 
             $allocatedQuantity = $conflicts->where('resource_id', $resource->id)->sum('quantity');
-            if ($allocatedQuantity + $allocation->quantity > $resource->capacity) {
+            $isExclusiveStayPlace = $resource->category()->where('counts_as_stay', true)->exists();
+            if (($isExclusiveStayPlace && $allocatedQuantity > 0)
+                || (! $isExclusiveStayPlace && $allocatedQuantity + $allocation->quantity > $resource->capacity)) {
                 throw new AllocationConflictException(
                     'The resource has insufficient remaining capacity for the requested interval.',
                     $allocation->resource_id,
@@ -200,9 +202,10 @@ class AvailabilityService
             ->lockForUpdate()
             ->pluck('resource_id')
             ->unique();
-        $availableCapacity = (int) $resources
-            ->reject(fn (Resource $resource): bool => $blockedIds->contains($resource->id))
-            ->sum('capacity');
+        $availableResources = $resources->reject(fn (Resource $resource): bool => $blockedIds->contains($resource->id));
+        $availableCapacity = $category->counts_as_stay
+            ? $availableResources->count()
+            : (int) $availableResources->sum('capacity');
 
         $reserved = (int) Allocation::query()
             ->where('requested_category_id', $allocation->requested_category_id)

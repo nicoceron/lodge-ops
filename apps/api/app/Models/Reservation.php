@@ -24,6 +24,9 @@ use LogicException;
  * @property int $adults
  * @property int $children
  * @property int $total_minor
+ * @property array<string, mixed>|null $price_snapshot
+ * @property array<string, mixed>|null $deposit_policy_snapshot
+ * @property array<string, mixed>|null $cancellation_policy_snapshot
  * @property FolioStatus $folio_status
  * @property CarbonImmutable|null $folio_closed_at
  * @property int|null $folio_closed_by
@@ -69,6 +72,9 @@ class Reservation extends TenantModel
             'subtotal_minor' => 'integer',
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
+            'price_snapshot' => 'array',
+            'deposit_policy_snapshot' => 'array',
+            'cancellation_policy_snapshot' => 'array',
             'folio_status' => FolioStatus::class,
             'folio_closed_at' => 'immutable_datetime',
             'revision' => 'integer',
@@ -78,6 +84,11 @@ class Reservation extends TenantModel
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function bookingQuote(): BelongsTo
+    {
+        return $this->belongsTo(BookingQuote::class);
     }
 
     public function program(): BelongsTo
@@ -126,6 +137,16 @@ class Reservation extends TenantModel
     public function operationalTasks(): HasMany
     {
         return $this->hasMany(OperationalTask::class);
+    }
+
+    public function communications(): HasMany
+    {
+        return $this->hasMany(Communication::class);
+    }
+
+    public function generatedDocuments(): HasMany
+    {
+        return $this->hasMany(GeneratedDocument::class);
     }
 
     public function statusHistory(): HasMany

@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Deposits\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -16,7 +16,7 @@ class DepositForm
         return $schema->components([
             Section::make('Deposit requirement')->columns(2)->schema([
                 Select::make('reservation_id')
-                    ->options(LodgeOpsPresentation::reservationOptions(...))
+                    ->options(InnPresentation::reservationOptions(...))
                     ->searchable()
                     ->preload()
                     ->disabledOn('edit')
@@ -28,7 +28,7 @@ class DepositForm
                     ->minValue(1)
                     ->required(),
                 DateTimePicker::make('due_at')
-                    ->timezone(LodgeOpsPresentation::timezone())
+                    ->timezone(InnPresentation::timezone())
                     ->seconds(false),
             ]),
         ]);

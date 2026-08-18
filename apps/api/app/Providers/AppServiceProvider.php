@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Models\Allocation;
 use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
+use App\Models\CancellationPolicy;
+use App\Models\CancellationPolicyTier;
 use App\Models\CatalogItem;
 use App\Models\CommissionAccrual;
 use App\Models\Communication;
@@ -13,12 +15,14 @@ use App\Models\CostRecord;
 use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
+use App\Models\DepositPolicy;
 use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
 use App\Models\FolioLine;
 use App\Models\GeneratedDocument;
 use App\Models\Guest;
 use App\Models\GuestMergeAlias;
+use App\Models\GuestPaymentEvidence;
 use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
@@ -29,6 +33,8 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Program;
 use App\Models\Property;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\ReportExport;
 use App\Models\Reservation;
 use App\Models\ReservationNote;
@@ -39,6 +45,7 @@ use App\Models\RetailSale;
 use App\Models\RetailSaleLine;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
+use App\Models\TaxRule;
 use App\Observers\TenantAuditObserver;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -73,15 +80,19 @@ class AppServiceProvider extends ServiceProvider
             Communication::class,
             CommunicationSuppression::class,
             CostRecord::class,
+            CancellationPolicy::class,
+            CancellationPolicyTier::class,
             CrmActivity::class,
             DeliveryAttempt::class,
             Deposit::class,
+            DepositPolicy::class,
             DocumentTemplate::class,
             ExchangeRate::class,
             FolioLine::class,
             GeneratedDocument::class,
             Guest::class,
             GuestMergeAlias::class,
+            GuestPaymentEvidence::class,
             IntegrationConnection::class,
             Membership::class,
             MessageTemplate::class,
@@ -92,6 +103,8 @@ class AppServiceProvider extends ServiceProvider
             Payment::class,
             Program::class,
             Property::class,
+            RatePlan::class,
+            RateRule::class,
             ReportExport::class,
             Reservation::class,
             ReservationNote::class,
@@ -102,6 +115,7 @@ class AppServiceProvider extends ServiceProvider
             RetailSaleLine::class,
             StockLocation::class,
             StockMovement::class,
+            TaxRule::class,
         ] as $model) {
             $model::observe(TenantAuditObserver::class);
         }

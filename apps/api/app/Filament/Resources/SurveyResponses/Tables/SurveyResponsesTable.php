@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\SurveyResponses\Tables;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\Survey;
@@ -23,7 +23,7 @@ class SurveyResponsesTable
             ->columns([
                 TextColumn::make('responded_at')
                     ->label('Responded')
-                    ->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())
+                    ->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())
                     ->sortable(),
                 TextColumn::make('reservation.property.name')
                     ->label('Property')

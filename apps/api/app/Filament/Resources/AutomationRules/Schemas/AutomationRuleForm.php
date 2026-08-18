@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\AutomationRules\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -23,7 +23,7 @@ class AutomationRuleForm
                         ->required()
                         ->maxLength(255),
                     Select::make('trigger')
-                        ->options(LodgeOpsPresentation::automationTriggerOptions())
+                        ->options(InnPresentation::automationTriggerOptions())
                         ->searchable()
                         ->required(),
                     Toggle::make('is_active')

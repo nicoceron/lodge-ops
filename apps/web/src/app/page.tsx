@@ -18,9 +18,9 @@ export default function Home() {
         <div className="shell hero-copy">
           <div className="eyebrow">Lodge operations, finally connected</div>
           <h1>Run the whole lodge from <span>one calm place.</span></h1>
-          <p className="lede">LodgeOps brings reservations, guest preparation, resources, teams, payments, and reporting together—without forcing independent operators into hotel software that does not fit.</p>
+          <p className="lede">Inn brings reservations, guest preparation, resources, teams, payments, and reporting together—without forcing independent operators into hotel software that does not fit.</p>
           <div className="hero-actions">
-            <a className="button" href={manageUrl}>Open LodgeOps <span aria-hidden="true">→</span></a>
+            <a className="button" href={manageUrl}>Open Inn <span aria-hidden="true">→</span></a>
             <Link className="button button-secondary" href="/features">Explore the platform</Link>
           </div>
         </div>
@@ -52,7 +52,7 @@ export default function Home() {
           <div className="workspace-copy">
             <div className="eyebrow">The staff workspace</div>
             <h2>Built around the day the lodge is actually having.</h2>
-            <p>The authenticated LodgeOps application runs in Laravel and Filament, so login, roles, tenant switching, workflows, and records share one secure application boundary.</p>
+            <p>The authenticated Inn application runs in Laravel and Filament, so login, roles, tenant switching, workflows, and records share one secure application boundary.</p>
             <ul className="check-list">
               <li>Role-specific calendar and work queues</li>
               <li>Reservation composer with resource conflict checks</li>
@@ -60,10 +60,10 @@ export default function Home() {
               <li>No duplicate frontend authentication or browser API proxy</li>
             </ul>
           </div>
-          <div className="product-window" aria-label="Illustration of the LodgeOps operations board">
+          <div className="product-window" aria-label="Illustration of the Inn operations board">
             <div className="window-bar"><i></i><i></i><i></i></div>
             <div className="window-body">
-              <div className="window-nav"><strong>LodgeOps</strong><span>Operations</span><span>Calendar</span><span>Reservations</span><span>Guests</span><span>Finance</span></div>
+              <div className="window-nav"><strong>Inn</strong><span>Operations</span><span>Calendar</span><span>Reservations</span><span>Guests</span><span>Finance</span></div>
               <div className="window-main">
                 <h3>Today at North Ridge Lodge</h3>
                 <div className="metric-grid"><div className="metric"><b>8</b><small>Arrivals</small></div><div className="metric"><b>5</b><small>Departures</small></div><div className="metric"><b>3</b><small>Open tasks</small></div></div>
@@ -79,7 +79,7 @@ export default function Home() {
 
       <section className="section section-muted">
         <div className="shell">
-          <div className="section-head"><div><div className="eyebrow">Designed for independent hospitality</div><h2>Your operation is not a generic hotel.</h2></div><p>LodgeOps respects programs, guides, shared resources, remote logistics, group travel, and the high-touch guest care that defines a great lodge.</p></div>
+          <div className="section-head"><div><div className="eyebrow">Designed for independent hospitality</div><h2>Your operation is not a generic hotel.</h2></div><p>Inn respects programs, guides, shared resources, remote logistics, group travel, and the high-touch guest care that defines a great lodge.</p></div>
           <div className="story-grid">
             <article className="story"><blockquote>“Every team can work from the same reservation without seeing information their role does not need.”</blockquote><cite>Role-scoped by design</cite></article>
             <article className="story"><blockquote>“The calendar understands a room, a guide, and a boat as resources in the same trip.”</blockquote><cite>One allocation model</cite></article>
@@ -88,7 +88,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section"><div className="shell cta"><div><h2>Make the next arrival day calmer.</h2><p>Sign in to your secure LodgeOps workspace and run the operation from one place.</p></div><a className="button" href={manageUrl}>Open the staff application →</a></div></section>
+      <section className="section"><div className="shell cta"><div><h2>Make the next arrival day calmer.</h2><p>Sign in to your secure Inn workspace and run the operation from one place.</p></div><a className="button" href={manageUrl}>Open the staff application →</a></div></section>
     </>
   );
 }

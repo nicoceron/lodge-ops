@@ -1,4 +1,4 @@
-.PHONY: bootstrap up down logs doctor build-api test test-api test-web lint analyse-api contract verify migrate seed shell-api
+.PHONY: bootstrap up down logs doctor build-api test test-api test-web test-client lint analyse-api contract verify migrate seed shell-api
 
 bootstrap:
 	test -f .env || cp .env.example .env
@@ -29,8 +29,8 @@ doctor:
 	curl --fail --silent --show-error http://localhost:$${API_PORT:-8000}/manage/login >/dev/null
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/css/filament/filament/app.css)" = "200"
 	test "$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:$${API_PORT:-8000}/js/filament/filament/app.js)" = "200"
-	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | rg --quiet 'LodgeOps'
-	@echo "LodgeOps public site and Laravel/Filament application are reachable."
+	curl --fail --silent --show-error http://localhost:$${WEB_PORT:-3000}/ | rg --quiet 'Inn'
+	@echo "Inn public site and Laravel/Filament application are reachable."
 
 build-api:
 	cd apps/api && npm ci && npm run build
@@ -43,6 +43,9 @@ test-api:
 test-web:
 	cd apps/web && npm run e2e
 
+test-client:
+	cd apps/web && INN_API_URL=$${INN_API_URL:-http://127.0.0.1:$${API_PORT:-8000}} npm run e2e:client
+
 lint:
 	cd apps/api && ./vendor/bin/pint --test
 	$(MAKE) analyse-api
@@ -52,8 +55,8 @@ analyse-api:
 	cd apps/api && ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
 contract:
-	cd apps/api && php artisan route:list --json > /tmp/lodge-ops-routes.json
-	ruby scripts/verify-openapi.rb contracts/openapi.yaml /tmp/lodge-ops-routes.json
+	cd apps/api && php artisan route:list --json > /tmp/inn-routes.json
+	ruby scripts/verify-openapi.rb contracts/openapi.yaml /tmp/inn-routes.json
 
 verify: build-api lint contract test
 

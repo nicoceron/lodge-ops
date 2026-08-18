@@ -11,13 +11,13 @@ jobs:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_DB: lodge_ops_test
-          POSTGRES_USER: lodge_ops
-          POSTGRES_PASSWORD: lodge_ops
+          POSTGRES_DB: inn_test
+          POSTGRES_USER: inn
+          POSTGRES_PASSWORD: inn
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U lodge_ops -d lodge_ops_test"
+          --health-cmd "pg_isready -U inn -d inn_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -51,19 +51,19 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: lodge_ops_test
-          DB_USERNAME: lodge_ops
-          DB_PASSWORD: lodge_ops
+          DB_DATABASE: inn_test
+          DB_USERNAME: inn
+          DB_PASSWORD: inn
       - name: Verify Laravel routes match the OpenAPI contract
-        run: php artisan route:list --json > /tmp/lodge-ops-routes.json && ruby ../../scripts/verify-openapi.rb ../../contracts/openapi.yaml /tmp/lodge-ops-routes.json
+        run: php artisan route:list --json > /tmp/inn-routes.json && ruby ../../scripts/verify-openapi.rb ../../contracts/openapi.yaml /tmp/inn-routes.json
       - run: php artisan test --compact
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: lodge_ops_test
-          DB_USERNAME: lodge_ops
-          DB_PASSWORD: lodge_ops
+          DB_DATABASE: inn_test
+          DB_USERNAME: inn
+          DB_PASSWORD: inn
 
   web:
     runs-on: ubuntu-latest
@@ -101,6 +101,10 @@ jobs:
       - run: make bootstrap
       - run: make up
       - run: make doctor
+      - name: Install authenticated UAT browser
+        run: cd apps/web && npm ci && npx playwright install --with-deps chromium
+      - name: Run authenticated client UAT
+        run: make test-client
       - name: Show service logs on failure
         if: failure()
         run: docker compose logs --tail=200 api web worker scheduler migrate

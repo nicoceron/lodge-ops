@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\AutomationRules\Tables;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
@@ -22,7 +22,7 @@ class AutomationRulesTable
                     ->sortable(),
                 TextColumn::make('trigger')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
+                    ->formatStateUsing(InnPresentation::label(...))
                     ->color('info')
                     ->searchable(),
                 IconColumn::make('is_active')
@@ -41,7 +41,7 @@ class AutomationRulesTable
             ])
             ->filters([
                 SelectFilter::make('trigger')
-                    ->options(LodgeOpsPresentation::automationTriggerOptions()),
+                    ->options(InnPresentation::automationTriggerOptions()),
                 TernaryFilter::make('is_active')
                     ->label('Enabled rules')
                     ->native(false),

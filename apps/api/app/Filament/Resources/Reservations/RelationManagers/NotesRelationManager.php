@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Reservations\RelationManagers;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\ReservationNote;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\DateTimePicker;
@@ -32,8 +32,8 @@ class NotesRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('occurred_at')->label('When')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->sortable(),
-                TextColumn::make('kind')->badge()->formatStateUsing(fn (string $state): string => ReservationNote::KINDS[$state] ?? LodgeOpsPresentation::label($state)),
+                TextColumn::make('occurred_at')->label('When')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
+                TextColumn::make('kind')->badge()->formatStateUsing(fn (string $state): string => ReservationNote::KINDS[$state] ?? InnPresentation::label($state)),
                 TextColumn::make('body')->wrap()->searchable(),
                 TextColumn::make('creator.name')->label('Added by')->placeholder('System'),
             ])

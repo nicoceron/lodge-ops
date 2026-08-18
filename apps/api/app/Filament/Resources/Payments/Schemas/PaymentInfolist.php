@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Payments\Schemas;
 
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Payment;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -19,13 +19,13 @@ class PaymentInfolist
                 ->columns(2)
                 ->schema([
                     TextEntry::make('amount_minor')->label('Amount')->money(fn (Payment $record): string => $record->currency, divideBy: 100)->weight('bold'),
-                    TextEntry::make('status')->badge()->formatStateUsing(LodgeOpsPresentation::label(...))->color(fn ($state): string => LodgeOpsPresentation::statusColor($state)),
+                    TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
                     TextEntry::make('reservation.confirmation_number')->label('Reservation'),
-                    TextEntry::make('method')->formatStateUsing(LodgeOpsPresentation::label(...)),
+                    TextEntry::make('method')->formatStateUsing(InnPresentation::label(...)),
                     TextEntry::make('provider')->placeholder('Manual'),
                     TextEntry::make('provider_reference')->label('Provider reference')->copyable()->placeholder('Not provided'),
-                    TextEntry::make('processed_at')->label('Processed')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Pending'),
-                    TextEntry::make('reconciled_at')->label('Reconciled')->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())->placeholder('Not reconciled'),
+                    TextEntry::make('processed_at')->label('Processed')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Pending'),
+                    TextEntry::make('reconciled_at')->label('Reconciled')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Not reconciled'),
                     TextEntry::make('evidence_url')->label('Evidence')->url(fn (Payment $record): ?string => $record->evidence_url)->openUrlInNewTab()->placeholder('No evidence link'),
                     TextEntry::make('evidence_note')->label('Evidence note')->placeholder('No evidence note')->columnSpanFull(),
                     TextEntry::make('reversal_reason')->label('Reversal reason')->placeholder('Not reversed')->columnSpanFull(),

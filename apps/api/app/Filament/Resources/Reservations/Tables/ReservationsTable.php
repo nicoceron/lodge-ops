@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Reservations\Tables;
 
 use App\Enums\ReservationStatus;
 use App\Filament\Resources\Reservations\ReservationWorkflowActions;
-use App\Filament\Support\LodgeOpsPresentation;
+use App\Filament\Support\InnPresentation;
 use App\Models\Reservation;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
@@ -35,17 +35,17 @@ class ReservationsTable
                     ->searchable(['first_name', 'last_name', 'email']),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(LodgeOpsPresentation::label(...))
-                    ->color(fn ($state): string => LodgeOpsPresentation::statusColor($state))
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->color(fn ($state): string => InnPresentation::statusColor($state))
                     ->sortable(),
                 TextColumn::make('starts_at')
                     ->label('Arrival')
-                    ->dateTime('M j, Y · H:i', timezone: LodgeOpsPresentation::timezone())
+                    ->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())
                     ->description(fn (Reservation $record): string => $record->property->name)
                     ->sortable(),
                 TextColumn::make('ends_at')
                     ->label('Departure')
-                    ->date('M j, Y', timezone: LodgeOpsPresentation::timezone())
+                    ->date('M j, Y', timezone: InnPresentation::timezone())
                     ->sortable(),
                 TextColumn::make('party')
                     ->state(fn (Reservation $record): string => ($record->adults + $record->children).' guests')
@@ -61,7 +61,7 @@ class ReservationsTable
                     ->searchable()
                     ->preload(),
                 SelectFilter::make('status')
-                    ->options(LodgeOpsPresentation::enumOptions(ReservationStatus::cases()))
+                    ->options(InnPresentation::enumOptions(ReservationStatus::cases()))
                     ->multiple(),
                 Filter::make('upcoming')
                     ->label('Upcoming stays')

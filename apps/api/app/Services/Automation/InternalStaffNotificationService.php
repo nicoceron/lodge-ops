@@ -91,8 +91,8 @@ final class InternalStaffNotificationService
             )
             ->get();
 
-        $title = $this->renderer->render($action['title'] ?? 'LodgeOps operational alert', $context)
-            ?: 'LodgeOps operational alert';
+        $title = $this->renderer->render($action['title'] ?? 'Inn operational alert', $context)
+            ?: 'Inn operational alert';
         $body = $this->renderer->render($action['body'] ?? $action['description'] ?? null, $context);
         $status = $this->status($action['status'] ?? 'info');
         $delivered = 0;
