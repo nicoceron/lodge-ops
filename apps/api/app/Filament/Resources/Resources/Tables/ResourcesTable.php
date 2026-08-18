@@ -84,6 +84,7 @@ class ResourcesTable
                 Action::make('housekeeping')
                     ->label('Housekeeping')
                     ->icon('heroicon-o-sparkles')
+                    ->authorize('updateHousekeeping')
                     ->visible(fn (Resource $record): bool => $record->category->kind === ResourceKind::Place)
                     ->schema([
                         Select::make('status')

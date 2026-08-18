@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ReservationStatus;
 use App\Exceptions\GuestPortalStorageException;
 use App\Models\GuestPaymentEvidence;
 use App\Models\GuestPortalAccessToken;
@@ -11,6 +12,7 @@ use App\Models\GuestPortalProfile;
 use App\Models\Reservation;
 use App\Models\Survey;
 use DomainException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -123,6 +125,7 @@ class GuestPortalService
         $realPath = $upload->getRealPath();
         $contentType = (new \finfo(FILEINFO_MIME_TYPE))->file($realPath);
         $sizeBytes = filesize($realPath);
+        $sha256 = hash_file('sha256', $realPath);
 
         if (! is_string($contentType) || ! is_int($sizeBytes) || $sizeBytes < 1 || $sizeBytes > 10 * 1024 * 1024) {
             abort(422, 'Invalid evidence file.');
@@ -135,6 +138,14 @@ class GuestPortalService
             default => abort(422, 'Unsupported evidence type.'),
         };
         app(PaymentEvidenceScanner::class)->assertSafe($upload);
+        $existing = GuestPaymentEvidence::query()
+            ->where('reservation_id', $access->reservation_id)
+            ->where('guest_id', $access->guest_id)
+            ->where('sha256', $sha256)
+            ->first();
+        if ($existing !== null) {
+            return $this->paymentEvidenceResult($existing);
+        }
         $directory = "guest-payment-evidence/{$access->tenant_id}/{$access->reservation_id}";
         $storagePath = Storage::disk('local')->putFileAs($directory, $upload, Str::uuid().'.'.$extension);
 
@@ -150,7 +161,7 @@ class GuestPortalService
                 'file_name' => mb_substr($upload->getClientOriginalName(), 0, 255),
                 'content_type' => $contentType,
                 'size_bytes' => $sizeBytes,
-                'sha256' => hash_file('sha256', $realPath),
+                'sha256' => $sha256,
                 'storage_path' => $storagePath,
                 'status' => 'review_pending',
                 'amount_minor' => $amountMinor,
@@ -159,16 +170,24 @@ class GuestPortalService
                 'scan_status' => 'accepted',
                 'submitted_at' => $submittedAt,
             ]);
+        } catch (QueryException $exception) {
+            Storage::disk('local')->delete($storagePath);
+            $existing = GuestPaymentEvidence::query()
+                ->where('reservation_id', $access->reservation_id)
+                ->where('guest_id', $access->guest_id)
+                ->where('sha256', $sha256)
+                ->first();
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->paymentEvidenceResult($existing);
         } catch (Throwable $exception) {
             Storage::disk('local')->delete($storagePath);
             throw $exception;
         }
 
-        return [
-            'file_name' => $evidence->file_name,
-            'status' => $evidence->status->value,
-            'submitted_at' => $submittedAt->toIso8601String(),
-        ];
+        return $this->paymentEvidenceResult($evidence);
     }
 
     public function folio(GuestPortalAccessToken $access): Reservation
@@ -187,7 +206,7 @@ class GuestPortalService
     {
         $reservation = $this->reservation($access);
 
-        if ($reservation->ends_at->isFuture()) {
+        if (! $this->feedbackAvailable($reservation)) {
             throw new DomainException('Feedback opens after departure.');
         }
 
@@ -210,5 +229,22 @@ class GuestPortalService
         ]);
 
         return ['submitted' => true, 'responded_at' => $respondedAt->toIso8601String()];
+    }
+
+    /** @return array{file_name: string, status: string, submitted_at: string} */
+    private function paymentEvidenceResult(GuestPaymentEvidence $evidence): array
+    {
+        return [
+            'file_name' => $evidence->file_name,
+            'status' => $evidence->status->value,
+            'submitted_at' => $evidence->submitted_at->toIso8601String(),
+        ];
+    }
+
+    private function feedbackAvailable(Reservation $reservation): bool
+    {
+        return $reservation->status === ReservationStatus::CheckedOut
+            || $reservation->actual_end_at?->isPast() === true
+            || $reservation->ends_at->isPast();
     }
 }

@@ -7,11 +7,11 @@ Route::redirect('/', '/manage');
 
 Route::prefix('guest')->name('guest.portal.')->group(function (): void {
     Route::get('access/{token}', [GuestPortalController::class, 'access'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:guest-link')
         ->name('access');
     Route::get('unavailable', [GuestPortalController::class, 'unavailable'])->name('unavailable');
 
-    Route::prefix('stay')->middleware(['guest.portal', 'throttle:120,1'])->group(function (): void {
+    Route::prefix('stay')->middleware(['guest.portal', 'throttle:guest-web'])->group(function (): void {
         Route::get('/', [GuestPortalController::class, 'home'])->name('home');
         Route::get('pre-arrival', [GuestPortalController::class, 'preArrival'])->name('pre-arrival');
         Route::put('pre-arrival', [GuestPortalController::class, 'updatePreArrival'])->name('pre-arrival.update');

@@ -29,6 +29,7 @@ class CommunicationsRelationManager extends RelationManager
             TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))
                 ->color(fn ($state): string => InnPresentation::statusColor($state)),
             TextColumn::make('subject')->placeholder('No subject')->wrap(),
+            TextColumn::make('body')->label('Message')->wrap()->limit(240)->copyable(),
             TextColumn::make('guest.full_name')->label('Guest')->placeholder('No guest'),
         ])->defaultSort('created_at', 'desc');
     }

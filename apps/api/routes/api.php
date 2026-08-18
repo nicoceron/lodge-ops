@@ -32,9 +32,9 @@ Route::get('v1/calendar-feeds/{token}.ics', CalendarFeedController::class)
     ->name('calendar-feeds.show');
 
 Route::prefix('v1/guest-portal')->group(function (): void {
-    Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:10,1');
+    Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:guest-exchange');
 
-    Route::middleware(['guest.portal', 'throttle:120,1'])->group(function (): void {
+    Route::middleware(['guest.portal', 'throttle:guest-api'])->group(function (): void {
         Route::get('reservation', [GuestPortalController::class, 'show']);
         Route::put('pre-arrival', [GuestPortalController::class, 'updatePreArrival']);
         Route::post('waiver', [GuestPortalController::class, 'acknowledge']);

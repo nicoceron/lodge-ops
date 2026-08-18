@@ -50,6 +50,9 @@ use App\Observers\TenantAuditObserver;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -67,6 +70,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('guest-link', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('guest-link:'.$request->ip()));
+        RateLimiter::for('guest-web', fn (Request $request): Limit => Limit::perMinute(120)
+            ->by('guest-web:'.$request->ip()));
+        RateLimiter::for('guest-exchange', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('guest-exchange:'.$request->ip()));
+        RateLimiter::for('guest-api', fn (Request $request): Limit => Limit::perMinute(120)
+            ->by('guest-api:'.$request->ip()));
+
         ResetPassword::createUrlUsing(
             fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
         );

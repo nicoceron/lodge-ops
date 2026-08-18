@@ -5,14 +5,15 @@ Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 p
 
 ## Current release truth
 
-N2 and P3-01 are implemented and independently re-verified:
+N2, P3-01, and P3-02 are implemented and independently re-verified:
 
-- The fast local run reports 238 passed, 4 production-engine checks skipped by design, and 1,706 assertions across 242 tests.
-- The isolated PostgreSQL 18 gate reports 241 passed, 1 container source-tree check skipped, and 1,672 assertions across 242 tests, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, and payment-origin constraints.
-- Five authenticated Playwright tests pass, including create → confirm → amend → move → reconcile full payment → apply 50% cancellation fee → complete refund → reach a zero balance.
+- The fast local run reports 241 passed, 4 production-engine checks skipped by design, and 1,738 assertions across 245 tests.
+- The isolated PostgreSQL 18 gate reports 245 tests, 1 container source-tree check skipped, and 1,704 assertions, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, payment-origin constraints, and the separated secure-link limiter regression.
+- Six authenticated Playwright tests pass, including the N2 guarded-change/refund loop and a continuous P3-02 staff → guest → finance → operations → survey journey with real role isolation and a phone viewport.
 - Pint, PHPStan, ESLint, TypeScript, OpenAPI verification, Docker/runtime health, and the authenticated client suite pass.
 - Reservation creation is quote-authoritative and guarded changes are append-only, policy-authorized, conflict checked, and idempotent at their command endpoints.
 - Cancellation tiers use the property's local calendar date with UTC audit instants and DST coverage; staff/API-created card and transfer rows are explicitly manual-origin records; an open or completed refund blocks the legacy full-payment reversal path.
+- Identical guest evidence retries are exact-once, secure-link and authenticated guest throttles are isolated, early checkout enables post-stay feedback, and Operations can perform the resource-housekeeping work required to close the stay.
 
 This does **not** finish the client product. The remaining critical path is:
 
@@ -31,8 +32,8 @@ flowchart LR
 | Area | What is real now | Remaining implementation gap |
 | --- | --- | --- |
 | N2 guarded changes | Date amendment, room assignment/move/swap, property-local cancellation/no-show fee, internal refund request/fail/complete, refund/reversal collision protection, explicit payment origins, concurrent PostgreSQL and API replay coverage, change ledger, Filament/browser evidence | Dedicated remaining-amount correction command and provider refund execution remain separate; both are deferred until their selected financial workflow/provider slice |
-| Client closed loop | State-changing staff create/confirm/change/payment/cancel/refund journey | Guest portal pre-arrival/evidence → finance approval, check-in → extra → checkout → folio close → survey, multi-role/mobile journey, and meaningful fixture assertions |
-| Manual payments | Exact-once evidence approval and manual payment reconciliation services | Browser evidence loop, manual-payment method truth, over/underpayment allocation rules, cash controls/receipts if cash is in scope, production scanning/storage/retention |
+| Client closed loop | One continuous browser journey now persists pricing/allocation, guest pre-arrival/document/evidence, finance correction/approval, check-in/task/extra/checkout/settlement/folio close/housekeeping, survey, role denial, property isolation, expired/replayed links, retry behavior, and a phone viewport | Generated documents/receipts/exports are P3-03; production communications, scheduling, storage, and recovery remain P3-04/P3-05 |
+| Manual payments | Exact-once evidence approval, correction request without balance mutation, private finance preview, selected-deposit application, manual payment reconciliation, and zero-balance browser evidence | Cash controls/receipts if cash is in scope and production scanning/storage/retention remain separate slices |
 | Documents | Versioned template and immutable generated-document records | Real PDF rendering, source snapshots, lifecycle/error state, private download/email, confirmation/itinerary/folio/receipt/credit-note outputs, jurisdiction-gated invoice issuance |
 | Exports | Export record model and CSV formula sanitizer | Request/generate/download lifecycle, filtered CSV/XLSX, queue/retry/expiry, tenant/role scoping, reconciliation tests |
 | Communications | Local Laravel email transport, templates, suppressions, delivery attempts, outbox, worker, scheduler | Production provider, provider message/event IDs, delivery/bounce/complaint webhooks, preview/test-send/replay UI, failure queue, production supervision |
@@ -44,12 +45,12 @@ flowchart LR
 
 ## Branch and pull-request sequence
 
-N2 is committed on `main` and `origin/main` at `9aa5b73`. Phase 3 must not be implemented as one long-lived mixed branch.
+P3-01 is merged into `main` and `origin/main` at `68a7fbc`. Phase 3 must not be implemented as one long-lived mixed branch.
 
 The active branch is:
 
 ```text
-codex/p3-01-financial-temporal-hardening
+codex/p3-02-client-closed-loop-uat
 ```
 
 Branch rules:
@@ -87,7 +88,7 @@ Do not reuse a merged branch for the next slice. Provider placeholders are not c
 
 ### P3-01 — N2.1 financial and temporal hardening
 
-Status: **implemented and verified on `codex/p3-01-financial-temporal-hardening`; merge pending.**
+Status: **merged through PR #4 as `68a7fbc` after PostgreSQL, Chromium, static-analysis, contract, and isolated `inn_test` gates passed.**
 
 | Requirement | Executable outcome |
 | --- | --- |
@@ -111,6 +112,19 @@ Close the two observed correctness collisions before building more financial fea
 Done when every invariant has a PostgreSQL test and the N2 Playwright journey still passes.
 
 ### P3-02 — finish N1 closed-loop client UAT
+
+Status: **implemented and verified on `codex/p3-02-client-closed-loop-uat`.**
+
+| Requirement | Executable outcome |
+| --- | --- |
+| P3-02-STAFF-01 | Staff creates, prices, confirms, assigns, and verifies the reservation in its hub and calendar |
+| P3-02-GUEST-01 | A one-time secure link drives phone-viewport pre-arrival, document acknowledgement, evidence upload, persisted refresh, replay denial, and expired-link denial |
+| P3-02-FIN-01 | Finance privately previews evidence, requests correction without balance mutation, then approves the replacement exactly once against the due deposit |
+| P3-02-OPS-01 | Operations checks in, completes a task, posts an extra, checks out, settles the extra, closes the folio, and marks the room inspected |
+| P3-02-SURVEY-01 | Checkout dispatches a fresh survey link; duplicate submission is blocked and authorized staff sees the response |
+| P3-02-AUTH-01 | Browser contexts are storage-isolated by role; finance and cross-property routes deny the Viewer |
+
+The deterministic UAT seeder adds only a stable second-property denial fixture and an expired link. Synthetic financial and audit history is retained. Identical evidence bytes are protected by a database uniqueness constraint plus race-safe service behavior. Named rate limiters prevent authenticated guest activity from exhausting later magic-link invitations.
 
 Add deterministic, state-changing authenticated journeys:
 

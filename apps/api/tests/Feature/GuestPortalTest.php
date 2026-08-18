@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\AllocationStatus;
 use App\Enums\FolioLineType;
 use App\Enums\PaymentStatus;
+use App\Enums\ReservationStatus;
 use App\Models\Allocation;
 use App\Models\FolioLine;
 use App\Models\Guest;
@@ -256,6 +257,51 @@ class GuestPortalTest extends TestCase
 
         $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertDatabaseCount('guest_payment_evidence', 0);
+    }
+
+    public function test_identical_payment_evidence_retries_return_the_original_submission(): void
+    {
+        Storage::fake('local');
+        [, , , $reservation, , $magicToken] = $this->portalEnvironment();
+        $session = $this->exchange($magicToken);
+        $content = "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF";
+
+        foreach (['first.pdf', 'retry.pdf'] as $fileName) {
+            $upload = UploadedFile::fake()->createWithContent($fileName, $content);
+            $this->withToken($session)
+                ->post('/api/v1/guest-portal/payment-evidence', ['evidence' => $upload], ['Accept' => 'application/json'])
+                ->assertCreated()
+                ->assertJsonPath('data.file_name', 'first.pdf');
+        }
+
+        $this->assertDatabaseCount('guest_payment_evidence', 1);
+        $evidence = GuestPaymentEvidence::withoutGlobalScopes()->sole();
+        $this->assertSame($reservation->id, $evidence->reservation_id);
+        $this->assertSame(hash('sha256', $content), $evidence->sha256);
+        $this->assertCount(1, Storage::disk('local')->allFiles());
+    }
+
+    public function test_feedback_opens_after_actual_early_checkout(): void
+    {
+        [, , , $reservation, , $magicToken] = $this->portalEnvironment();
+        $reservation->update([
+            'status' => ReservationStatus::CheckedOut,
+            'actual_end_at' => now(),
+            'ends_at' => now()->addDays(2),
+        ]);
+        $session = $this->exchange($magicToken);
+
+        $this->portalGet('/api/v1/guest-portal/reservation', $session)
+            ->assertOk()
+            ->assertJsonPath('data.survey.available', true);
+        $this->portalJson('POST', '/api/v1/guest-portal/survey', $session, [
+            'stay_rating' => 5,
+            'guide_rating' => 4,
+            'comment' => 'The early departure was handled well.',
+            'share_with_team' => true,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('surveys', ['reservation_id' => $reservation->id, 'score' => 5]);
     }
 
     /** @return array{mixed, mixed, Guest, Reservation, GuestPortalDocument, string} */

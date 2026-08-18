@@ -48,6 +48,7 @@ test-web:
 	cd apps/web && npm run e2e
 
 test-client:
+	docker compose exec -T api php artisan db:seed --class=Database\\Seeders\\ClientClosedLoopUatSeeder --force
 	cd apps/web && INN_API_URL=$${INN_API_URL:-http://127.0.0.1:$${API_PORT:-8000}} npm run e2e:client
 
 lint:

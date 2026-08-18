@@ -196,6 +196,8 @@ class FilamentResourcesTest extends TestCase
         $this->assertTrue(ReservationResource::canCreate());
         $this->assertTrue(ResourceBlockResource::canCreate());
         $this->assertTrue(ServiceOccurrenceResource::canCreate());
+        $this->assertTrue(ResourceResource::canViewAny());
+        $this->assertFalse(ResourceResource::canCreate());
         $this->assertFalse(PropertyResource::canCreate());
         $this->assertFalse(TeamMemberResource::canViewAny());
         $this->assertFalse(PaymentResource::canViewAny());
