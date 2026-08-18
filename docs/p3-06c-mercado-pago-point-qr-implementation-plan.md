@@ -1,8 +1,8 @@
 # P3-06C Mercado Pago Point and QR implementation plan
 
-Date: 2026-08-18  
-Status: **planned follow-on; do not start before P3-06A and P3-06B merge**  
-Branch: `codex/p3-06c-mercado-pago-point-qr`  
+Date: 2026-08-18
+Status: **planned follow-on; do not start before P3-06A and P3-06B merge**
+Branch: `codex/p3-06c-mercado-pago-point-qr`
 Base: synchronized `main` containing the merged [online payment](p3-06-mercado-pago-payments-implementation-plan.md) and [front-desk tender](p3-06b-front-desk-tenders-implementation-plan.md) slices
 
 ## 1. Decision and client outcome

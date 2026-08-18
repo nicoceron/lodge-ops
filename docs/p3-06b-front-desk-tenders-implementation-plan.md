@@ -1,9 +1,9 @@
 # P3-06B front-desk tenders implementation plan
 
-Date: 2026-08-18  
-Status: **planned follow-on; do not start before P3-06A merges**  
-Branch: `codex/p3-06b-front-desk-tenders`  
-Base: synchronized `main` containing the merged [P3-06A online payment slice](p3-06-mercado-pago-payments-implementation-plan.md)  
+Date: 2026-08-18
+Status: **planned follow-on; do not start before P3-06A merges**
+Branch: `codex/p3-06b-front-desk-tenders`
+Base: synchronized `main` containing the merged [P3-06A online payment slice](p3-06-mercado-pago-payments-implementation-plan.md)
 Follow-on: [P3-06C Mercado Pago Point and QR](p3-06c-mercado-pago-point-qr-implementation-plan.md)
 
 ## 1. Outcome and boundary

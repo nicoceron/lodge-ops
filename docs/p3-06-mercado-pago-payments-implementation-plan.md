@@ -1,9 +1,9 @@
 # P3-06A online payment requests, links, and Mercado Pago implementation plan
 
-Date: 2026-08-18  
-Status: **deterministic implementation complete; live Mercado Pago sandbox UAT pending credentials and public HTTPS webhook**  
-Branch: `codex/p3-06-payment-gateway-mercado-pago`  
-Base: clean `main` at or after P3-03 merge `e459935`  
+Date: 2026-08-18
+Status: **deterministic implementation complete; live Mercado Pago sandbox UAT pending credentials and public HTTPS webhook**
+Branch: `codex/p3-06-payment-gateway-mercado-pago`
+Base: clean `main` at or after P3-03 merge `e459935`
 Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 3 plan](client-ready-phase-3-plan.md), [feature matrix](feature-matrix.md), [UAT ledger](client-uat-ledger.md), [reference benchmark](reference-code-quality-benchmark.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md)
 
 ## 1. Decision and release boundary
