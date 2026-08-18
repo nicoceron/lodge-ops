@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentOrigin;
 use App\Enums\PaymentStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $reservation_id
  * @property PaymentStatus $status
  * @property string $method
+ * @property PaymentOrigin $origin
  * @property CarbonImmutable|null $processed_at
  * @property string $currency
  * @property int $amount_minor
@@ -23,6 +25,7 @@ class Payment extends TenantModel
     {
         return [
             'status' => PaymentStatus::class,
+            'origin' => PaymentOrigin::class,
             'amount_minor' => 'integer',
             'processed_at' => 'immutable_datetime',
             'reconciled_at' => 'immutable_datetime',

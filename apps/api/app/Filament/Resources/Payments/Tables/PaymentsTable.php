@@ -39,6 +39,10 @@ class PaymentsTable
                 TextColumn::make('method')
                     ->formatStateUsing(InnPresentation::label(...))
                     ->searchable(),
+                TextColumn::make('origin')
+                    ->badge()
+                    ->formatStateUsing(InnPresentation::label(...))
+                    ->sortable(),
                 TextColumn::make('provider_reference')
                     ->label('Reference')
                     ->copyable()
@@ -56,6 +60,8 @@ class PaymentsTable
                         'bank_transfer' => 'Bank transfer',
                         'online' => 'Online',
                     ]),
+                SelectFilter::make('origin')
+                    ->options(['manual' => 'Manual', 'provider' => 'Provider-backed']),
             ])
             ->recordActions([
                 ViewAction::make(),

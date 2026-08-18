@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Enums\DepositStatus;
+use App\Enums\PaymentOrigin;
 use App\Enums\PaymentStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\Deposit;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Models\ReservationChange;
 use App\Services\Automation\OutboxRecorder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +48,7 @@ final class PaymentService
                     'amount_minor',
                     'metadata',
                 ]),
+                'origin' => PaymentOrigin::Manual,
                 'currency' => $reservation->currency,
                 'status' => PaymentStatus::Pending,
                 'recorded_by' => $actorId,
@@ -124,12 +127,31 @@ final class PaymentService
     public function reverse(Payment $payment, string $reason, ?int $actorId): Payment
     {
         return DB::transaction(function () use ($payment, $reason, $actorId): Payment {
+            Reservation::query()->lockForUpdate()->findOrFail($payment->reservation_id);
             $locked = Payment::query()->lockForUpdate()->findOrFail($payment->id);
             if ($locked->status === PaymentStatus::Reversed) {
                 return $locked;
             }
             if ($locked->status !== PaymentStatus::Succeeded) {
                 throw new DomainException('Only reconciled payments may be reversed.');
+            }
+
+            $refund = ReservationChange::query()
+                ->where('reservation_id', $locked->reservation_id)
+                ->where('metadata->payment_id', $locked->id)
+                ->where(function ($query): void {
+                    $query->where(fn ($requested) => $requested
+                        ->where('type', 'refund_requested')
+                        ->where('status', 'requested'))
+                        ->orWhere(fn ($completed) => $completed
+                            ->where('type', 'refund_completed')
+                            ->where('status', 'completed'));
+                })
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+            if ($refund !== null) {
+                throw new DomainException('This payment has an open or completed refund. Use a dedicated correction command for any remaining reversible amount.');
             }
 
             $paymentLine = $locked->folioLines()

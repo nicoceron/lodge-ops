@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Enums\AllocationStatus;
+use App\Enums\DepositStatus;
+use App\Enums\HousekeepingStatus;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
+use App\Exceptions\CommercialWorkflowException;
 use App\Models\CancellationPolicy;
 use App\Models\CancellationPolicyTier;
 use App\Models\Guest;
@@ -75,6 +78,122 @@ class ReservationChangesTest extends TestCase
         $this->assertSame(36_000, app(FolioService::class)->summary($amended)['balance_minor']);
     }
 
+    public function test_amendment_price_increase_preserves_paid_deposit_and_reschedules_only_open_amounts(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$reservation, $plan, $room] = $this->confirmedReservation($property->id, 10_000);
+        $paidDeposit = $reservation->deposits()->where('schedule_type', 'deposit_50')->firstOrFail();
+        $openDeposit = $reservation->deposits()->where('schedule_type', 'balance')->firstOrFail();
+        app(PaymentService::class)->recordManual([
+            'reservation_id' => $reservation->id,
+            'method' => 'bank_transfer',
+            'amount_minor' => 10_000,
+            'deposit_id' => $paidDeposit->id,
+        ], auth()->id(), true);
+        $plan->rules()->firstOrFail()->update(['amount_minor' => 12_000]);
+
+        $amended = app(AmendReservation::class)->handle($reservation, [
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $room->category_id,
+            'resource_id' => $room->id,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'adults' => 2,
+            'children' => 0,
+        ], auth()->id());
+
+        $this->assertSame(24_000, $amended->total_minor);
+        $this->assertSame(DepositStatus::Paid, $paidDeposit->fresh()->status);
+        $this->assertSame(DepositStatus::Waived, $openDeposit->fresh()->status);
+        $this->assertSame(14_000, (int) $amended->deposits()->where('status', DepositStatus::Due)->sum('amount_minor'));
+        $this->assertDatabaseHas('deposits', [
+            'reservation_id' => $reservation->id,
+            'schedule_type' => 'revision_3_deposit',
+            'amount_minor' => 2_000,
+            'status' => DepositStatus::Due->value,
+        ]);
+        $this->assertDatabaseHas('deposits', [
+            'reservation_id' => $reservation->id,
+            'schedule_type' => 'revision_3_balance',
+            'amount_minor' => 12_000,
+            'status' => DepositStatus::Due->value,
+        ]);
+        $change = $amended->changes()->where('type', 'amendment')->firstOrFail();
+        $this->assertSame(0, data_get($change->metadata, 'deposit_payment_effects.refund_requirement_minor'));
+    }
+
+    public function test_amendment_price_decrease_records_overpayment_credit_without_rewriting_paid_deposit(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$reservation, $plan, $room] = $this->confirmedReservation($property->id, 10_000);
+        $paidDeposit = $reservation->deposits()->where('schedule_type', 'deposit_50')->firstOrFail();
+        $openDeposit = $reservation->deposits()->where('schedule_type', 'balance')->firstOrFail();
+        app(PaymentService::class)->recordManual([
+            'reservation_id' => $reservation->id,
+            'method' => 'bank_transfer',
+            'amount_minor' => 20_000,
+            'deposit_id' => $paidDeposit->id,
+        ], auth()->id(), true);
+        $plan->rules()->firstOrFail()->update(['amount_minor' => 4_000]);
+
+        $amended = app(AmendReservation::class)->handle($reservation, [
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $room->category_id,
+            'resource_id' => $room->id,
+            'starts_at' => $reservation->starts_at,
+            'ends_at' => $reservation->ends_at,
+            'adults' => 2,
+            'children' => 0,
+        ], auth()->id());
+
+        $this->assertSame(8_000, $amended->total_minor);
+        $this->assertSame(DepositStatus::Paid, $paidDeposit->fresh()->status);
+        $this->assertSame(DepositStatus::Waived, $openDeposit->fresh()->status);
+        $this->assertSame(0, $amended->deposits()->where('status', DepositStatus::Due)->count());
+        $this->assertSame(-12_000, app(FolioService::class)->summary($amended)['balance_minor']);
+        $change = $amended->changes()->where('type', 'amendment')->firstOrFail();
+        $this->assertSame(12_000, data_get($change->metadata, 'deposit_payment_effects.refund_requirement_minor'));
+    }
+
+    public function test_amendment_that_would_drop_a_retained_activity_rolls_back_reservation_mutations(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$reservation, $plan, $room] = $this->confirmedReservation($property->id, 10_000);
+        $guideCategory = $this->category($property, 'guide');
+        $guide = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $guideCategory->id]);
+        $activity = $reservation->allocations()->create([
+            'requested_category_id' => $guideCategory->id,
+            'resource_id' => $guide->id,
+            'status' => AllocationStatus::Confirmed,
+            'starts_at' => $reservation->starts_at->addDay()->addHours(2),
+            'ends_at' => $reservation->starts_at->addDay()->addHours(5),
+            'quantity' => 1,
+        ]);
+        $stay = $reservation->allocations()->where('requested_category_id', $room->category_id)->firstOrFail();
+        $folioCount = $reservation->folioLines()->count();
+
+        try {
+            app(AmendReservation::class)->handle($reservation, [
+                'rate_plan_id' => $plan->id,
+                'resource_category_id' => $room->category_id,
+                'resource_id' => $room->id,
+                'starts_at' => $reservation->starts_at,
+                'ends_at' => $reservation->starts_at->addDay(),
+                'adults' => 2,
+                'children' => 0,
+            ], auth()->id());
+            $this->fail('An amendment may not silently drop a retained activity.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('starts_at', $exception->errors());
+        }
+
+        $this->assertSame(AllocationStatus::Confirmed, $stay->fresh()->status);
+        $this->assertSame(AllocationStatus::Confirmed, $activity->fresh()->status);
+        $this->assertSame(20_000, $reservation->fresh()->total_minor);
+        $this->assertSame($folioCount, $reservation->folioLines()->count());
+        $this->assertSame(0, $reservation->changes()->where('type', 'amendment')->count());
+    }
+
     public function test_resource_move_and_swap_are_conflict_checked_and_append_history(): void
     {
         [, $property] = $this->tenantEnvironment();
@@ -119,6 +238,32 @@ class ReservationChangesTest extends TestCase
         }
     }
 
+    public function test_checked_in_move_and_swap_dirty_every_vacated_room(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$first, , $firstRoom] = $this->confirmedReservation($property->id, 10_000);
+        $secondRoom = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $firstRoom->category_id]);
+        [$second] = $this->confirmedReservation($property->id, 10_000, $secondRoom, $first->starts_at, $first->ends_at);
+        $first = app(ReservationService::class)->transition($first, ReservationStatus::CheckedIn);
+        $second = app(ReservationService::class)->transition($second, ReservationStatus::CheckedIn);
+        $firstAllocation = $first->allocations()->where('status', AllocationStatus::Confirmed)->firstOrFail();
+        $secondAllocation = $second->allocations()->where('status', AllocationStatus::Confirmed)->firstOrFail();
+
+        app(ReallocateResource::class)->handle(
+            $first,
+            $firstAllocation,
+            $secondRoom,
+            auth()->id(),
+            $secondAllocation,
+            'In-house operational swap',
+        );
+
+        $this->assertSame(HousekeepingStatus::Dirty, $firstRoom->fresh()->housekeeping_status);
+        $this->assertSame(HousekeepingStatus::Dirty, $secondRoom->fresh()->housekeeping_status);
+        $this->assertSame(1, $first->changes()->where('type', 'resource_swapped')->count());
+        $this->assertSame(1, $second->changes()->where('type', 'resource_swapped')->count());
+    }
+
     public function test_cancellation_fee_and_partial_refund_are_append_only_exact_once_and_retryable(): void
     {
         [, $property] = $this->tenantEnvironment();
@@ -152,6 +297,41 @@ class ReservationChangesTest extends TestCase
         $this->assertSame(1, $reservation->folioLines()->where('type', 'refund')->count());
         $this->assertSame(0, app(FolioService::class)->summary($cancelled)['balance_minor']);
         $this->assertSame(PaymentStatus::Succeeded, $payment->fresh()->status);
+
+        try {
+            app(PaymentService::class)->reverse($payment, 'Legacy full reversal after partial refund', auth()->id());
+            $this->fail('A payment with a completed partial refund must not be fully reversed.');
+        } catch (CommercialWorkflowException $exception) {
+            $this->assertStringContainsString('open or completed refund', $exception->getMessage());
+        }
+        $this->assertSame(PaymentStatus::Succeeded, $payment->fresh()->status);
+        $this->assertSame(0, app(FolioService::class)->summary($cancelled)['balance_minor']);
+    }
+
+    public function test_open_refund_request_blocks_legacy_full_payment_reversal_without_financial_mutation(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$reservation] = $this->confirmedReservation($property->id, 10_000, cancellationBasisPoints: 5000);
+        $payment = app(PaymentService::class)->recordManual([
+            'reservation_id' => $reservation->id,
+            'method' => 'bank_transfer',
+            'amount_minor' => 20_000,
+        ], auth()->id(), true);
+        $cancelled = app(CancelReservation::class)->handle($reservation, 'Guest changed plans', auth()->id());
+        app(RequestRefund::class)->handle($cancelled, $payment, 5_000, 'First partial refund', auth()->id());
+        $folioCount = $reservation->folioLines()->count();
+        $balance = app(FolioService::class)->summary($cancelled)['balance_minor'];
+
+        try {
+            app(PaymentService::class)->reverse($payment, 'Legacy reversal collision', auth()->id());
+            $this->fail('An open refund request must block a full payment reversal.');
+        } catch (CommercialWorkflowException $exception) {
+            $this->assertStringContainsString('dedicated correction command', $exception->getMessage());
+        }
+
+        $this->assertSame(PaymentStatus::Succeeded, $payment->fresh()->status);
+        $this->assertSame($folioCount, $reservation->folioLines()->count());
+        $this->assertSame($balance, app(FolioService::class)->summary($cancelled)['balance_minor']);
     }
 
     public function test_refund_cannot_exceed_guest_credit(): void

@@ -22,9 +22,9 @@ final class CompleteRefund
     public function handle(ReservationChange $request, string $reference, ?int $actorId): ReservationChange
     {
         return DB::transaction(function () use ($request, $reference, $actorId): ReservationChange {
-            $lockedRequest = ReservationChange::query()->lockForUpdate()->findOrFail($request->id);
+            [$reservation, $payment, $lockedRequest] = $this->lockRequestGraph($request);
             $this->assertRequest($lockedRequest);
-            $existing = $lockedRequest->events()->where('type', 'refund_completed')->first();
+            $existing = $lockedRequest->events()->where('type', 'refund_completed')->lockForUpdate()->first();
             if ($existing !== null) {
                 return $existing;
             }
@@ -32,9 +32,6 @@ final class CompleteRefund
             if ($reference === '') {
                 throw ValidationException::withMessages(['reference' => 'An internal or provider refund reference is required.']);
             }
-
-            $reservation = Reservation::query()->lockForUpdate()->findOrFail($lockedRequest->reservation_id);
-            $payment = Payment::query()->lockForUpdate()->findOrFail(data_get($lockedRequest->metadata, 'payment_id'));
             if ($payment->reservation_id !== $reservation->id || $payment->status !== PaymentStatus::Succeeded) {
                 throw ValidationException::withMessages(['payment_id' => 'The source payment is no longer refundable.']);
             }
@@ -80,7 +77,7 @@ final class CompleteRefund
     public function fail(ReservationChange $request, string $reason, ?int $actorId): ReservationChange
     {
         return DB::transaction(function () use ($request, $reason, $actorId): ReservationChange {
-            $lockedRequest = ReservationChange::query()->lockForUpdate()->findOrFail($request->id);
+            [, , $lockedRequest] = $this->lockRequestGraph($request);
             $this->assertRequest($lockedRequest);
             if ($lockedRequest->events()->where('type', 'refund_completed')->exists()) {
                 throw ValidationException::withMessages(['refund' => 'A completed refund cannot be marked failed.']);
@@ -112,5 +109,16 @@ final class CompleteRefund
         if ($request->type !== 'refund_requested' || $request->status !== 'requested') {
             throw ValidationException::withMessages(['refund' => 'The selected change is not a refund request.']);
         }
+    }
+
+    /** @return array{Reservation, Payment, ReservationChange} */
+    private function lockRequestGraph(ReservationChange $request): array
+    {
+        $snapshot = ReservationChange::query()->findOrFail($request->id);
+        $reservation = Reservation::query()->lockForUpdate()->findOrFail($snapshot->reservation_id);
+        $payment = Payment::query()->lockForUpdate()->findOrFail(data_get($snapshot->metadata, 'payment_id'));
+        $lockedRequest = ReservationChange::query()->lockForUpdate()->findOrFail($snapshot->id);
+
+        return [$reservation, $payment, $lockedRequest];
     }
 }

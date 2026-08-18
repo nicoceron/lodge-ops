@@ -16,6 +16,7 @@ use App\Services\CommitBookingQuote;
 use App\Services\FolioService;
 use App\Services\ReservationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
 use Tests\Concerns\CreatesTenant;
@@ -172,5 +173,36 @@ class ClientBookingCoreTest extends TestCase
 
         $this->expectException(LogicException::class);
         $quote->update(['total_minor' => 1]);
+    }
+
+    public function test_expired_quote_cannot_create_partial_reservation_financial_or_allocation_state(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $category = $this->category($property, 'room');
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id]);
+        $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Expiry rate', 'currency' => 'USD']);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        $quote = app(BookingQuoteService::class)->create([
+            'property_id' => $property->id,
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $category->id,
+            'resource_id' => $room->id,
+            'starts_at' => now()->addMonth(),
+            'ends_at' => now()->addMonth()->addDays(2),
+            'adults' => 2,
+        ]);
+        DB::table('booking_quotes')->where('id', $quote->id)->update(['expires_at' => now()->subSecond()]);
+
+        try {
+            app(CommitBookingQuote::class)->handle($quote, Guest::factory()->create()->id);
+            $this->fail('An expired quote must not commit.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('rate_plan_id', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('reservations', 0);
+        $this->assertDatabaseCount('allocations', 0);
+        $this->assertDatabaseCount('folio_lines', 0);
+        $this->assertDatabaseCount('deposits', 0);
     }
 }

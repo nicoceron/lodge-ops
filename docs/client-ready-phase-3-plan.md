@@ -5,12 +5,14 @@ Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 p
 
 ## Current release truth
 
-N2 is implemented and independently re-verified:
+N2 and P3-01 are implemented and independently re-verified:
 
-- 224 PHPUnit tests and 1,548 assertions pass.
+- The fast local run reports 238 passed, 4 production-engine checks skipped by design, and 1,706 assertions across 242 tests.
+- The isolated PostgreSQL 18 gate reports 241 passed, 1 container source-tree check skipped, and 1,672 assertions across 242 tests, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, and payment-origin constraints.
 - Five authenticated Playwright tests pass, including create → confirm → amend → move → reconcile full payment → apply 50% cancellation fee → complete refund → reach a zero balance.
 - Pint, PHPStan, ESLint, TypeScript, OpenAPI verification, Docker/runtime health, and the authenticated client suite pass.
 - Reservation creation is quote-authoritative and guarded changes are append-only, policy-authorized, conflict checked, and idempotent at their command endpoints.
+- Cancellation tiers use the property's local calendar date with UTC audit instants and DST coverage; staff/API-created card and transfer rows are explicitly manual-origin records; an open or completed refund blocks the legacy full-payment reversal path.
 
 This does **not** finish the client product. The remaining critical path is:
 
@@ -28,7 +30,7 @@ flowchart LR
 
 | Area | What is real now | Remaining implementation gap |
 | --- | --- | --- |
-| N2 guarded changes | Date amendment, room assignment/move/swap, cancellation/no-show fee, internal refund request/fail/complete, change ledger, API/Filament/browser evidence | Property-local cancellation cutoff tests; partial-refund versus legacy full payment reversal protection; concurrent API replay/failure matrix; broader amendment/deposit/activity/no-show cases; provider refund execution remains separate |
+| N2 guarded changes | Date amendment, room assignment/move/swap, property-local cancellation/no-show fee, internal refund request/fail/complete, refund/reversal collision protection, explicit payment origins, concurrent PostgreSQL and API replay coverage, change ledger, Filament/browser evidence | Dedicated remaining-amount correction command and provider refund execution remain separate; both are deferred until their selected financial workflow/provider slice |
 | Client closed loop | State-changing staff create/confirm/change/payment/cancel/refund journey | Guest portal pre-arrival/evidence → finance approval, check-in → extra → checkout → folio close → survey, multi-role/mobile journey, and meaningful fixture assertions |
 | Manual payments | Exact-once evidence approval and manual payment reconciliation services | Browser evidence loop, manual-payment method truth, over/underpayment allocation rules, cash controls/receipts if cash is in scope, production scanning/storage/retention |
 | Documents | Versioned template and immutable generated-document records | Real PDF rendering, source snapshots, lifecycle/error state, private download/email, confirmation/itinerary/folio/receipt/credit-note outputs, jurisdiction-gated invoice issuance |
@@ -40,9 +42,63 @@ flowchart LR
 | Direct booking | Public marketing site only | Conditional public availability/quote/hold/consent/payment/recovery flow using the same Inn services |
 | Integrations | Configuration records, local mail, and one-way private iCalendar | Adapter execution, sync runs/items/cursors, mappings, signed webhooks, retry/dead letter/replay, health, drift detection, reconciliation for each selected provider |
 
+## Branch and pull-request sequence
+
+N2 is committed on `main` and `origin/main` at `9aa5b73`. Phase 3 must not be implemented as one long-lived mixed branch.
+
+The active branch is:
+
+```text
+codex/p3-01-financial-temporal-hardening
+```
+
+Branch rules:
+
+1. Each P3 slice gets one branch and one reviewable pull request.
+2. A branch starts from the latest verified `main`; it does not start from another unmerged P3 branch unless an explicit dependency requires stacking.
+3. The branch contains its service/schema/API/Filament or portal changes, tests, OpenAPI updates, UAT evidence, and status-document update together.
+4. Do not begin the next slice merely because the current code compiles. Merge only after the slice's real journey and failure-path gates pass.
+5. Preserve synthetic UAT history through normal lifecycle behavior. Do not add database cleanup that deletes financial or audit evidence to make a branch look clean.
+
+Planned branch order:
+
+| Slice | Branch | Boundary |
+| --- | --- | --- |
+| P3-01 | `codex/p3-01-financial-temporal-hardening` | Cancellation cutoff, refund/reversal collision, payment origin truth, N2 concurrency and API replay tests only |
+| P3-02 | `codex/p3-02-client-closed-loop-uat` | Guest evidence, finance approval, stay/folio/survey, role and mobile state-changing journeys |
+| P3-03 | `codex/p3-03-documents-exports` | Generated artifacts, receipts/credit notes, private download/email, queued CSV/XLSX |
+| P3-04 | `codex/p3-04-production-communications` | Production mail events, scheduling, retries, failure work queues, queue supervision |
+| P3-05 | `codex/p3-05-production-readiness` | Storage, deployment, monitoring, backup/restore, security and handoff |
+| P3-06 | `codex/p3-06-payment-gateway-<provider>` | One selected gateway only; replace `<provider>` after the merchant decision |
+| P3-07 | `codex/p3-07-direct-booking` | Conditional public booking scope only |
+| P3-08 | `codex/p3-08-integration-<provider>` | Integration execution platform plus one selected connector |
+
+After a slice merges:
+
+```bash
+git switch main
+git pull --ff-only
+git switch -c codex/<next-slice>
+```
+
+Do not reuse a merged branch for the next slice. Provider placeholders are not created until the corresponding client decision is recorded.
+
 ## Ordered implementation slices
 
 ### P3-01 — N2.1 financial and temporal hardening
+
+Status: **implemented and verified on `codex/p3-01-financial-temporal-hardening`; merge pending.**
+
+| Requirement | Executable outcome |
+| --- | --- |
+| P3-01-TIME-01 | Property-local calendar-day tier selection with UTC audit instant, before/at/after cutoff, non-DST, spring-forward, fall-back, cancellation, and no-show coverage |
+| P3-01-FIN-01 | Open or completed refund locks out the legacy full-payment reversal before any folio or deposit mutation |
+| P3-01-FIN-02 | `payments.origin` distinguishes manual from provider-backed records; manual card/external-processor records no longer claim online capture |
+| P3-01-CON-01 | PostgreSQL races prove refund request/reversal mutual exclusion, exact-once concurrent refund completion, and one execution plus deterministic replay for identical idempotency claims |
+| P3-01-API-01 | Every guarded N2 HTTP command replays the original status/body without duplicate state when its idempotency key is retried |
+| P3-01-EDGE-01 | Price increase/decrease, paid/open deposit rebuilding, overpayment credit, retained activity rollback, expired quote rollback, checked-in swap housekeeping, no-show tiers, full/partial payment and refund cases are covered |
+
+Deferred decisions remain explicit: there is no generic partial reversal command in P3-01; a future correction command must compute the remaining reversible amount rather than reuse the legacy full reversal. Provider capture/refund truth begins only in P3-06 after a gateway is selected. Receipts and credit notes remain P3-03.
 
 Close the two observed correctness collisions before building more financial features:
 
@@ -162,4 +218,4 @@ A slice is complete only when:
 
 ## Immediate next action
 
-Implement **P3-01**, then **P3-02**, then **P3-03**. That order protects N2 money correctness, closes the original Rincón Grande manual-transfer/stay promise, and produces the documents/exports the client needs to see. Provider selection can proceed in parallel as a business decision, but P3-06 code must not start against an unconfirmed merchant/provider model.
+Review and merge **P3-01** after its branch checks remain green. Then update local `main` with `git pull --ff-only` and create **P3-02** from that merged commit; do not stack it on this branch. P3-02 closes the original Rincón Grande manual-transfer/stay promise, and P3-03 produces the documents/exports the client needs to see. Provider selection can proceed in parallel as a business decision, but P3-06 code must not start against an unconfirmed merchant/provider model.

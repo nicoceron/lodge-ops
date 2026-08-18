@@ -56,7 +56,10 @@ jobs:
           DB_PASSWORD: inn
       - name: Verify Laravel routes match the OpenAPI contract
         run: php artisan route:list --json > /tmp/inn-routes.json && ruby ../../scripts/verify-openapi.rb ../../contracts/openapi.yaml /tmp/inn-routes.json
-      - run: php artisan test --compact
+      - name: Run isolated PostgreSQL suite (inn_test guard)
+        run: |
+          test "$DB_DATABASE" = "inn_test"
+          ./vendor/bin/phpunit --configuration phpunit.pgsql.xml
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1

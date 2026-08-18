@@ -1188,7 +1188,7 @@ paths:
             schema: { $ref: '#/components/schemas/PaymentInput' }
       responses:
         '201':
-          description: Payment recorded; externally settled methods remain append-only.
+          description: Staff-entered manual payment record created; externally settled methods remain append-only and are not provider-capture claims.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PaymentEnvelope' }
@@ -2616,12 +2616,13 @@ components:
         data: { $ref: '#/components/schemas/Task' }
     Payment:
       type: object
-      required: [id, reservation_id, status, method, currency, amount_minor]
+      required: [id, reservation_id, status, method, origin, currency, amount_minor]
       properties:
         id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
         status: { type: string, enum: [pending, succeeded, failed, refunded, reversed] }
         method: { type: string, enum: [bank_transfer, cash, card, other] }
+        origin: { type: string, enum: [manual, provider], description: Provider-backed origin is reserved for a verified gateway adapter; this endpoint creates manual records only. }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
         evidence_url: { type: [string, 'null'], format: uri }

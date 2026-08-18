@@ -81,8 +81,9 @@ final class PaymentWorkflowActions
                     ->options(['bank_transfer' => 'Bank transfer', 'cash' => 'Cash', 'card' => 'Card', 'other' => 'Other'])
                     ->required(),
                 TextInput::make('amount_minor')->label('Amount (minor units)')->integer()->minValue(1)->required(),
-                TextInput::make('provider')->maxLength(80),
-                TextInput::make('provider_reference')->maxLength(200),
+                TextInput::make('provider')->label('External processor')->maxLength(80)
+                    ->helperText('Optional label only. This remains a staff-entered manual record, not a provider-captured payment.'),
+                TextInput::make('provider_reference')->label('External reference')->maxLength(200),
                 TextInput::make('evidence_url')->url()->maxLength(2000),
                 Textarea::make('evidence_note')->rows(3)->maxLength(5000),
             ])

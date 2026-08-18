@@ -55,6 +55,10 @@ final class CloseReservationWithPolicy
                     [
                         'policy_tier' => $calculation['tier'],
                         'days_before_arrival' => $calculation['days_before_arrival'],
+                        'property_timezone' => $calculation['property_timezone'],
+                        'effective_at_utc' => $calculation['effective_at_utc'],
+                        'effective_local_date' => $calculation['effective_local_date'],
+                        'arrival_local_date' => $calculation['arrival_local_date'],
                     ],
                     -$locked->tax_minor,
                 );
@@ -97,6 +101,10 @@ final class CloseReservationWithPolicy
                     'reason' => $reason,
                     'policy_tier' => $calculation['tier'],
                     'days_before_arrival' => $calculation['days_before_arrival'],
+                    'property_timezone' => $calculation['property_timezone'],
+                    'effective_at_utc' => $calculation['effective_at_utc'],
+                    'effective_local_date' => $calculation['effective_local_date'],
+                    'arrival_local_date' => $calculation['arrival_local_date'],
                     'released_value_minor' => $releaseAmount,
                     'waived_deposits' => $waivedDeposits,
                     'paid_minor' => $paid,

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PaymentOrigin;
 use App\Enums\PaymentStatus;
 use App\Models\Reservation;
 use App\Services\MoneyCalculator;
@@ -37,6 +38,7 @@ class PaymentApiTest extends TestCase
             ->postJson('/api/v1/payments', $payload)
             ->assertCreated()
             ->assertJsonPath('data.status', PaymentStatus::Succeeded->value)
+            ->assertJsonPath('data.origin', PaymentOrigin::Manual->value)
             ->assertJsonPath('data.currency', 'USD')
             ->assertJsonPath('data.amount_minor', 4001);
 
