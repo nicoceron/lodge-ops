@@ -75,7 +75,7 @@ final class IssuePaymentRequest
                 'state' => PaymentRequestState::Open,
                 'source_amount_minor' => $amount,
                 'source_currency' => $locked->currency,
-                'charge_currency' => $locked->currency === 'ARS' ? 'ARS' : null,
+                'charge_currency' => $locked->currency === 'USD' ? null : $locked->currency,
                 'calculation_snapshot' => $snapshot,
                 'calculation_checksum' => hash('sha256', json_encode($snapshot, JSON_THROW_ON_ERROR)),
                 'expires_at' => $expiresAt ?? now()->addDays(3),

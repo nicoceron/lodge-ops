@@ -5,6 +5,8 @@ x-api-common: &api-common
     context: .
     dockerfile: docker/api.Dockerfile
   working_dir: /app
+  env_file:
+    - ./apps/api/.env
   environment:
     APP_ENV: local
     APP_NAME: Inn
@@ -38,8 +40,6 @@ x-api-common: &api-common
     DOCUMENT_EXPORT_JOB_TRIES: ${DOCUMENT_EXPORT_JOB_TRIES:-3}
     DOCUMENT_EXPORT_JOB_RETRY_FOR_MINUTES: ${DOCUMENT_EXPORT_JOB_RETRY_FOR_MINUTES:-30}
     DOCUMENT_EXPORT_JOB_OVERLAP_EXPIRE_AFTER: ${DOCUMENT_EXPORT_JOB_OVERLAP_EXPIRE_AFTER:-300}
-    MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN:-}
-    MERCADO_PAGO_WEBHOOK_SECRET: ${MERCADO_PAGO_WEBHOOK_SECRET:-}
   volumes:
     - ./apps/api:/app
     - api-vendor:/app/vendor

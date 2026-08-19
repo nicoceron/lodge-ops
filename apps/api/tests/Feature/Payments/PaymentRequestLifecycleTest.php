@@ -68,6 +68,34 @@ class PaymentRequestLifecycleTest extends TestCase
         $this->assertNotSame($token, $newToken);
     }
 
+    public function test_connection_charge_currency_can_be_used_without_conversion(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $fake = new FakePaymentGateway;
+        $this->app->instance(PaymentGatewayFactory::class, $fake);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'COP',
+            'subtotal_minor' => 1_000_000,
+            'tax_minor' => 0,
+            'total_minor' => 1_000_000,
+        ]);
+        $connection = $this->connection();
+        $configuration = $connection->configuration;
+        $configuration['charge_currency'] = 'COP';
+        $connection->update(['configuration' => $configuration]);
+        $issued = app(IssuePaymentRequest::class)->handle($reservation, PaymentRequestPurpose::FullOutstanding, null, null, auth()->id());
+
+        $attempt = app(CreateProviderCheckout::class)->handle($issued->request, $connection->fresh());
+
+        $this->assertSame('COP', $issued->request->charge_currency);
+        $this->assertSame('COP', $attempt->charge_currency);
+        $this->assertSame(1_000_000, $attempt->charge_amount_minor);
+        $this->assertNull($attempt->exchange_rate);
+        $this->assertNull($attempt->conversion_snapshot);
+    }
+
     public function test_approved_provider_lookup_posts_one_payment_folio_effect_and_deposit(): void
     {
         [, $property] = $this->tenantEnvironment();

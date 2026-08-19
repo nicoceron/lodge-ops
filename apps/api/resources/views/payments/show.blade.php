@@ -6,7 +6,7 @@
 <p class="amount">{{ $paymentRequest->source_currency }} {{ number_format($paymentRequest->source_amount_minor / 100, 2) }}</p><p class="meta">{{ str_replace('_', ' ', ucfirst($paymentRequest->purpose->value)) }} · expires {{ $paymentRequest->expires_at->timezone($paymentRequest->property->timezone)->format('M j, Y H:i') }}</p>
 @if(in_array($paymentRequest->state->value, ['open', 'processing']))
 <div class="notice">You will complete payment in Mercado Pago. Inn never receives or stores your card details. Final confirmation is based on the payment provider, not the browser return.</div>
-<form method="post" action="{{ url('/pay/'.$token.'/checkout') }}">@csrf
+<form method="post" action="{{ route('payment-link.checkout', ['token' => $token], false) }}">@csrf
 @if($paymentRequest->source_currency === 'USD')
  @if($conversion)<input type="hidden" name="conversion_rate_id" value="{{ $conversion['rate_id'] }}"><label><input type="checkbox" name="accept_conversion" value="1" required> I accept paying ARS {{ number_format($conversion['charge_amount_minor']/100,2) }} for USD {{ number_format($paymentRequest->source_amount_minor/100,2) }} at {{ $conversion['rate'] }} ARS/USD using {{ $conversion['source'] }} ({{ $conversion['effective_at']->format('Y-m-d H:i T') }}).</label><br><br>@else <p class="terminal">Online payment is unavailable because no current ARS conversion snapshot exists. Please use bank transfer.</p>@endif
 @endif

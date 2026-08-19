@@ -23,6 +23,7 @@ final class MercadoPagoCheckoutProGateway implements PaymentGateway
         private readonly string $webhookSecret,
         private readonly string $providerAccount,
         private readonly string $environment = 'sandbox',
+        private readonly ?bool $useSandboxCheckoutUrl = null,
     ) {}
 
     public function createHostedCheckout(CheckoutRequest $request): HostedCheckout
@@ -43,7 +44,8 @@ final class MercadoPagoCheckoutProGateway implements PaymentGateway
         ], ['X-Idempotency-Key' => $request->idempotencyKey]);
 
         $id = data_get($payload, 'id');
-        $url = data_get($payload, $this->environment === 'production' ? 'init_point' : 'sandbox_init_point')
+        $useSandboxCheckoutUrl = $this->useSandboxCheckoutUrl ?? $this->environment !== 'production';
+        $url = data_get($payload, $useSandboxCheckoutUrl ? 'sandbox_init_point' : 'init_point')
             ?? data_get($payload, 'init_point');
         if (! is_string($id) || ! is_string($url) || ! $this->isAllowedCheckoutUrl($url)) {
             throw new RuntimeException('Mercado Pago returned an invalid hosted checkout.');
@@ -84,8 +86,12 @@ final class MercadoPagoCheckoutProGateway implements PaymentGateway
     public function fetchRefund(string $providerPaymentId, string $providerRefundId): ProviderRefund
     {
         $payload = $this->transport->request('GET', '/v1/payments/'.rawurlencode($providerPaymentId).'/refunds/'.rawurlencode($providerRefundId));
+        $currency = data_get($payload, 'currency_id');
+        if (! is_string($currency) || $currency === '') {
+            $currency = $this->fetchPayment($providerPaymentId)->currency;
+        }
 
-        return $this->normalizeRefund($payload, (string) data_get($payload, 'currency_id', 'ARS'));
+        return $this->normalizeRefund($payload, $currency);
     }
 
     public function verifyWebhook(WebhookRequest $request): VerifiedProviderEvent
@@ -140,9 +146,9 @@ final class MercadoPagoCheckoutProGateway implements PaymentGateway
         return new ProviderRefund((string) $id, (string) $paymentId, (string) data_get($payload, 'status'), $this->minor(data_get($payload, 'amount')), $currency);
     }
 
-    private function major(int $minor): string
+    private function major(int $minor): float
     {
-        return BigDecimal::of($minor)->dividedBy(100, 2)->__toString();
+        return (float) BigDecimal::of($minor)->dividedBy(100, 2)->__toString();
     }
 
     private function minor(mixed $major): int
@@ -154,6 +160,11 @@ final class MercadoPagoCheckoutProGateway implements PaymentGateway
     {
         $host = parse_url($url, PHP_URL_HOST);
 
-        return is_string($host) && ($host === 'mercadopago.com' || str_ends_with($host, '.mercadopago.com') || str_ends_with($host, '.mercadopago.com.ar'));
+        return is_string($host) && ($host === 'mercadopago.com'
+            || $host === 'mercadopago.com.ar'
+            || $host === 'mercadopago.com.co'
+            || str_ends_with($host, '.mercadopago.com')
+            || str_ends_with($host, '.mercadopago.com.ar')
+            || str_ends_with($host, '.mercadopago.com.co'));
     }
 }

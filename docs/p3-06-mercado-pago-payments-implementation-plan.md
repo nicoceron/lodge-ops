@@ -1,7 +1,7 @@
 # P3-06A online payment requests, links, and Mercado Pago implementation plan
 
 Date: 2026-08-18
-Status: **deterministic implementation complete; live Mercado Pago sandbox UAT pending credentials and public HTTPS webhook**
+Status: **deterministic implementation complete; Colombia/MCO provider journey partially proven; Argentina/ARS WP-11 release gate open**
 Branch: `codex/p3-06-payment-gateway-mercado-pago`
 Base: clean `main` at or after P3-03 merge `e459935`
 Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 3 plan](client-ready-phase-3-plan.md), [feature matrix](feature-matrix.md), [UAT ledger](client-uat-ledger.md), [reference benchmark](reference-code-quality-benchmark.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md)
@@ -431,8 +431,29 @@ Implemented on `codex/p3-06-payment-gateway-mercado-pago` from baseline `e459935
 - deterministic `PaymentRequestLifecycleTest`, `MercadoPagoGatewayContractTest`, and PostgreSQL active-attempt race coverage, plus the unchanged full regression suite.
 - local Filament/guest browser UAT: staff issue → 390×844 exact-money guest state → rotation makes the old link `404` → replacement resolves → revocation shows a terminal non-payable page; the test request was revoked afterward and browser logs were clean.
 
-Final deterministic verification after the stale-checkout, manual/provider settlement-race, and double-provider-settlement regressions: SQLite `291` tests (`284` passed, `7` skipped; `1,967` assertions), PostgreSQL `291` tests (`290` passed, `1` skipped; `1,948` assertions), PHPStan `0` errors, Pint clean, and OpenAPI `90` paths / `125` operations / `102` resolved references.
+Final deterministic verification after the live-provider compatibility fixes: SQLite `295` tests (`288` passed, `7` skipped; `1,976` assertions), PostgreSQL `295` tests (`294` passed, `1` skipped; `1,957` assertions), authenticated Playwright `7/7`, public Playwright `4/4`, PHPStan `0` errors, Pint clean, ESLint/TypeScript clean, OpenAPI `90` paths / `125` operations / `102` resolved references, Composer/npm audits clean, changed-file Gitleaks clean, production assets built, and rebuilt Docker services healthy under the smoke gate.
 
 Baseline before code changes: focused financial/documents `36` tests (`30` passed, `6` skipped), SQLite `280` tests (`274` passed, `6` skipped; `1,921` assertions), PostgreSQL `280` tests (`279` passed, `1` skipped; `1,897` assertions).
 
-Live-environment status: `MERCADO_PAGO_ACCESS_TOKEN` and `MERCADO_PAGO_WEBHOOK_SECRET` are not configured in the workspace. Therefore WP-11, the real Argentina test-buyer checkout/webhook/partial-refund journey, and receipt browser evidence remain explicitly unproven. Follow [the operations runbook](p3-06a-payment-operations-runbook.md); do not call the branch sandbox-complete until that evidence is attached to the UAT ledger.
+## 13. Provider evidence — 2026-08-19
+
+Secrets are configured only in the ignored, mode-`600` API environment file and were injected into the API and queue workers. The public webhook used a temporary HTTPS tunnel; neither the URL key nor its signing secret is retained in Git.
+
+Completed with a Colombia/MCO test seller and buyer:
+
+- real Checkout Pro COP 10,000 card approval, provider payment `…7197`;
+- valid `x-signature` delivery accepted through the public endpoint, followed by authoritative provider lookup;
+- duplicate delivery and three browser refreshes retained exactly one provider-origin payment, one paid deposit, and one COP -10,000 folio payment line;
+- authoritative settlement evidence: COP 10,000 gross, COP 1,344 Mercado Pago fee, COP 41.40 ICA withholding, COP 150 withholding tax, and COP 8,464.60 net; the settlement entry remains a truthful variance because tax withholdings are separate from the modeled provider fee;
+- COP 2,000 partial provider refund, provider refund `…6852`, completed in Mercado Pago's seller UI after the account policy rejected the refund API call, then reconciled by authoritative API lookup into exactly one completed Inn refund and one folio refund line;
+- authenticated payment and refund receipt endpoints returned integrity-matching PDFs; both one-page A4 artifacts rendered cleanly;
+- the approved return was exercised under a requested 390×844 mobile device viewport without creating another accounting effect.
+
+Observed limitations and release classification:
+
+- the runbook requires an Argentina seller/test buyer and ARS; the available personal developer account is Colombia/MCO and COP;
+- the Colombia hosted flow rendered manual `CONT` and `OTHE` test cards as `UNDEFINED SOURCE` and kept the final payment action disabled;
+- direct provider payment and refund calls returned `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, so those API paths cannot substitute for the blocked hosted pending/rejected cases on this account;
+- the signed-delivery test used Mercado Pago's documented HMAC format and a real provider payment, but an actual provider-originated webhook delivery was not observed.
+
+WP-11 therefore remains open. Keep the pull request draft and describe it as deterministic implementation plus MCO provider evidence, not Argentina sandbox-complete or production-ready. P3-06B remains blocked until this release criterion is met or explicitly changed.

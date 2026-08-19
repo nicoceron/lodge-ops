@@ -17,11 +17,14 @@ final class DefaultPaymentGatewayFactory implements PaymentGatewayFactory
             throw new RuntimeException('The selected payment connection is not supported.');
         }
 
+        $configuredCheckoutUrlMode = data_get($connection->configuration, 'use_sandbox_checkout_url');
+
         return new MercadoPagoCheckoutProGateway(
             new LaravelHttpMercadoPagoTransport($this->secrets->resolve($connection->secret_reference)),
             $this->secrets->resolve(data_get($connection->configuration, 'webhook_secret_reference')),
             (string) data_get($connection->configuration, 'provider_account'),
             (string) data_get($connection->configuration, 'environment', 'sandbox'),
+            is_bool($configuredCheckoutUrlMode) ? $configuredCheckoutUrlMode : null,
         );
     }
 }

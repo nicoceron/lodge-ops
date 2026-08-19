@@ -63,7 +63,7 @@ final class CreateProviderCheckout
                 throw new DomainException('The requested deposit is already paid.');
             }
 
-            [$chargeMinor, $chargeCurrency, $rate, $conversion] = $this->chargeMoney($lockedRequest, $conversionAccepted, $acceptedRateId);
+            [$chargeMinor, $chargeCurrency, $rate, $conversion] = $this->chargeMoney($lockedRequest, $connection, $conversionAccepted, $acceptedRateId);
             $attempt = PaymentAttempt::query()->create([
                 'property_id' => $lockedRequest->property_id,
                 'reservation_id' => $lockedRequest->reservation_id,
@@ -134,10 +134,11 @@ final class CreateProviderCheckout
     }
 
     /** @return array{int,string,?string,?array<string, mixed>} */
-    private function chargeMoney(PaymentRequest $request, bool $conversionAccepted, ?string $acceptedRateId): array
+    private function chargeMoney(PaymentRequest $request, IntegrationConnection $connection, bool $conversionAccepted, ?string $acceptedRateId): array
     {
-        if ($request->source_currency === 'ARS') {
-            return [$request->source_amount_minor, 'ARS', null, null];
+        $configuredCurrency = strtoupper((string) data_get($connection->configuration, 'charge_currency', 'ARS'));
+        if ($request->source_currency === $configuredCurrency) {
+            return [$request->source_amount_minor, $configuredCurrency, null, null];
         }
         if ($request->source_currency !== 'USD' || ! $conversionAccepted || $acceptedRateId === null) {
             throw new DomainException('USD reservations require explicit acceptance of an ARS conversion snapshot.');
