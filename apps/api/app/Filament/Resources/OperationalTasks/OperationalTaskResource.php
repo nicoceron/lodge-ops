@@ -43,7 +43,7 @@ class OperationalTaskResource extends TenantResource
     public static function getNavigationBadge(): ?string
     {
         $count = static::getEloquentQuery()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->count();
 
         return $count > 0 ? (string) $count : null;
@@ -52,7 +52,7 @@ class OperationalTaskResource extends TenantResource
     public static function getNavigationBadgeColor(): ?string
     {
         $hasOverdueTasks = static::getEloquentQuery()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->where('due_at', '<', now())
             ->exists();
 

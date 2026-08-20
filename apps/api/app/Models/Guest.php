@@ -23,7 +23,8 @@ class Guest extends TenantModel
     {
         return $this->belongsToMany(Reservation::class, 'reservation_guests')
             ->using(ReservationGuest::class)
-            ->withPivot(['id', 'tenant_id', 'role'])
+            ->withPivot(['id', 'tenant_id', 'role', 'sort_order', 'operational_preferences'])
+            ->orderByPivot('sort_order')
             ->withTimestamps();
     }
 

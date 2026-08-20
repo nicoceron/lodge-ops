@@ -22,6 +22,7 @@ final class CloseReservationWithPolicy
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
         private readonly CommercialPromotionService $promotions,
+        private readonly TaskLifecycleService $tasks,
     ) {}
 
     public function handle(Reservation $reservation, ReservationStatus $target, string $reason, ?int $actorId): Reservation
@@ -74,6 +75,7 @@ final class CloseReservationWithPolicy
                 'revision' => $locked->revision + 1,
             ]);
             $locked->allocations()->where('status', '!=', AllocationStatus::Released)->update(['status' => AllocationStatus::Released]);
+            $cancelledTasks = $this->tasks->cancelOpenForReservation($locked->id, ucfirst(str_replace('_', ' ', $target->value)).': '.$reason, $actorId);
             $this->promotions->release($locked, ucfirst(str_replace('_', ' ', $target->value)).': '.$reason, true);
             $waivedDeposits = $this->paymentSchedule->waiveOpen($locked, ucfirst(str_replace('_', ' ', $target->value)).': '.$reason, $actorId);
             $paid = (int) $locked->payments()->where('status', PaymentStatus::Succeeded)->sum('amount_minor');
@@ -109,6 +111,7 @@ final class CloseReservationWithPolicy
                     'arrival_local_date' => $calculation['arrival_local_date'],
                     'released_value_minor' => $releaseAmount,
                     'waived_deposits' => $waivedDeposits,
+                    'cancelled_operational_tasks' => $cancelledTasks,
                     'paid_minor' => $paid,
                     'refund_requirement_minor' => $refundRequirement,
                 ],

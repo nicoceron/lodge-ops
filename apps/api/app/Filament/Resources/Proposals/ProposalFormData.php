@@ -33,6 +33,7 @@ final class ProposalFormData
                 'currency',
                 'tax_minor',
                 'expires_at',
+                'inquiry_source',
             ]),
             'title' => data_get($proposal->snapshot, 'title'),
             'program_id' => data_get($proposal->snapshot, 'program_id'),

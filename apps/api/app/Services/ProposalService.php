@@ -6,6 +6,7 @@ use App\Enums\FolioLineType;
 use App\Enums\ProposalStatus;
 use App\Enums\ReservationStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
+use App\Models\BookingQuote;
 use App\Models\Proposal;
 use App\Models\Reservation;
 use App\Services\Automation\OutboxRecorder;
@@ -44,6 +45,8 @@ final class ProposalService
             $this->assertDraft($locked);
 
             $merged = [
+                'booking_quote_id' => $data['booking_quote_id'] ?? $locked->booking_quote_id,
+                'inquiry_source' => $data['inquiry_source'] ?? $locked->inquiry_source,
                 'property_id' => $data['property_id'] ?? $locked->property_id,
                 'program_id' => $data['program_id'] ?? data_get($locked->snapshot, 'program_id'),
                 'primary_guest_id' => $data['primary_guest_id'] ?? $locked->primary_guest_id,
@@ -133,6 +136,8 @@ final class ProposalService
 
             return Proposal::query()->create([
                 'reservation_id' => null,
+                'booking_quote_id' => $locked->booking_quote_id,
+                'inquiry_source' => $locked->inquiry_source,
                 'reference' => $locked->reference,
                 'property_id' => $locked->property_id,
                 'primary_guest_id' => $locked->primary_guest_id,
@@ -166,6 +171,32 @@ final class ProposalService
             if ($locked->expires_at !== null && $locked->expires_at->isPast()) {
                 $locked->update(['status' => ProposalStatus::Expired]);
                 throw new DomainException('This proposal has expired. Create a revision before converting it.');
+            }
+
+            if ($locked->booking_quote_id !== null) {
+                $quote = BookingQuote::query()->findOrFail($locked->booking_quote_id);
+                $reservation = app(CommitBookingQuote::class)->handle(
+                    $quote,
+                    $locked->primary_guest_id,
+                    [],
+                    [],
+                    $locked->inquiry_source,
+                    data_get($locked->snapshot, 'notes'),
+                );
+                $locked->update([
+                    'reservation_id' => $reservation->id,
+                    'status' => ProposalStatus::Accepted,
+                    'accepted_at' => now(),
+                    'converted_at' => now(),
+                ]);
+                $this->outbox->record('proposal', $locked->id, 'proposal.accepted', [
+                    'proposal_id' => $locked->id,
+                    'reservation_id' => $reservation->id,
+                    'reference' => $locked->reference,
+                    'booking_quote_id' => $quote->id,
+                ]);
+
+                return $reservation;
             }
 
             $reservation = Reservation::query()->create([
@@ -247,6 +278,53 @@ final class ProposalService
     /** @param array<string, mixed> $data @return array<string, mixed> */
     private function draftAttributes(array $data): array
     {
+        if (! empty($data['booking_quote_id'])) {
+            $quote = BookingQuote::query()->with('lines')->findOrFail($data['booking_quote_id']);
+            if ($quote->property_id !== $data['property_id']) {
+                throw new DomainException('The server-priced quote must belong to the proposal property.');
+            }
+            $lines = $quote->lines->map(fn ($line): array => [
+                'description' => $line->description,
+                'quantity_thousandths' => $line->quantity_thousandths,
+                'unit_amount_minor' => $line->unit_amount_minor,
+                'amount_minor' => $line->gross_amount_minor,
+                'tax_amount_minor' => $line->tax_amount_minor,
+                'source_line_id' => $line->id,
+            ])->values()->all();
+
+            return [
+                'booking_quote_id' => $quote->id,
+                'inquiry_source' => $data['inquiry_source'] ?? null,
+                'property_id' => $quote->property_id,
+                'primary_guest_id' => $data['primary_guest_id'] ?? null,
+                'starts_at' => $quote->starts_at,
+                'ends_at' => $quote->ends_at,
+                'adults' => $quote->adults,
+                'children' => $quote->children,
+                'currency' => $quote->currency,
+                'total_minor' => $quote->total_minor,
+                'tax_minor' => $quote->tax_minor,
+                'snapshot' => [
+                    'schema_version' => 1,
+                    'pricing_source' => 'booking_quote',
+                    'booking_quote_id' => $quote->id,
+                    'booking_quote_checksum' => $quote->checksum,
+                    'program_id' => $quote->program_id,
+                    'title' => $data['title'] ?? 'Lodge stay proposal',
+                    'notes' => $data['notes'] ?? null,
+                    'lines' => $lines,
+                    'subtotal_minor' => $quote->subtotal_minor,
+                    'discount_minor' => $quote->discount_minor,
+                    'tax_minor' => $quote->tax_minor,
+                    'total_minor' => $quote->total_minor,
+                    'currency' => $quote->currency,
+                    'deposit_policy_snapshot' => $quote->deposit_policy_snapshot,
+                    'cancellation_policy_snapshot' => $quote->cancellation_policy_snapshot,
+                    'calculation_snapshot' => $quote->calculation_snapshot,
+                ],
+                'expires_at' => $data['expires_at'] ?? $quote->expires_at,
+            ];
+        }
         $lines = collect($data['lines'] ?? [])->map(function (array $line): array {
             $quantity = (int) $line['quantity_thousandths'];
             $unitAmount = (int) $line['unit_amount_minor'];
@@ -262,6 +340,8 @@ final class ProposalService
         $tax = (int) ($data['tax_minor'] ?? 0);
 
         return [
+            'booking_quote_id' => $data['booking_quote_id'] ?? null,
+            'inquiry_source' => $data['inquiry_source'] ?? null,
             'property_id' => $data['property_id'],
             'primary_guest_id' => $data['primary_guest_id'] ?? null,
             'starts_at' => $data['starts_at'],

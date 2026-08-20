@@ -21,6 +21,9 @@ class OperationalTaskInfolist
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->placeholder('General task'),
                 TextEntry::make('due_at')->label('Due')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('No deadline'),
                 TextEntry::make('description')->placeholder('No description')->columnSpanFull(),
+                TextEntry::make('failure_reason')->label('Failure reason')->placeholder('—')->columnSpanFull(),
+                TextEntry::make('escalation_reason')->label('Escalation reason')->placeholder('—')->columnSpanFull(),
+                TextEntry::make('revision')->label('Version'),
             ]),
         ]);
     }

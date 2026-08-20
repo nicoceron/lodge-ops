@@ -60,6 +60,7 @@ class Allocation extends TenantModel
             'starts_at' => 'immutable_datetime',
             'ends_at' => 'immutable_datetime',
             'quantity' => 'integer',
+            'revision' => 'integer',
         ];
     }
 

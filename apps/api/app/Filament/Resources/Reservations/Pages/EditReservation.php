@@ -3,7 +3,8 @@
 namespace App\Filament\Resources\Reservations\Pages;
 
 use App\Filament\Resources\Reservations\ReservationResource;
-use App\Models\ReservationGuest;
+use App\Models\Reservation;
+use App\Services\ReservationCompanionService;
 use Filament\Actions\ViewAction;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Arr;
@@ -21,17 +22,20 @@ class EditReservation extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $record = $this->reservation();
+
         return [
             ...Arr::only($data, ['primary_guest_id', 'source', 'notes']),
-            'revision' => $this->record->revision + 1,
+            'revision' => $record->revision + 1,
         ];
     }
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $data['companion_guest_ids'] = $this->record->guests()
-            ->where('guests.id', '!=', $this->record->primary_guest_id)
-            ->pluck('guests.id')
+        $record = $this->reservation();
+        $data['companion_guest_ids'] = $record->guests
+            ->reject(fn ($guest): bool => $guest->id === $record->primary_guest_id)
+            ->pluck('id')
             ->all();
 
         return $data;
@@ -39,17 +43,21 @@ class EditReservation extends EditRecord
 
     protected function afterSave(): void
     {
-        $this->record->guests()->detach();
-        $guestIds = array_values(array_unique(array_filter([
-            $this->record->primary_guest_id,
-            ...($this->data['companion_guest_ids'] ?? []),
-        ])));
-        foreach ($guestIds as $guestId) {
-            ReservationGuest::query()->create([
-                'reservation_id' => $this->record->id,
-                'guest_id' => $guestId,
-                'role' => $guestId === $this->record->primary_guest_id ? 'primary' : 'guest',
-            ]);
-        }
+        $record = $this->reservation();
+        app(ReservationCompanionService::class)->replace(
+            $record,
+            collect($this->data['companion_guest_ids'] ?? [])->values()
+                ->map(fn (string $guestId): array => ['guest_id' => $guestId])->all(),
+            $record->revision,
+            auth()->id(),
+        );
+    }
+
+    private function reservation(): Reservation
+    {
+        $record = $this->getRecord();
+        abort_unless($record instanceof Reservation, 404);
+
+        return $record;
     }
 }

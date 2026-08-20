@@ -37,6 +37,61 @@
                     </x-filament::input.wrapper>
                 </label>
                 <label class="space-y-1 text-sm font-medium">
+                    <span>Reservation state</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="reservationState">
+                            <option value="all">All states</option>
+                            @foreach (\App\Enums\ReservationStatus::cases() as $status)
+                                <option value="{{ $status->value }}">{{ str($status->value)->headline() }}</option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Program</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="programId">
+                            <option value="">All programs</option>
+                            @foreach ($programOptions as $programOption)
+                                <option value="{{ $programOption->id }}">{{ $programOption->name }}</option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Stay boundary</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="boundary">
+                            <option value="all">Any overlap</option>
+                            <option value="arrivals">Arrivals</option>
+                            <option value="departures">Departures</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Attention</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="attention">
+                            <option value="all">All records</option>
+                            <option value="unassigned">Unassigned stays</option>
+                            <option value="conflicted">Hard conflicts</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Housekeeping</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="housekeeping">
+                            <option value="all">All readiness</option>
+                            <option value="clean">Clean</option>
+                            <option value="dirty">Dirty</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="inspected">Inspected</option>
+                            <option value="out_of_service">Out of service</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
                     <span>Through</span>
                     <x-filament::input.wrapper>
                         <x-filament::input type="date" wire:model.live="end" />

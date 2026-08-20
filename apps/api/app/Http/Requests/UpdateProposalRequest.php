@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Program;
 use App\Models\Proposal;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class UpdateProposalRequest extends TenantRequest
@@ -12,6 +13,8 @@ class UpdateProposalRequest extends TenantRequest
     {
         return [
             'property_id' => ['sometimes', 'uuid', $this->tenantExists('properties')],
+            'booking_quote_id' => ['sometimes', 'nullable', 'uuid', $this->tenantExists('booking_quotes')],
+            'inquiry_source' => ['sometimes', 'nullable', Rule::in(['email', 'whatsapp', 'phone', 'walk_in', 'partner', 'web', 'other_approved'])],
             'program_id' => ['sometimes', 'nullable', 'uuid', $this->tenantExists('programs')],
             'primary_guest_id' => ['sometimes', 'nullable', 'uuid', $this->tenantExists('guests')],
             'starts_at' => ['sometimes', 'date'],

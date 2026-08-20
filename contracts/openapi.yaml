@@ -63,6 +63,12 @@ paths:
           in: query
           required: true
           schema: { type: string, format: date }
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+        - { name: resource_kind, in: query, schema: { type: string, enum: [place, asset, crew] } }
+        - { name: reservation_status, in: query, schema: { type: string } }
+        - { name: program_id, in: query, schema: { type: string, format: uuid } }
+        - { name: boundary, in: query, schema: { type: string, enum: [arrival, departure] } }
+        - { name: attention, in: query, schema: { type: string, enum: [conflicted, unassigned] } }
       responses:
         '200':
           description: Unified reservation, activity, task, and resource-block events for a date range.
@@ -225,6 +231,18 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /guests/duplicates/search:
+    get:
+      tags: [Guests]
+      operationId: searchDuplicateGuests
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: email, in: query, schema: { type: string, format: email } }
+        - { name: phone, in: query, schema: { type: string } }
+        - { name: name, in: query, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /guests/{guest}/history:
     get:
       tags: [Guests]
@@ -1979,6 +1997,144 @@ paths:
         '200': { description: Integrity-verified CSV or XLSX artifact, content: { text/csv: { schema: { type: string, format: binary } }, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } } } }
         '409': { $ref: '#/components/responses/Conflict' }
         '410': { description: Export expired or purged. }
+
+  /reservations/{reservation}/companions:
+    put:
+      tags: [Reservations]
+      operationId: replaceReservationCompanions
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_revision, companions]
+              properties:
+                expected_revision: { type: integer, minimum: 1 }
+                companions:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [guest_id]
+                    properties:
+                      guest_id: { type: string, format: uuid }
+                      dietary: { type: string, maxLength: 500 }
+                      allergies: { type: string, maxLength: 500 }
+                      meal_notes: { type: string, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /tasks/{task}/transition:
+    post:
+      tags: [Tasks]
+      operationId: transitionOperationalTask
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, expected_revision]
+              properties:
+                action: { type: string, enum: [assign, start, complete, fail, reopen, escalate, cancel] }
+                expected_revision: { type: integer, minimum: 1 }
+                assignee_id: { type: integer }
+                reason: { type: string, maxLength: 2000 }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates:
+    post:
+      tags: [Operations]
+      operationId: createChecklistTemplate
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates/{checklistTemplate}/publish:
+    post:
+      tags: [Operations]
+      operationId: publishChecklistTemplateVersion
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: checklistTemplate, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates/{checklistTemplate}/retire:
+    post:
+      tags: [Operations]
+      operationId: retireChecklistTemplate
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: checklistTemplate, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+  /reservations/{reservation}/checklist-exceptions:
+    post:
+      tags: [Operations]
+      operationId: createReservationChecklistException
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/checklists/generate:
+    post:
+      tags: [Operations]
+      operationId: generateReservationChecklist
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /calendar/preferences:
+    put:
+      tags: [Calendar]
+      operationId: updateCalendarPreferences
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /operational-kpis:
+    get:
+      tags: [Finance]
+      operationId: reconcileOperationalKpis
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: start, in: query, required: true, schema: { type: string, format: date } }
+        - { name: end, in: query, required: true, schema: { type: string, format: date } }
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Provisional KPI definitions and reconciled values, separated by currency, pending explicit client approval.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
 components:
   securitySchemes:

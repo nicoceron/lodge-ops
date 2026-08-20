@@ -4,8 +4,13 @@ namespace App\Filament\Resources\OperationalTasks\Tables;
 
 use App\Enums\TaskStatus;
 use App\Filament\Support\InnPresentation;
+use App\Models\OperationalTask;
+use App\Services\TaskLifecycleService;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -45,7 +50,7 @@ class OperationalTasksTable
                     ->dateTime('M j · H:i', timezone: InnPresentation::timezone())
                     ->placeholder('No deadline')
                     ->sortable()
-                    ->color(fn ($record): string => $record->due_at?->isPast() && ! in_array($record->status, [TaskStatus::Done, TaskStatus::Cancelled], true)
+                    ->color(fn ($record): string => $record->due_at?->isPast() && ! in_array($record->status, [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded], true)
                         ? 'danger'
                         : 'gray'),
             ])
@@ -68,9 +73,37 @@ class OperationalTasksTable
                 Filter::make('overdue')
                     ->query(fn (Builder $query): Builder => $query
                         ->where('due_at', '<', now())
-                        ->whereNotIn('status', [TaskStatus::Done->value, TaskStatus::Cancelled->value])),
+                        ->whereNotIn('status', [TaskStatus::Done->value, TaskStatus::Cancelled->value, TaskStatus::Superseded->value])),
             ])
             ->recordActions([
+                Action::make('start')
+                    ->icon('heroicon-o-play')
+                    ->color('info')
+                    ->visible(fn (OperationalTask $record): bool => in_array($record->status, [TaskStatus::Todo, TaskStatus::Blocked], true))
+                    ->action(fn (OperationalTask $record) => self::transition($record, 'start')),
+                Action::make('complete')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn (OperationalTask $record): bool => in_array($record->status, [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Blocked], true))
+                    ->requiresConfirmation()
+                    ->action(fn (OperationalTask $record) => self::transition($record, 'complete')),
+                Action::make('fail')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(fn (OperationalTask $record): bool => in_array($record->status, [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Blocked], true))
+                    ->schema([Textarea::make('reason')->required()->maxLength(2000)])
+                    ->action(fn (OperationalTask $record, array $data) => self::transition($record, 'fail', $data)),
+                Action::make('escalate')
+                    ->icon('heroicon-o-arrow-trending-up')
+                    ->color('warning')
+                    ->visible(fn (OperationalTask $record): bool => ! in_array($record->status, [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded], true))
+                    ->schema([Textarea::make('reason')->required()->maxLength(2000)])
+                    ->action(fn (OperationalTask $record, array $data) => self::transition($record, 'escalate', $data)),
+                Action::make('reopen')
+                    ->icon('heroicon-o-arrow-path')
+                    ->visible(fn (OperationalTask $record): bool => in_array($record->status, [TaskStatus::Done, TaskStatus::Failed, TaskStatus::Cancelled], true))
+                    ->requiresConfirmation()
+                    ->action(fn (OperationalTask $record) => self::transition($record, 'reopen')),
                 ViewAction::make(),
                 EditAction::make(),
             ])
@@ -79,5 +112,15 @@ class OperationalTasksTable
             ->emptyStateHeading('Work queue is clear')
             ->emptyStateDescription('New housekeeping, guide, kitchen and follow-up tasks will appear here.')
             ->emptyStateIcon('heroicon-o-check-circle');
+    }
+
+    /** @param array<string, mixed> $data */
+    private static function transition(OperationalTask $task, string $action, array $data = []): void
+    {
+        app(TaskLifecycleService::class)->transition($task, $action, [
+            ...$data,
+            'expected_revision' => $task->revision,
+        ], auth()->id());
+        Notification::make()->success()->title('Task '.str_replace('_', ' ', $action).' recorded')->send();
     }
 }

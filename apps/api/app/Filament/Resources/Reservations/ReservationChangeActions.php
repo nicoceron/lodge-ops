@@ -6,6 +6,7 @@ use App\Enums\AllocationStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Models\Allocation;
+use App\Models\ChecklistTemplateVersion;
 use App\Models\Payment;
 use App\Models\RatePlan;
 use App\Models\Reservation;
@@ -13,6 +14,7 @@ use App\Models\ReservationChange;
 use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Services\AmendReservation;
+use App\Services\ChecklistWorkflowService;
 use App\Services\CompleteRefund;
 use App\Services\QuoteExplanationService;
 use App\Services\ReallocateResource;
@@ -31,7 +33,7 @@ final class ReservationChangeActions
     /** @return array<Action> */
     public static function make(): array
     {
-        return [self::explainQuote(), self::amend(), self::move(), self::requestRefund(), self::completeRefund()];
+        return [self::explainQuote(), self::amend(), self::move(), self::generateChecklist(), self::requestRefund(), self::completeRefund()];
     }
 
     private static function explainQuote(): Action
@@ -131,6 +133,37 @@ final class ReservationChangeActions
                     reason: $data['reason'] ?? null,
                 );
                 Notification::make()->success()->title('Resource moved without overwriting allocation history')->send();
+            });
+    }
+
+    private static function generateChecklist(): Action
+    {
+        return Action::make('generateChecklist')
+            ->label('Generate checklist')
+            ->icon('heroicon-o-list-bullet')
+            ->color('info')
+            ->authorize('update')
+            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true))
+            ->schema([
+                Select::make('version_id')->label('Published checklist version')
+                    ->options(fn (Reservation $record): array => ChecklistTemplateVersion::query()->with('template')
+                        ->where('state', 'published')
+                        ->whereHas('template', fn ($query) => $query->where('property_id', $record->property_id)
+                            ->where(fn ($scope) => $scope->whereNull('program_id')->orWhere('program_id', $record->program_id)))
+                        ->get()->mapWithKeys(fn (ChecklistTemplateVersion $version): array => [
+                            $version->id => $version->template->name.' · v'.$version->version.' · '.str($version->template->role)->headline(),
+                        ])->all())
+                    ->searchable()->required(),
+            ])
+            ->modalDescription('Pending tasks from an earlier generated checklist are superseded. Started, failed, and completed work remains immutable in the timeline.')
+            ->action(function (Reservation $record, array $data): void {
+                $result = app(ChecklistWorkflowService::class)->generate(
+                    $record,
+                    ChecklistTemplateVersion::query()->findOrFail($data['version_id']),
+                    auth()->id(),
+                );
+                Notification::make()->success()->title("Generated {$result['created']} tasks")
+                    ->body("Generation {$result['generation']}; superseded {$result['superseded']} pending tasks.")->send();
             });
     }
 

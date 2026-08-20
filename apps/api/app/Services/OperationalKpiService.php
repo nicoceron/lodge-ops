@@ -1,0 +1,92 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\PaymentStatus;
+use App\Enums\ReservationStatus;
+use App\Enums\TaskStatus;
+use App\Models\FolioLine;
+use App\Models\OperationalTask;
+use App\Models\Payment;
+use App\Models\Reservation;
+use App\Models\Resource;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+
+final class OperationalKpiService
+{
+    /** @return array<string, mixed> */
+    public function reconcile(CarbonImmutable $localStart, CarbonImmutable $localEnd, string $timezone, ?string $propertyId): array
+    {
+        $start = $localStart->startOfDay()->utc();
+        $end = $localEnd->addDay()->startOfDay()->utc();
+        $reservationScope = fn (): Builder => Reservation::query()
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId));
+        $active = [ReservationStatus::Confirmed, ReservationStatus::CheckedIn, ReservationStatus::CheckedOut];
+        $reservations = $reservationScope()->whereIn('status', $active)
+            ->where('starts_at', '<', $end)->where('ends_at', '>', $start)->get();
+        $capacity = Resource::query()->with('category')
+            ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
+            ->where('is_active', true)->whereHas('category', fn (Builder $query) => $query->where('counts_as_stay', true))
+            ->sum('capacity');
+        $days = max(1, $localStart->diffInDays($localEnd) + 1);
+        $occupiedRoomNights = (int) $reservations->sum(function (Reservation $reservation) use ($start, $end, $timezone): int {
+            $from = $reservation->starts_at->greaterThan($start) ? $reservation->starts_at : $start;
+            $to = $reservation->ends_at->lessThan($end) ? $reservation->ends_at : $end;
+
+            return max(0, $from->timezone($timezone)->startOfDay()->diffInDays($to->timezone($timezone)->startOfDay()));
+        });
+        $availableRoomNights = (int) $capacity * $days;
+        $currencyRows = $reservations->groupBy('currency')->map(function ($currencyReservations, string $currency) use ($start, $end): array {
+            $ids = $currencyReservations->pluck('id');
+            $revenue = (int) FolioLine::query()->whereIn('reservation_id', $ids)
+                ->where('posted_at', '>=', $start)->where('posted_at', '<', $end)
+                ->where('currency', $currency)->sum('gross_amount_minor');
+            $paid = (int) Payment::query()->whereIn('reservation_id', $ids)->where('currency', $currency)
+                ->where('status', PaymentStatus::Succeeded)->sum('amount_minor');
+            $booked = (int) $currencyReservations->sum('total_minor');
+
+            return [
+                'currency' => $currency,
+                'revenue_minor' => $revenue,
+                'booked_minor' => $booked,
+                'deposit_received_minor' => $paid,
+                'outstanding_minor' => max(0, $booked - $paid),
+                'adr_minor' => $currencyReservations->count() === 0 ? null : intdiv($booked, $currencyReservations->count()),
+                'disclosure' => 'Currency totals are not converted or combined.',
+            ];
+        })->values();
+        $taskScope = OperationalTask::query()->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId));
+
+        return [
+            'status' => 'provisional_client_approval_required',
+            'range' => ['local_start' => $localStart->toDateString(), 'local_end' => $localEnd->toDateString(), 'timezone' => $timezone, 'utc_start' => $start->toIso8601String(), 'utc_end_exclusive' => $end->toIso8601String()],
+            'definitions' => $this->definitions(),
+            'values' => [
+                'reservation_volume' => $reservations->count(),
+                'occupied_room_nights' => $occupiedRoomNights,
+                'available_room_nights' => $availableRoomNights,
+                'occupancy_percent' => $availableRoomNights === 0 ? null : round(($occupiedRoomNights / $availableRoomNights) * 100, 2),
+                'arrivals' => $reservationScope()->whereIn('status', $active)->where('starts_at', '>=', $start)->where('starts_at', '<', $end)->count(),
+                'departures' => $reservationScope()->whereIn('status', $active)->where('ends_at', '>=', $start)->where('ends_at', '<', $end)->count(),
+                'tasks_total' => (clone $taskScope)->where(fn (Builder $query) => $query->whereNull('due_at')->orWhereBetween('due_at', [$start, $end]))->count(),
+                'tasks_overdue' => (clone $taskScope)->where('due_at', '<', now())->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])->count(),
+                'kitchen_guest_count' => (int) $reservations->sum(fn (Reservation $reservation): int => $reservation->adults + $reservation->children),
+                'currencies' => $currencyRows,
+            ],
+        ];
+    }
+
+    /** @return list<array<string, string>> */
+    public function definitions(): array
+    {
+        return [
+            ['key' => 'occupancy_percent', 'numerator' => 'occupied room nights', 'denominator' => 'active stay-resource capacity x local calendar days', 'timezone' => 'property local', 'currency' => 'none', 'exclusions' => 'draft, hold, cancelled, no-show; half-open departure day', 'reconciliation' => 'reservations overlap local day window; active stay-category resource capacity'],
+            ['key' => 'adr_minor', 'numerator' => 'immutable booked total by currency', 'denominator' => 'in-scope reservations in same currency', 'timezone' => 'property local overlap', 'currency' => 'separate ISO currency rows', 'exclusions' => 'no FX aggregation; zero denominator returns null', 'reconciliation' => 'sum reservations.total_minor grouped by currency'],
+            ['key' => 'revenue_minor', 'numerator' => 'posted folio gross amount by currency', 'denominator' => 'none', 'timezone' => 'property local period converted to half-open UTC', 'currency' => 'separate ISO currency rows', 'exclusions' => 'outside posted-at window', 'reconciliation' => 'sum folio_lines.gross_amount_minor grouped by currency'],
+            ['key' => 'deposit_received_minor', 'numerator' => 'succeeded payment amount by currency', 'denominator' => 'none', 'timezone' => 'reservation period', 'currency' => 'separate ISO currency rows', 'exclusions' => 'non-succeeded payments and refunds disclosed separately', 'reconciliation' => 'sum succeeded payments.amount_minor grouped by currency'],
+            ['key' => 'outstanding_minor', 'numerator' => 'booked total less succeeded payments', 'denominator' => 'none', 'timezone' => 'reservation period', 'currency' => 'separate ISO currency rows', 'exclusions' => 'never below zero', 'reconciliation' => 'reservations.total_minor minus succeeded payments.amount_minor'],
+            ['key' => 'task_overdue', 'numerator' => 'tasks due before the audit instant', 'denominator' => 'none', 'timezone' => 'UTC audit instant displayed property local', 'currency' => 'none', 'exclusions' => 'done, cancelled, superseded', 'reconciliation' => 'operational_tasks due_at and status'],
+        ];
+    }
+}

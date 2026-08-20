@@ -91,6 +91,14 @@ final class SensitivePaymentDataGuard
     private function strings(mixed $value, string $path): iterable
     {
         if (is_string($value)) {
+            if (in_array($value[0] ?? '', ['{', '['], true)) {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    yield from $this->strings($decoded, $path);
+
+                    return;
+                }
+            }
             yield [$path, $value];
 
             return;

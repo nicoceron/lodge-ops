@@ -10,6 +10,7 @@ use App\Models\Allocation;
 use App\Models\BookingQuote;
 use App\Models\Reservation;
 use App\Services\Automation\OutboxRecorder;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -23,6 +24,7 @@ final class AmendReservation
         private readonly CommercialPromotionService $promotions,
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
+        private readonly TaskLifecycleService $tasks,
     ) {}
 
     /** @param array<string, mixed> $input */
@@ -114,6 +116,12 @@ final class AmendReservation
                 'cancellation_policy_snapshot' => $lockedQuote->cancellation_policy_snapshot,
                 'revision' => $locked->revision + 1,
             ]);
+            $rescheduledTasks = $this->tasks->rebasePendingForReservation(
+                $locked->id,
+                CarbonImmutable::parse($before['starts_at']),
+                $lockedQuote->starts_at,
+                $actorId,
+            );
             $lockedQuote->update([
                 'status' => BookingQuoteStatus::Committed,
                 'reservation_id' => $locked->id,
@@ -131,6 +139,7 @@ final class AmendReservation
                     'replacement_allocation_id' => $replacement->id,
                     'price_delta_minor' => $totalDelta,
                     'deposit_payment_effects' => $paymentEffects,
+                    'rescheduled_operational_tasks' => $rescheduledTasks,
                 ],
             ]);
             $this->outbox->record('reservation', $locked->id, 'reservation.amended', [

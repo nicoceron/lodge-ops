@@ -164,9 +164,9 @@ class OperationsProjectionService
                 ])),
             ],
             'readiness' => [
-                'complete' => $tasks->whereIn('status', [TaskStatus::Done, TaskStatus::Cancelled])->count(),
+                'complete' => $tasks->whereIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])->count(),
                 'total' => $tasks->count(),
-                'open' => $tasks->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])->count(),
+                'open' => $tasks->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])->count(),
             ],
             'tasks' => $taskItems,
             'arrivals' => $arrivals->map(fn (Reservation $reservation) => $this->arrival($reservation, $this->visibility))->values(),

@@ -7,6 +7,7 @@ use App\Enums\MembershipRole;
 use App\Enums\ResourceKind;
 use App\Models\Allocation;
 use App\Models\OperationalTask;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
@@ -37,11 +38,14 @@ class CalendarProjectionService
             throw ValidationException::withMessages(['end' => 'Calendar windows may not exceed 92 days.']);
         }
 
-        $membershipPropertyId = $this->context->membership()?->property_id;
+        $membershipPropertyId = $this->context->propertyScopeId();
         if ($membershipPropertyId !== null && $requestedPropertyId !== null && $requestedPropertyId !== $membershipPropertyId) {
             throw ValidationException::withMessages(['property_id' => 'The property is outside your active membership scope.']);
         }
         $propertyId = $membershipPropertyId ?? $requestedPropertyId;
+        $timezone = $propertyId === null
+            ? $this->context->tenant()->timezone
+            : (Property::query()->whereKey($propertyId)->value('timezone') ?? $this->context->tenant()->timezone);
         $isGuide = $role === MembershipRole::Guide;
         $guideResourceIds = $isGuide
             ? Resource::query()
@@ -186,7 +190,7 @@ class CalendarProjectionService
             'range' => [
                 'start' => $start->toIso8601String(),
                 'end' => $end->toIso8601String(),
-                'timezone' => $this->context->tenant()->timezone,
+                'timezone' => $timezone,
             ],
             'resources' => $resources->map(fn (Resource $resource): array => [
                 'id' => $resource->id,
@@ -213,6 +217,7 @@ class CalendarProjectionService
             ]),
             'summary' => [
                 'hard_conflicts' => $this->hardConflicts($allocations, $blocks),
+                'hard_conflict_reservation_ids' => $this->conflictReservationIds($allocations, $blocks),
                 'unassigned_reservations' => $unassignedReservations,
                 'suggestions' => $unassignedReservations,
             ],
@@ -284,5 +289,27 @@ class CalendarProjectionService
         }
 
         return $conflicts;
+    }
+
+    /** @param Collection<int, Allocation> $allocations @param Collection<int, ResourceBlock> $blocks @return list<string> */
+    private function conflictReservationIds(Collection $allocations, Collection $blocks): array
+    {
+        $ids = collect();
+        foreach ($allocations->whereNotNull('resource_id')->groupBy('resource_id') as $resourceAllocations) {
+            foreach ($resourceAllocations as $allocation) {
+                $resource = $allocation->resource;
+                $overlapQuantity = $resourceAllocations->filter(fn (Allocation $candidate): bool => $candidate->starts_at < $allocation->ends_at
+                    && $candidate->ends_at > $allocation->starts_at)->sum('quantity');
+                if ($overlapQuantity > max(1, $resource->capacity)) {
+                    $ids->push($allocation->reservation_id);
+                }
+                if ($blocks->contains(fn (ResourceBlock $block): bool => $block->resource_id === $allocation->resource_id
+                    && $block->starts_at < $allocation->ends_at && $block->ends_at > $allocation->starts_at)) {
+                    $ids->push($allocation->reservation_id);
+                }
+            }
+        }
+
+        return $ids->filter()->unique()->values()->all();
     }
 }

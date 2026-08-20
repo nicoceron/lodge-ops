@@ -11,13 +11,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $user_id
  * @property string|null $property_id
  * @property bool $is_active
+ * @property array<string, mixed>|null $calendar_preferences
  * @property-read User $user
  */
 class Membership extends TenantModel
 {
     protected function casts(): array
     {
-        return ['role' => MembershipRole::class, 'is_active' => 'boolean'];
+        return ['role' => MembershipRole::class, 'is_active' => 'boolean', 'calendar_preferences' => 'array'];
     }
 
     public function user(): BelongsTo

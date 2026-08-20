@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Program;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreProposalRequest extends TenantRequest
@@ -11,6 +12,8 @@ class StoreProposalRequest extends TenantRequest
     {
         return [
             'property_id' => ['required', 'uuid', $this->tenantExists('properties')],
+            'booking_quote_id' => ['nullable', 'uuid', $this->tenantExists('booking_quotes')],
+            'inquiry_source' => ['nullable', Rule::in(['email', 'whatsapp', 'phone', 'walk_in', 'partner', 'web', 'other_approved'])],
             'program_id' => ['nullable', 'uuid', $this->tenantExists('programs')],
             'primary_guest_id' => ['nullable', 'uuid', $this->tenantExists('guests')],
             'starts_at' => ['required', 'date'],

@@ -12,6 +12,9 @@ use App\Models\CalendarFeed;
 use App\Models\CancellationPolicy;
 use App\Models\CancellationPolicyTier;
 use App\Models\CatalogItem;
+use App\Models\ChecklistTemplate;
+use App\Models\ChecklistTemplateItem;
+use App\Models\ChecklistTemplateVersion;
 use App\Models\CommercialPromotion;
 use App\Models\CommissionAccrual;
 use App\Models\Communication;
@@ -35,6 +38,7 @@ use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\MessageTemplateVersion;
 use App\Models\OperationalTask;
+use App\Models\OperationalTaskEvent;
 use App\Models\Opportunity;
 use App\Models\Organization;
 use App\Models\Payment;
@@ -51,6 +55,7 @@ use App\Models\RatePlanService;
 use App\Models\RateRule;
 use App\Models\ReportExport;
 use App\Models\Reservation;
+use App\Models\ReservationChecklistException;
 use App\Models\ReservationNote;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
@@ -122,6 +127,9 @@ class AppServiceProvider extends ServiceProvider
             Allocation::class,
             AutomationRule::class,
             CatalogItem::class,
+            ChecklistTemplate::class,
+            ChecklistTemplateItem::class,
+            ChecklistTemplateVersion::class,
             CalendarFeed::class,
             CommissionAccrual::class,
             Communication::class,
@@ -147,6 +155,7 @@ class AppServiceProvider extends ServiceProvider
             MessageTemplate::class,
             MessageTemplateVersion::class,
             OperationalTask::class,
+            OperationalTaskEvent::class,
             Opportunity::class,
             Organization::class,
             Payment::class,
@@ -167,6 +176,7 @@ class AppServiceProvider extends ServiceProvider
             RateRule::class,
             ReportExport::class,
             Reservation::class,
+            ReservationChecklistException::class,
             ReservationNote::class,
             Resource::class,
             ResourceBlock::class,

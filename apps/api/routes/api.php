@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\FolioController;
 use App\Http\Controllers\Api\V1\FrontDeskTenderController;
 use App\Http\Controllers\Api\V1\GuestController;
 use App\Http\Controllers\Api\V1\GuestPortalController;
+use App\Http\Controllers\Api\V1\OperationalAcceptanceController;
 use App\Http\Controllers\Api\V1\OperationsProjectionController;
 use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\PaymentRequestController;
@@ -68,6 +69,7 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::get('properties', [PropertyController::class, 'index']);
     Route::apiResource('programs', ProgramController::class)->only(['index', 'show']);
     Route::get('guests/{guest}/history', [GuestController::class, 'history']);
+    Route::get('guests/duplicates/search', [OperationalAcceptanceController::class, 'duplicateGuests']);
     Route::apiResource('guests', GuestController::class);
     Route::get('resources/suggestions', ResourceSuggestionController::class);
     Route::apiResource('resources', ResourceController::class);
@@ -77,6 +79,7 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::apiResource('reservations', ReservationController::class)->except(['destroy', 'store']);
     Route::post('reservations', [ReservationController::class, 'store'])->middleware('idempotent');
     Route::post('reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->middleware('idempotent');
+    Route::put('reservations/{reservation}/companions', [OperationalAcceptanceController::class, 'companions'])->middleware('idempotent');
     Route::post('reservations/{reservation}/transition', [ReservationController::class, 'transition']);
     Route::get('reservations/{reservation}/changes', [ReservationChangeController::class, 'index']);
     Route::post('reservations/{reservation}/amend', [ReservationChangeController::class, 'amend'])->middleware('idempotent');
@@ -105,6 +108,14 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('proposals/{proposal}/revise', [ProposalController::class, 'revise'])->middleware('idempotent');
     Route::post('proposals/{proposal}/convert', [ProposalController::class, 'convert'])->middleware('idempotent');
     Route::apiResource('tasks', TaskController::class)->parameters(['tasks' => 'task']);
+    Route::post('tasks/{task}/transition', [OperationalAcceptanceController::class, 'taskTransition'])->middleware('idempotent');
+    Route::post('checklist-templates', [OperationalAcceptanceController::class, 'storeChecklistTemplate'])->middleware('idempotent');
+    Route::post('checklist-templates/{checklistTemplate}/publish', [OperationalAcceptanceController::class, 'publishChecklist'])->middleware('idempotent');
+    Route::post('checklist-templates/{checklistTemplate}/retire', [OperationalAcceptanceController::class, 'retireChecklist'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/checklist-exceptions', [OperationalAcceptanceController::class, 'storeChecklistException'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/checklists/generate', [OperationalAcceptanceController::class, 'generateChecklist'])->middleware('idempotent');
+    Route::put('calendar/preferences', [OperationalAcceptanceController::class, 'calendarPreferences']);
+    Route::get('operational-kpis', [OperationalAcceptanceController::class, 'kpis']);
     Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
     Route::post('payments/{payment}/reconcile', [PaymentController::class, 'reconcile'])->middleware('idempotent');
     Route::post('payments/{payment}/reverse', [PaymentController::class, 'reverse'])->middleware('idempotent');
