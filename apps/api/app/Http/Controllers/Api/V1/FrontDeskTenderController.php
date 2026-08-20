@@ -60,6 +60,8 @@ class FrontDeskTenderController extends Controller
             cardBrand: $data['card_brand'] ?? null,
             cardLastFour: $data['card_last_four'] ?? null,
             note: $data['note'] ?? null,
+            luhnFalsePositiveFields: $data['luhn_false_positive_fields'] ?? [],
+            luhnFalsePositiveJustification: $data['luhn_false_positive_justification'] ?? null,
         ));
 
         return (new PaymentTenderDetailResource($detail))->response()->setStatusCode(201);

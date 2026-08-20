@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Reservations\RelationManagers;
 
 use App\Data\Payments\FrontDeskPaymentInput;
 use App\Enums\DepositStatus;
+use App\Enums\MembershipRole;
 use App\Enums\PaymentChannel;
 use App\Filament\Support\InnPresentation;
 use App\Models\Deposit;
@@ -11,7 +12,9 @@ use App\Models\Payment;
 use App\Models\Reservation;
 use App\Services\MoneyCalculator;
 use App\Services\Payments\RecordFrontDeskPayment;
+use App\Support\Tenancy\TenantContext;
 use Filament\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -70,6 +73,21 @@ class PaymentsRelationManager extends RelationManager
                     TextInput::make('card_last_four')->visible(fn ($get): bool => $get('channel') === 'external_terminal')
                         ->length(4)->rule('regex:/^\d{4}$/')->inputMode('numeric'),
                     Textarea::make('note')->maxLength(500)->required(fn ($get): bool => $get('channel') === 'manual_other'),
+                    CheckboxList::make('luhn_false_positive_fields')->label('Reviewed Luhn false-positive fields')
+                        ->options([
+                            'transaction_reference' => 'Transaction reference',
+                            'authorization_reference' => 'Authorization reference',
+                            'batch_reference' => 'Batch reference',
+                        ])->visible(fn (): bool => in_array(app(TenantContext::class)->membership()?->role, [
+                            MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance,
+                        ], true))
+                        ->helperText('Use only after confirming that a legitimate receipt reference—not card data—triggered the Luhn detector.'),
+                    Textarea::make('luhn_false_positive_justification')->label('False-positive justification')
+                        ->minLength(20)->maxLength(500)
+                        ->required(fn ($get): bool => ($get('luhn_false_positive_fields') ?? []) !== [])
+                        ->visible(fn (): bool => in_array(app(TenantContext::class)->membership()?->role, [
+                            MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance,
+                        ], true)),
                 ])
                 ->requiresConfirmation()
                 ->modalDescription('Inn records an external tender after it occurred; Inn does not authorize or capture standalone-terminal cards.')
@@ -91,6 +109,8 @@ class PaymentsRelationManager extends RelationManager
                         cardBrand: $data['card_brand'] ?? null,
                         cardLastFour: $data['card_last_four'] ?? null,
                         note: $data['note'] ?? null,
+                        luhnFalsePositiveFields: $data['luhn_false_positive_fields'] ?? [],
+                        luhnFalsePositiveJustification: $data['luhn_false_positive_justification'] ?? null,
                     ));
                     $notification = Notification::make()->title(match ($detail->state) {
                         'posted' => 'Front-desk tender recorded truthfully',

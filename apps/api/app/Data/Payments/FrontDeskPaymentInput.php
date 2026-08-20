@@ -21,6 +21,9 @@ final readonly class FrontDeskPaymentInput
         public ?string $cardBrand = null,
         public ?string $cardLastFour = null,
         public ?string $note = null,
+        /** @var list<string> */
+        public array $luhnFalsePositiveFields = [],
+        public ?string $luhnFalsePositiveJustification = null,
     ) {}
 
     /** @return array<string, mixed> */

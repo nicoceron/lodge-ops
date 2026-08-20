@@ -16,6 +16,7 @@ use App\Models\Tenant;
 use App\Services\BookingQuoteService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -274,6 +275,7 @@ class ReservationApiTest extends TestCase
             'resource_category_id' => $category->id,
             'amount_minor' => $nightlyRate,
         ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
 
         return app(BookingQuoteService::class)->create([
             'property_id' => $property->id,

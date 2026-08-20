@@ -68,11 +68,13 @@ class ClientBookingCoreTest extends TestCase
             'amount_minor' => 10_000,
             'price_type' => 'per_night',
         ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         TaxRule::query()->create([
             'property_id' => $property->id,
             'name' => 'VAT',
             'calculation_type' => 'percentage',
             'percentage_basis_points' => 1000,
+            'state' => 'published', 'published_at' => now(),
         ]);
         $guest = Guest::factory()->create();
         $starts = now()->addMonth()->startOfDay()->addHours(15);
@@ -95,7 +97,7 @@ class ClientBookingCoreTest extends TestCase
         $this->assertCount(3, $quote->lines);
         $this->assertSame(4000, $quote->deposit_policy_snapshot['percentage_basis_points']);
 
-        $plan->rules()->firstOrFail()->update(['amount_minor' => 99_000]);
+        DB::table('rate_rules')->where('id', $plan->rules()->firstOrFail()->id)->update(['amount_minor' => 99_000]);
         $reservation = app(CommitBookingQuote::class)->handle($quote, $guest->id, source: 'direct');
 
         $this->assertSame(ReservationStatus::Hold, $reservation->status);
@@ -138,6 +140,7 @@ class ClientBookingCoreTest extends TestCase
             'resource_category_id' => $category->id,
             'amount_minor' => 10_000,
         ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $input = [
             'property_id' => $property->id,
             'rate_plan_id' => $plan->id,
@@ -162,6 +165,7 @@ class ClientBookingCoreTest extends TestCase
         Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id]);
         $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Base', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 1000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $quote = app(BookingQuoteService::class)->create([
             'property_id' => $property->id,
             'rate_plan_id' => $plan->id,
@@ -182,6 +186,7 @@ class ClientBookingCoreTest extends TestCase
         $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id]);
         $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Expiry rate', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $quote = app(BookingQuoteService::class)->create([
             'property_id' => $property->id,
             'rate_plan_id' => $plan->id,

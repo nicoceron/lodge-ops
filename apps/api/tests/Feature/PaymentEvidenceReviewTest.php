@@ -122,6 +122,22 @@ class PaymentEvidenceReviewTest extends TestCase
         ]);
     }
 
+    public function test_more_information_download_policy_is_explicit_for_every_role(): void
+    {
+        foreach (MembershipRole::cases() as $role) {
+            [, $property, $user] = $this->tenantEnvironment($role, authenticate: false);
+            $guest = Guest::factory()->create();
+            $reservation = Reservation::factory()->create(['property_id' => $property->id, 'primary_guest_id' => $guest->id]);
+            $evidence = $this->evidence($reservation, $guest, 10_000);
+            $evidence->update(['status' => PaymentEvidenceStatus::MoreInformationRequired]);
+            $this->assertSame(
+                in_array($role, [MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance], true),
+                $user->can('download', $evidence),
+                $role->value,
+            );
+        }
+    }
+
     private function evidence(Reservation $reservation, Guest $guest, int $amount): GuestPaymentEvidence
     {
         return GuestPaymentEvidence::query()->create([

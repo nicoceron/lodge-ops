@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\PaymentEvidenceStatus;
 use App\Models\GuestPaymentEvidence;
 use App\Models\User;
 
@@ -19,6 +20,10 @@ class GuestPaymentEvidencePolicy extends TenantPolicy
 
     public function download(User $user, GuestPaymentEvidence $evidence): bool
     {
+        if ($evidence->status === PaymentEvidenceStatus::MoreInformationRequired) {
+            return $this->canManageMoney($user, $evidence);
+        }
+
         return $this->canManageGuestMoney($user, $evidence);
     }
 

@@ -27,6 +27,11 @@ class RatePlanPolicy extends TenantPolicy
         return $this->canManageConfiguration($user, $record);
     }
 
+    public function manageConfiguration(User $user, RatePlan $record): bool
+    {
+        return $this->canManageConfiguration($user, $record);
+    }
+
     public function delete(User $user, RatePlan $record): bool
     {
         return $this->canManageConfiguration($user, $record);

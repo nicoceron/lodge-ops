@@ -31,6 +31,7 @@ use App\Services\RequestRefund;
 use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -45,7 +46,7 @@ class ReservationChangesTest extends TestCase
         [$reservation, $plan, $room] = $this->confirmedReservation($property->id, 10_000);
         $oldAllocation = $reservation->allocations()->where('status', AllocationStatus::Confirmed)->firstOrFail();
         $oldLineIds = $reservation->folioLines()->pluck('id')->all();
-        $plan->rules()->firstOrFail()->update(['amount_minor' => 12_000]);
+        DB::table('rate_rules')->where('id', $plan->rules()->firstOrFail()->id)->update(['amount_minor' => 12_000]);
 
         $amended = app(AmendReservation::class)->handle($reservation, [
             'rate_plan_id' => $plan->id,
@@ -90,7 +91,7 @@ class ReservationChangesTest extends TestCase
             'amount_minor' => 10_000,
             'deposit_id' => $paidDeposit->id,
         ], auth()->id(), true);
-        $plan->rules()->firstOrFail()->update(['amount_minor' => 12_000]);
+        DB::table('rate_rules')->where('id', $plan->rules()->firstOrFail()->id)->update(['amount_minor' => 12_000]);
 
         $amended = app(AmendReservation::class)->handle($reservation, [
             'rate_plan_id' => $plan->id,
@@ -134,7 +135,7 @@ class ReservationChangesTest extends TestCase
             'amount_minor' => 20_000,
             'deposit_id' => $paidDeposit->id,
         ], auth()->id(), true);
-        $plan->rules()->firstOrFail()->update(['amount_minor' => 4_000]);
+        DB::table('rate_rules')->where('id', $plan->rules()->firstOrFail()->id)->update(['amount_minor' => 4_000]);
 
         $amended = app(AmendReservation::class)->handle($reservation, [
             'rate_plan_id' => $plan->id,
@@ -411,6 +412,7 @@ class ReservationChangesTest extends TestCase
             'resource_category_id' => $category->id,
             'amount_minor' => $nightlyRate,
         ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $starts = $startsAt ?? now()->addMonth()->startOfDay()->addHours(15);
         $ends = $endsAt ?? $starts->copy()->addDays(2);
         $quote = app(BookingQuoteService::class)->create([

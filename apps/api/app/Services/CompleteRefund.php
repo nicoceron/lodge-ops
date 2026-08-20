@@ -16,6 +16,7 @@ final class CompleteRefund
 {
     public function __construct(
         private readonly FolioService $folio,
+        private readonly CommercialPromotionService $promotions,
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
     ) {}
@@ -72,6 +73,7 @@ final class CompleteRefund
                 $payment->update(['status' => PaymentStatus::Refunded]);
                 $payment->deposits()->where('status', DepositStatus::Paid)->update(['status' => DepositStatus::Refunded]);
             }
+            $this->promotions->recordRefundCompletion($reservation, $completed, $actorId);
             $this->outbox->record('reservation', $reservation->id, 'refund.completed', [
                 'reservation_id' => $reservation->id,
                 'refund_request_id' => $lockedRequest->id,

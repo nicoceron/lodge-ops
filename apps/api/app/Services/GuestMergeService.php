@@ -55,6 +55,10 @@ class GuestMergeService
             $this->mergeUniqueRelation('guest_portal_acknowledgements', $tenantId, $sourceGuest->id, $targetGuest->id, ['reservation_id', 'document_id']);
             $this->mergeUniqueRelation('surveys', $tenantId, $sourceGuest->id, $targetGuest->id, ['reservation_id', 'kind']);
 
+            // Commercial promotion usage and voucher redemption rows deliberately
+            // keep source_guest as their immutable historical identity. The source
+            // profile remains as a PII-cleared merge tombstone instead of being
+            // repointed or deleted.
             $sourceGuest->update(['merged_into_id' => $targetGuest->id, 'merged_at' => now()]);
 
             return $targetGuest->fresh();

@@ -22,6 +22,7 @@ final class CommitBookingQuote
         private readonly BookingQuoteService $quotes,
         private readonly AvailabilityService $availability,
         private readonly FolioService $folio,
+        private readonly CommercialPromotionService $promotions,
     ) {}
 
     /** @param array<string, mixed> $guestData @param list<string> $companionIds */
@@ -74,6 +75,7 @@ final class CommitBookingQuote
                 'ends_at' => $locked->ends_at,
                 'adults' => $locked->adults,
                 'children' => $locked->children,
+                'infants' => $locked->infants,
                 'currency' => $locked->currency,
                 'subtotal_minor' => $locked->subtotal_minor,
                 'tax_minor' => $locked->tax_minor,
@@ -81,6 +83,8 @@ final class CommitBookingQuote
                 'price_snapshot' => [
                     'quote_id' => $locked->id,
                     'checksum' => $locked->checksum,
+                    'calculation' => $locked->calculation_snapshot,
+                    'discount_minor' => $locked->discount_minor,
                     'lines' => $locked->lines->map->only([
                         'type', 'description', 'service_on', 'quantity_thousandths', 'unit_amount_minor',
                         'net_amount_minor', 'tax_amount_minor', 'gross_amount_minor', 'metadata',
@@ -115,14 +119,21 @@ final class CommitBookingQuote
                     $reservation,
                     FolioLineType::Charge,
                     $line->description,
-                    $line->quantity_thousandths,
-                    $line->unit_amount_minor,
+                    1000,
+                    $line->net_amount_minor,
                     auth()->id(),
-                    ['booking_quote_line_id' => $line->id],
+                    [
+                        'booking_quote_line_id' => $line->id,
+                        'quoted_quantity_thousandths' => $line->quantity_thousandths,
+                        'quoted_unit_amount_minor' => $line->unit_amount_minor,
+                        'basis' => $line->basis,
+                    ],
                     $line->tax_amount_minor,
                     true,
                 );
             }
+
+            $this->promotions->reserveForCommit($locked, $reservation, $guest);
 
             $locked->update([
                 'status' => BookingQuoteStatus::Committed,

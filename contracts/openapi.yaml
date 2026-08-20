@@ -600,6 +600,27 @@ paths:
               schema: { $ref: '#/components/schemas/BookingQuoteEnvelope' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /booking-quotes/{bookingQuote}:
+    get:
+      tags: [Reservations]
+      operationId: explainBookingQuote
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: bookingQuote
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Immutable historical quote explanation; no live repricing occurs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/BookingQuoteExplanation' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /reservations:
     get:
       tags: [Reservations]
@@ -2903,14 +2924,36 @@ components:
         ends_at: { type: string, format: date-time }
         adults: { type: integer, minimum: 1, maximum: 1000 }
         children: { type: integer, minimum: 0, maximum: 1000, default: 0 }
+        infants: { type: integer, minimum: 0, maximum: 1000, default: 0 }
+        is_buyout: { type: boolean, default: false }
+        voucher_code:
+          type: string
+          minLength: 6
+          maxLength: 64
+          description: Canonicalized and HMAC hashed; the raw code is never persisted.
+        promotion_session_id:
+          type: string
+          minLength: 16
+          maxLength: 200
+          description: Opaque caller session identity; HMAC hashed before quote persistence for per-session voucher limits.
+        optional_services:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [id]
+            properties:
+              id: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1, maximum: 1000, default: 1 }
     BookingQuote:
       type: object
-      required: [id, property_id, currency, subtotal_minor, tax_minor, total_minor, expires_at, lines]
+      required: [id, property_id, currency, subtotal_minor, discount_minor, tax_minor, total_minor, expires_at, lines]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         subtotal_minor: { type: integer }
+        discount_minor: { type: integer, minimum: 0 }
         tax_minor: { type: integer }
         total_minor: { type: integer }
         deposit_policy_snapshot: { type: [object, 'null'], additionalProperties: true }
@@ -2918,7 +2961,45 @@ components:
         expires_at: { type: string, format: date-time }
         lines:
           type: array
+          items: { $ref: '#/components/schemas/BookingQuoteLine' }
+    BookingQuoteLine:
+      type: object
+      required: [type, description, basis, calculation_order, quantity_thousandths, unit_amount_minor, pre_total_minor, net_amount_minor, tax_amount_minor, gross_amount_minor, post_total_minor, rounding_mode]
+      properties:
+        type: { type: string, enum: [nightly_rate, service, included_service, optional_service, discount, fee, tax, deposit] }
+        description: { type: string }
+        service_on: { type: [string, 'null'], format: date }
+        basis: { type: string }
+        calculation_order: { type: integer, minimum: 0 }
+        quantity_thousandths: { type: integer, minimum: 0 }
+        unit_amount_minor: { type: integer }
+        pre_total_minor: { type: integer }
+        net_amount_minor: { type: integer }
+        tax_amount_minor: { type: integer }
+        gross_amount_minor: { type: integer }
+        post_total_minor: { type: integer }
+        rounding_mode: { type: string, enum: [none, half_up, half_even, up, down] }
+        explanation: { type: [string, 'null'] }
+        metadata: { type: [object, 'null'], additionalProperties: true }
+    BookingQuoteExplanation:
+      type: object
+      required: [quote_id, checksum, status, currency, subtotal_minor, discount_minor, tax_minor, total_minor, calculation_snapshot, lines, historical_projection]
+      properties:
+        quote_id: { type: string, format: uuid }
+        checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { type: string, enum: [pending, committed, expired, superseded] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotal_minor: { type: integer }
+        discount_minor: { type: integer, minimum: 0 }
+        tax_minor: { type: integer }
+        total_minor: { type: integer }
+        calculation_snapshot: { type: object, additionalProperties: true }
+        lines:
+          type: array
           items: { type: object, additionalProperties: true }
+        deposit_policy: { type: [object, 'null'], additionalProperties: true }
+        cancellation_policy: { type: [object, 'null'], additionalProperties: true }
+        historical_projection: { type: boolean, const: true }
     BookingQuoteEnvelope:
       type: object
       required: [data]
@@ -3145,6 +3226,12 @@ components:
         card_brand: { type: [string, 'null'], maxLength: 40 }
         card_last_four: { type: [string, 'null'], pattern: '^\\d{4}$' }
         note: { type: [string, 'null'], maxLength: 500 }
+        luhn_false_positive_fields:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items: { type: string, enum: [transaction_reference, authorization_reference, batch_reference] }
+        luhn_false_positive_justification: { type: [string, 'null'], minLength: 20, maxLength: 500, description: Finance, Administrator, or Manager audit justification for a confirmed Luhn false-positive reference. }
     TenderDetailEnvelope:
       type: object
       required: [data]

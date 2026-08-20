@@ -6,6 +6,7 @@ use App\Enums\ReservationStatus;
 use App\Filament\Support\InnPresentation;
 use App\Models\Guest;
 use App\Models\RatePlan;
+use App\Models\RatePlanService;
 use App\Models\ResourceCategory;
 use App\Services\AvailabilityQuery;
 use App\Services\BookingQuoteService;
@@ -40,6 +41,7 @@ class ReservationForm
                     DateTimePicker::make('ends_at')->label('Departure')->timezone(InnPresentation::timezone())->seconds(false)->after('starts_at')->live()->required(),
                     TextInput::make('adults')->integer()->minValue(1)->default(1)->live(onBlur: true)->required(),
                     TextInput::make('children')->integer()->minValue(0)->default(0)->live(onBlur: true)->required(),
+                    TextInput::make('infants')->integer()->minValue(0)->default(0)->live(onBlur: true)->required(),
                     Select::make('resource_id')->label('Exact accommodation')
                         ->helperText('Optional. Leave blank to hold the category and assign the exact room later.')
                         ->options(fn (Get $get): array => self::availableResourceOptions($get))->searchable()->live(),
@@ -51,10 +53,16 @@ class ReservationForm
                     Select::make('rate_plan_id')->label('Rate plan')
                         ->options(fn (Get $get): array => RatePlan::query()
                             ->when($get('property_id'), fn ($query, $propertyId) => $query->where('property_id', $propertyId))
-                            ->where('is_active', true)->orderBy('name')->get()
+                            ->where('is_active', true)->where('state', 'published')->orderBy('name')->get()
                             ->mapWithKeys(fn (RatePlan $plan): array => [$plan->id => "{$plan->name} · {$plan->currency}"])->all())
                         ->searchable()->preload()->live()->required(),
                     Select::make('program_id')->label('Primary package / activity')->relationship('program', 'name')->searchable()->preload()->live(),
+                    Select::make('optional_service_ids')->label('Optional add-ons')->multiple()->searchable()->live()
+                        ->options(fn (Get $get): array => RatePlanService::query()->with('catalogItem')
+                            ->when($get('rate_plan_id'), fn ($query, $id) => $query->where('rate_plan_id', $id))
+                            ->where('selection_type', 'optional')->where('is_active', true)->get()
+                            ->mapWithKeys(fn (RatePlanService $service): array => [$service->catalog_item_id => $service->catalogItem->name])->all()),
+                    TextInput::make('voucher_code')->label('Promotion / voucher code')->maxLength(64)->live(onBlur: true),
                     Placeholder::make('quote_preview')->label('Live quote')->content(fn (Get $get): HtmlString => self::quotePreview($get))->columnSpanFull(),
                 ]),
             Section::make('3 · Guest and reservation details')
@@ -85,6 +93,7 @@ class ReservationForm
                     DateTimePicker::make('ends_at')->label('Departure')->timezone(InnPresentation::timezone())->seconds(false)->disabled()->dehydrated(false),
                     TextInput::make('adults')->disabled()->dehydrated(false),
                     TextInput::make('children')->disabled()->dehydrated(false),
+                    TextInput::make('infants')->disabled()->dehydrated(false),
                     TextInput::make('source')->maxLength(50),
                     Textarea::make('notes')->rows(4)->columnSpanFull(),
                 ]),
@@ -139,10 +148,12 @@ class ReservationForm
                 'property_id' => $get('property_id'), 'resource_category_id' => $get('resource_category_id'),
                 'resource_id' => $get('resource_id'), 'rate_plan_id' => $get('rate_plan_id'), 'program_id' => $get('program_id'),
                 'starts_at' => $get('starts_at'), 'ends_at' => $get('ends_at'),
-                'adults' => (int) $get('adults'), 'children' => (int) $get('children'),
+                'adults' => (int) $get('adults'), 'children' => (int) $get('children'), 'infants' => (int) $get('infants'),
+                'optional_services' => collect((array) $get('optional_service_ids'))->map(fn (string $id): array => ['id' => $id, 'quantity' => 1])->all(),
+                'voucher_code' => $get('voucher_code'),
             ]);
             $currency = e($quote['currency']);
-            $lines = collect($quote['lines'])->map(fn (array $line): string => '<li>'.e($line['description']).' · '.$currency.' '.number_format($line['gross_amount_minor'] / 100, 2).'</li>')->implode('');
+            $lines = collect($quote['lines'])->map(fn (array $line): string => '<li><strong>'.e($line['description']).'</strong> · '.$currency.' '.number_format($line['gross_amount_minor'] / 100, 2).'<br><span class="text-xs text-gray-500">'.e($line['explanation'] ?? '').'</span></li>')->implode('');
             $deposit = $quote['deposit_policy_snapshot']['name'] ?? 'No deposit policy';
             $cancellation = $quote['cancellation_policy_snapshot']['name'] ?? 'No cancellation policy';
 

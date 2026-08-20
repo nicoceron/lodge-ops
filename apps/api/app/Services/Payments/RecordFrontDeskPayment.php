@@ -8,6 +8,7 @@ use App\Enums\CashShiftState;
 use App\Enums\DocumentKind;
 use App\Enums\PaymentChannel;
 use App\Enums\ReservationStatus;
+use App\Models\Audit;
 use App\Models\CashShift;
 use App\Models\CashShiftMovement;
 use App\Models\PaymentTenderDetail;
@@ -44,7 +45,7 @@ final class RecordFrontDeskPayment
             if ($input->amountMinor <= 0) {
                 throw ValidationException::withMessages(['amount_minor' => 'The payment amount must be greater than zero.']);
             }
-            $this->validateInput($actor, $input);
+            $this->validateInput($actor, $reservation, $input);
             $property = Property::query()->findOrFail($reservation->property_id);
             $aliases = $this->normalizeIdentity($input);
             $receivedAt = now();
@@ -69,7 +70,7 @@ final class RecordFrontDeskPayment
             ];
 
             if ($input->channel === PaymentChannel::ExternalTerminal && $this->missingExternalIdentity($aliases)) {
-                return PaymentTenderDetail::query()->create([
+                return $this->createDetail($actor, $input, [
                     ...$base,
                     'state' => 'identity_exception',
                     'review_reason' => 'Processor, merchant/account, terminal, and transaction reference are required before posting.',
@@ -88,7 +89,7 @@ final class RecordFrontDeskPayment
                     ->lockForUpdate()
                     ->first();
                 if ($duplicate !== null) {
-                    return PaymentTenderDetail::query()->create([
+                    return $this->createDetail($actor, $input, [
                         ...$base,
                         'state' => 'duplicate_review',
                         'duplicate_of_id' => $duplicate->id,
@@ -109,7 +110,7 @@ final class RecordFrontDeskPayment
             }
 
             $payment = $this->payments->recordFrontDesk($reservation, $input->channel, $input->amountMinor, $actor->id, $input->depositId);
-            $detail = PaymentTenderDetail::query()->create([...$base, 'payment_id' => $payment->id, 'state' => 'posted']);
+            $detail = $this->createDetail($actor, $input, [...$base, 'payment_id' => $payment->id, 'state' => 'posted']);
             if ($shift !== null) {
                 CashShiftMovement::query()->create([
                     'property_id' => $reservation->property_id,
@@ -141,7 +142,7 @@ final class RecordFrontDeskPayment
         return $result->loadMissing('payment');
     }
 
-    private function validateInput(User $actor, FrontDeskPaymentInput $input): void
+    private function validateInput(User $actor, Reservation $reservation, FrontDeskPaymentInput $input): void
     {
         if (! in_array($input->channel, [PaymentChannel::Cash, PaymentChannel::BankTransfer, PaymentChannel::ExternalTerminal, PaymentChannel::ManualOther], true)) {
             throw ValidationException::withMessages(['channel' => 'Only cash, bank transfer, standalone external terminal, or manual other may be staff-recorded.']);
@@ -156,9 +157,36 @@ final class RecordFrontDeskPayment
             throw ValidationException::withMessages(['note' => 'A bounded explanation is required for manual-other tenders.']);
         }
         foreach (get_object_vars($input) as $name => $value) {
+            if (is_array($value)) {
+                continue;
+            }
             if (is_string($value) && strlen($value) > ($name === 'note' ? 500 : 160)) {
                 throw ValidationException::withMessages([$name => 'This tender field is too long.']);
             }
+        }
+        if ($input->luhnFalsePositiveFields !== []) {
+            $this->guard->resolveException($actor, $reservation->property_id);
+            $this->cardData->validateLuhnFalsePositiveResolution(
+                $input->luhnFalsePositiveFields,
+                (string) $input->luhnFalsePositiveJustification,
+            );
+            foreach ($input->luhnFalsePositiveFields as $field) {
+                $property = match ($field) {
+                    'transaction_reference' => 'transactionReference',
+                    'authorization_reference' => 'authorizationReference',
+                    'batch_reference' => 'batchReference',
+                    default => null,
+                };
+                if ($property === null || trim((string) $input->{$property}) === '') {
+                    throw ValidationException::withMessages([
+                        'luhn_false_positive_fields' => "The resolved {$field} must contain the reviewed reference.",
+                    ]);
+                }
+            }
+        } elseif ($input->luhnFalsePositiveJustification !== null) {
+            throw ValidationException::withMessages([
+                'luhn_false_positive_fields' => 'Select at least one approved reference field for this justification.',
+            ]);
         }
         $this->cardData->assertSafe([
             'processor_alias' => $input->processorAlias,
@@ -168,7 +196,44 @@ final class RecordFrontDeskPayment
             'authorization_reference' => $input->authorizationReference,
             'batch_reference' => $input->batchReference,
             'note' => $input->note,
-        ]);
+        ], $input->luhnFalsePositiveFields);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function createDetail(User $actor, FrontDeskPaymentInput $input, array $attributes): PaymentTenderDetail
+    {
+        if ($input->luhnFalsePositiveFields === []) {
+            return PaymentTenderDetail::query()->create($attributes);
+        }
+
+        return $this->cardData->withLuhnFalsePositiveResolution(
+            $input->luhnFalsePositiveFields,
+            (string) $input->luhnFalsePositiveJustification,
+            function () use ($actor, $input, $attributes): PaymentTenderDetail {
+                $detail = PaymentTenderDetail::query()->create($attributes);
+                $fields = array_values(array_unique($input->luhnFalsePositiveFields));
+                sort($fields);
+                $hashes = [];
+                foreach ($fields as $field) {
+                    $hashes[$field] = hash('sha256', (string) $detail->getAttribute($field));
+                }
+                Audit::query()->create([
+                    'actor_id' => $actor->id,
+                    'event' => 'luhn_false_positive_resolved',
+                    'auditable_type' => $detail->getMorphClass(),
+                    'auditable_id' => $detail->id,
+                    'old_values' => null,
+                    'new_values' => [
+                        'fields' => $fields,
+                        'justification' => trim((string) $input->luhnFalsePositiveJustification),
+                        'reference_hashes' => $hashes,
+                        'command_key' => $input->idempotencyKey,
+                    ],
+                ]);
+
+                return $detail;
+            },
+        );
     }
 
     /** @return array{processor_alias:string, merchant_account_alias:string, terminal_identifier:string, transaction_reference:?string} */

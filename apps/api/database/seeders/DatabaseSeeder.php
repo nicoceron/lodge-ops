@@ -375,6 +375,9 @@ class DatabaseSeeder extends Seeder
                 ['retained_basis_points' => $retained, 'minimum_fee_minor' => 0, 'sort_order' => $index],
             );
         }
+        DB::table('rate_plans')->where('property_id', $property->id)
+            ->where('name', 'Flexible lodge rate')->where('currency', 'USD')
+            ->update(['state' => 'draft', 'published_at' => null]);
         $plan = RatePlan::query()->updateOrCreate(
             ['property_id' => $property->id, 'name' => 'Flexible lodge rate', 'currency' => 'USD'],
             [
@@ -384,15 +387,20 @@ class DatabaseSeeder extends Seeder
                 'maximum_occupancy' => 4,
                 'inclusions' => ['Breakfast', 'Lodge operations support'],
                 'is_active' => true,
+                'state' => 'draft',
+                'published_at' => null,
             ],
         );
         RateRule::query()->updateOrCreate(
             ['rate_plan_id' => $plan->id, 'resource_category_id' => $catalog['room']->id, 'priority' => 0],
             ['price_type' => 'per_night', 'amount_minor' => 300_000, 'minimum_stay' => 1, 'stop_sell' => false],
         );
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
+        DB::table('tax_rules')->where('property_id', $property->id)->where('name', 'Demo VAT')
+            ->update(['state' => 'draft', 'published_at' => null]);
         TaxRule::query()->updateOrCreate(
             ['property_id' => $property->id, 'name' => 'Demo VAT'],
-            ['calculation_type' => 'percentage', 'percentage_basis_points' => 1900, 'is_inclusive' => false, 'priority' => 0, 'is_active' => true],
+            ['calculation_type' => 'percentage', 'percentage_basis_points' => 1900, 'is_inclusive' => false, 'priority' => 0, 'is_active' => true, 'state' => 'published', 'published_at' => now()],
         );
     }
 

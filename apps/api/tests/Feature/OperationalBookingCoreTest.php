@@ -20,6 +20,7 @@ use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -53,6 +54,7 @@ class OperationalBookingCoreTest extends TestCase
             'resource_category_id' => $roomCategory->id,
             'amount_minor' => 10_000,
         ]);
+        DB::table('rate_plans')->where('id', $ratePlan->id)->update(['state' => 'published', 'published_at' => now()]);
         $quote = app(BookingQuoteService::class)->create([
             'property_id' => $property->id,
             'rate_plan_id' => $ratePlan->id,

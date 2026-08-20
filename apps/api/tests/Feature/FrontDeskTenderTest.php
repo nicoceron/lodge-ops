@@ -9,6 +9,7 @@ use App\Enums\MembershipRole;
 use App\Enums\PaymentChannel;
 use App\Enums\PaymentEntryMode;
 use App\Enums\PaymentOrigin;
+use App\Models\Audit;
 use App\Models\CashShift;
 use App\Models\CashShiftMovement;
 use App\Models\FinancialCommandRecord;
@@ -143,11 +144,193 @@ class FrontDeskTenderTest extends TestCase
         app(RecordFrontDeskPayment::class)->handle($user, new FrontDeskPaymentInput($reservation->id, PaymentChannel::BankTransfer, 2_000, 'same-command-key-0001', transactionReference: 'transfer-a'));
     }
 
+    public function test_justified_luhn_false_positive_resolution_is_role_limited_audited_and_replay_safe(): void
+    {
+        foreach ([MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance] as $role) {
+            [, $property, $actor] = $this->tenantEnvironment($role);
+            $reservation = Reservation::factory()->create([
+                'property_id' => $property->id, 'subtotal_minor' => 10_000, 'tax_minor' => 0, 'total_minor' => 10_000,
+            ]);
+            $key = 'luhn-resolution-'.$role->value;
+            $justification = 'Matched all three values to the standalone terminal receipt and confirmed they are reference identifiers.';
+            $input = new FrontDeskPaymentInput(
+                reservationId: $reservation->id,
+                channel: PaymentChannel::ExternalTerminal,
+                amountMinor: 1_000,
+                idempotencyKey: $key,
+                processorAlias: 'Processor One',
+                merchantAccountAlias: 'Front Desk Merchant',
+                terminalIdentifier: 'Terminal 01',
+                transactionReference: '1234567890128',
+                authorizationReference: '1234567890128',
+                batchReference: '1234567890128',
+                luhnFalsePositiveFields: ['transaction_reference', 'authorization_reference', 'batch_reference'],
+                luhnFalsePositiveJustification: $justification,
+            );
+
+            $detail = app(RecordFrontDeskPayment::class)->handle($actor, $input);
+            $replay = app(RecordFrontDeskPayment::class)->handle($actor, $input);
+            $this->assertSame($detail->id, $replay->id);
+            $this->assertSame('1234567890128', $detail->transaction_reference);
+            $this->assertSame('1234567890128', $detail->authorization_reference);
+            $this->assertSame('1234567890128', $detail->batch_reference);
+            $audit = Audit::query()->where('event', 'luhn_false_positive_resolved')->where('auditable_id', $detail->id)->sole();
+            $this->assertSame($actor->id, $audit->actor_id);
+            $this->assertSame($justification, data_get($audit->new_values, 'justification'));
+            $this->assertSame(['authorization_reference', 'batch_reference', 'transaction_reference'], data_get($audit->new_values, 'fields'));
+            $this->assertSame(hash('sha256', '1234567890128'), data_get($audit->new_values, 'reference_hashes.transaction_reference'));
+            $this->assertSame(hash('sha256', '1234567890128'), data_get($audit->new_values, 'reference_hashes.authorization_reference'));
+            $this->assertSame(hash('sha256', '1234567890128'), data_get($audit->new_values, 'reference_hashes.batch_reference'));
+            $this->assertSame(1, Audit::query()->where('event', 'luhn_false_positive_resolved')->where('auditable_id', $detail->id)->count());
+
+            try {
+                app(RecordFrontDeskPayment::class)->handle($actor, new FrontDeskPaymentInput(
+                    reservationId: $reservation->id,
+                    channel: PaymentChannel::ExternalTerminal,
+                    amountMinor: 1_000,
+                    idempotencyKey: $key,
+                    processorAlias: 'Processor One',
+                    merchantAccountAlias: 'Front Desk Merchant',
+                    terminalIdentifier: 'Terminal 01',
+                    transactionReference: '1234567890128',
+                    authorizationReference: '1234567890128',
+                    batchReference: '1234567890128',
+                    luhnFalsePositiveFields: ['transaction_reference', 'authorization_reference', 'batch_reference'],
+                    luhnFalsePositiveJustification: $justification.' Changed on replay.',
+                ));
+                $this->fail('A changed justification must not replay the original financial command.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('idempotency_key', $exception->errors());
+            }
+        }
+
+        $deniedRoles = array_filter(MembershipRole::cases(), fn (MembershipRole $role): bool => ! in_array($role, [
+            MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance,
+        ], true));
+        foreach ($deniedRoles as $role) {
+            [, $property, $actor] = $this->tenantEnvironment($role);
+            $reservation = Reservation::factory()->create([
+                'property_id' => $property->id, 'subtotal_minor' => 10_000, 'tax_minor' => 0, 'total_minor' => 10_000,
+            ]);
+            try {
+                app(RecordFrontDeskPayment::class)->handle($actor, new FrontDeskPaymentInput(
+                    reservationId: $reservation->id,
+                    channel: PaymentChannel::BankTransfer,
+                    amountMinor: 1_000,
+                    idempotencyKey: 'luhn-role-denied-'.$role->value,
+                    transactionReference: '1234567890128',
+                    luhnFalsePositiveFields: ['transaction_reference'],
+                    luhnFalsePositiveJustification: 'Reviewed the printed receipt but this role cannot resolve the detector exception.',
+                ));
+                $this->fail("{$role->value} must not resolve a Luhn false positive.");
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('authorization', $exception->errors());
+            }
+            $this->assertSame(0, Payment::query()->count());
+        }
+    }
+
+    public function test_luhn_resolution_never_overrides_other_fields_sensitive_authentication_data_or_model_guard(): void
+    {
+        [, $property, $finance] = $this->tenantEnvironment(MembershipRole::Finance);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id, 'subtotal_minor' => 20_000, 'tax_minor' => 0, 'total_minor' => 20_000,
+        ]);
+
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(
+                ['note' => '1234567890128'],
+                '',
+                ['note'],
+            );
+            $this->fail('Only the three reference fields may be resolved as Luhn false positives.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('luhn_false_positive_fields', $exception->errors());
+        }
+
+        foreach ([
+            'CVV 123',
+            'expiry 12/29',
+            'PIN 1234',
+            ';4111111111111111=29121010000000000000',
+        ] as $index => $sensitive) {
+            try {
+                app(RecordFrontDeskPayment::class)->handle($finance, new FrontDeskPaymentInput(
+                    reservationId: $reservation->id,
+                    channel: PaymentChannel::ExternalTerminal,
+                    amountMinor: 1_000,
+                    idempotencyKey: 'luhn-sad-denied-'.$index,
+                    processorAlias: 'Processor One',
+                    merchantAccountAlias: 'Merchant',
+                    terminalIdentifier: 'Terminal 01',
+                    transactionReference: $sensitive,
+                    luhnFalsePositiveFields: ['transaction_reference'],
+                    luhnFalsePositiveJustification: 'This attempted resolution must remain subordinate to sensitive authentication data detection.',
+                ));
+                $this->fail('Sensitive authentication data must never be overridable.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('transaction_reference', $exception->errors());
+            }
+        }
+
+        try {
+            app(RecordFrontDeskPayment::class)->handle($finance, new FrontDeskPaymentInput(
+                reservationId: $reservation->id,
+                channel: PaymentChannel::ExternalTerminal,
+                amountMinor: 1_000,
+                idempotencyKey: 'luhn-other-field-denied',
+                processorAlias: '1234567890128',
+                merchantAccountAlias: 'Merchant',
+                terminalIdentifier: 'Terminal 01',
+                transactionReference: 'receipt-safe-1',
+                luhnFalsePositiveFields: ['transaction_reference'],
+                luhnFalsePositiveJustification: 'Only the selected transaction reference was reviewed as a detector false positive.',
+            ));
+            $this->fail('A resolution must not apply to another field.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('processor_alias', $exception->errors());
+        }
+
+        foreach ([null, 'Too short'] as $index => $justification) {
+            try {
+                app(RecordFrontDeskPayment::class)->handle($finance, new FrontDeskPaymentInput(
+                    reservationId: $reservation->id,
+                    channel: PaymentChannel::BankTransfer,
+                    amountMinor: 1_000,
+                    idempotencyKey: 'luhn-justification-denied-'.$index,
+                    transactionReference: '1234567890128',
+                    luhnFalsePositiveFields: ['transaction_reference'],
+                    luhnFalsePositiveJustification: $justification,
+                ));
+                $this->fail('A documented justification is mandatory.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('luhn_false_positive_justification', $exception->errors());
+            }
+        }
+
+        try {
+            (new PaymentTenderDetail(['transaction_reference' => '1234567890128']))->save();
+            $this->fail('The model-level guard must reject an unscoped Luhn value.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('PaymentTenderDetail.transaction_reference', $exception->errors());
+        }
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('payment_tender_details', 0);
+        $this->assertSame(0, Audit::query()->where('event', 'luhn_false_positive_resolved')->count());
+    }
+
     public function test_sensitive_card_data_is_rejected_centrally_from_operational_outbox_document_and_report_storage(): void
     {
         $this->tenantEnvironment(MembershipRole::Finance);
         app(SensitivePaymentDataGuard::class)->assertSafe(['phone' => '+4477009000007']);
-        $this->addToAssertionCount(1);
+        app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => hash('sha256', 'safe-machine-key')]);
+        $this->addToAssertionCount(2);
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => '1234567890128']);
+            $this->fail('Only a complete SHA-256 digest may bypass PAN detection for a deduplication key.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payload.deduplication_key', $exception->errors());
+        }
         $unsafe = 'Guest supplied PAN 4111 1111 1111 1111 and CVV 123';
         $ingresses = [
             [new ReservationChange(['metadata' => ['refund_reason' => $unsafe]]), 'reservation_changes'],

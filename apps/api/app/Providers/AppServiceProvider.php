@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\Documents\DocumentRenderer;
+use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Integrations\Payments\MercadoPago\DefaultPaymentGatewayFactory;
 use App\Models\Allocation;
@@ -11,6 +12,7 @@ use App\Models\CalendarFeed;
 use App\Models\CancellationPolicy;
 use App\Models\CancellationPolicyTier;
 use App\Models\CatalogItem;
+use App\Models\CommercialPromotion;
 use App\Models\CommissionAccrual;
 use App\Models\Communication;
 use App\Models\CommunicationSuppression;
@@ -22,6 +24,7 @@ use App\Models\DepositPolicy;
 use App\Models\DocumentGenerationRequest;
 use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
+use App\Models\FiscalSourceSnapshot;
 use App\Models\FolioLine;
 use App\Models\GeneratedDocument;
 use App\Models\Guest;
@@ -44,6 +47,7 @@ use App\Models\ProviderDisputeRevision;
 use App\Models\ProviderEvent;
 use App\Models\ProviderRefund;
 use App\Models\RatePlan;
+use App\Models\RatePlanService;
 use App\Models\RateRule;
 use App\Models\ReportExport;
 use App\Models\Reservation;
@@ -61,8 +65,13 @@ use App\Models\SettlementVarianceAction;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\TaxRule;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
+use App\Models\VoucherRedemptionEvent;
 use App\Observers\TenantAuditObserver;
 use App\Services\Documents\SpatieDocumentRenderer;
+use App\Services\Fiscal\DatabaseFiscalSourceSnapshotFactory;
+use App\Services\Payments\SensitivePaymentDataGuard;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -79,8 +88,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
+        $this->app->scoped(SensitivePaymentDataGuard::class, fn (): SensitivePaymentDataGuard => new SensitivePaymentDataGuard);
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
+        $this->app->bind(FiscalSourceSnapshotFactory::class, DatabaseFiscalSourceSnapshotFactory::class);
     }
 
     /**
@@ -100,6 +111,8 @@ class AppServiceProvider extends ServiceProvider
             ->by('payment-request-link:'.$request->ip()));
         RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(240)
             ->by('payment-webhook:'.$request->ip()));
+        RateLimiter::for('commercial-voucher', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('commercial-voucher:'.$request->ip()));
 
         ResetPassword::createUrlUsing(
             fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
@@ -113,6 +126,7 @@ class AppServiceProvider extends ServiceProvider
             CommissionAccrual::class,
             Communication::class,
             CommunicationSuppression::class,
+            CommercialPromotion::class,
             CostRecord::class,
             CancellationPolicy::class,
             CancellationPolicyTier::class,
@@ -162,6 +176,11 @@ class AppServiceProvider extends ServiceProvider
             StockLocation::class,
             StockMovement::class,
             TaxRule::class,
+            Voucher::class,
+            VoucherRedemption::class,
+            VoucherRedemptionEvent::class,
+            RatePlanService::class,
+            FiscalSourceSnapshot::class,
         ] as $model) {
             $model::observe(TenantAuditObserver::class);
         }
