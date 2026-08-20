@@ -10,5 +10,6 @@ final readonly class ProviderRefund
         public string $status,
         public int $amountMinor,
         public string $currency,
+        public string $providerAccount,
     ) {}
 }

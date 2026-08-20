@@ -27,3 +27,15 @@ Schedule::command('artifacts:purge-expired --batch=100')
     ->dailyAt('02:30')
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('payments:expire-requests')
+    ->name('payments:expire-requests')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
+Schedule::command('payments:recover-refunds --older-than=15 --limit=100')
+    ->name('payments:recover-refunds')
+    ->everyTenMinutes()
+    ->withoutOverlapping(15)
+    ->onOneServer();

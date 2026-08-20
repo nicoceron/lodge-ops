@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $type
  * @property array<string, mixed>|null $configuration
  * @property string|null $secret_reference
+ * @property string|null $payment_webhook_key
  */
 class IntegrationConnection extends TenantModel
 {
@@ -29,6 +30,15 @@ class IntegrationConnection extends TenantModel
             'configuration' => 'array',
             'last_synced_at' => 'immutable_datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (IntegrationConnection $connection): void {
+            $connection->payment_webhook_key = $connection->type === 'payment'
+                ? data_get($connection->configuration, 'webhook_key')
+                : null;
+        });
     }
 
     public function paymentAttempts(): HasMany

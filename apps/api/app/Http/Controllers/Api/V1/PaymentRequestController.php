@@ -10,6 +10,7 @@ use App\Models\Reservation;
 use App\Services\Payments\IssuePaymentRequest;
 use App\Services\Payments\RevokeOrSupersedePaymentRequest;
 use App\Services\Payments\RotateOrResendPaymentRequest;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -18,6 +19,7 @@ class PaymentRequestController extends Controller
 {
     public function index(Reservation $reservation)
     {
+        abort_unless(app(TenantContext::class)->canAccessProperty($reservation->property_id), 403);
         $this->authorize('viewAny', PaymentRequest::class);
 
         return PaymentRequestResource::collection($reservation->paymentRequests()->latest()->get());
@@ -25,6 +27,7 @@ class PaymentRequestController extends Controller
 
     public function store(Request $request, Reservation $reservation, IssuePaymentRequest $command): JsonResponse
     {
+        abort_unless(app(TenantContext::class)->canAccessProperty($reservation->property_id), 403);
         $this->authorize('create', PaymentRequest::class);
         $data = $request->validate([
             'purpose' => ['required', Rule::enum(PaymentRequestPurpose::class)],

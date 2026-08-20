@@ -1319,6 +1319,69 @@ paths:
       responses:
         '200': { description: Provider refund execution recovered or completed. }
         '409': { $ref: '#/components/responses/Conflict' }
+  /provider-refunds/{providerRefund}/recover:
+    post:
+      tags: [Finance]
+      operationId: recoverProviderRefund
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: providerRefund, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider_refund_id]
+              properties:
+                provider_refund_id: { type: string, maxLength: 160, example: 'redacted-provider-refund-id' }
+      responses:
+        '200': { description: Authoritative provider refund lookup completed through the exactly-once Inn completion path. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /provider-disputes/{providerDispute}/resolve:
+    post:
+      tags: [Finance]
+      operationId: recordProviderDisputeInvestigation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: providerDispute, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notes]
+              properties:
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Finance investigation notes recorded without changing authoritative dispute revisions. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /settlement-entries/{settlementEntry}/variance:
+    post:
+      tags: [Finance]
+      operationId: investigateOrResolveSettlementVariance
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: settlementEntry, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, notes]
+              properties:
+                action: { type: string, enum: [investigate, resolve] }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Append-only Finance variance action recorded. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /payment-webhooks/{webhookKey}:
     post:
       tags: [Payments]

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\DepositStatus;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
+use App\Models\ProviderDispute;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
 use App\Services\Automation\OutboxRecorder;
@@ -38,7 +39,17 @@ final class CompleteRefund
             $completedForPayment = (int) $reservation->changes()
                 ->where('type', 'refund_completed')->where('status', 'completed')
                 ->where('metadata->payment_id', $payment->id)->sum('amount_minor');
-            if ($completedForPayment + $lockedRequest->amount_minor > $payment->amount_minor) {
+            $lostChargebacks = 0;
+            $chargebacks = ProviderDispute::query()
+                ->where('payment_id', $payment->id)
+                ->where('state', 'lost')
+                ->where('impact_state', 'applied')
+                ->lockForUpdate()
+                ->get(['amount_minor']);
+            foreach ($chargebacks as $chargeback) {
+                $lostChargebacks += $chargeback->amount_minor;
+            }
+            if ($completedForPayment + $lockedRequest->amount_minor > max(0, $payment->amount_minor - $lostChargebacks)) {
                 throw ValidationException::withMessages(['amount_minor' => 'Completing this refund would exceed the source payment.']);
             }
 

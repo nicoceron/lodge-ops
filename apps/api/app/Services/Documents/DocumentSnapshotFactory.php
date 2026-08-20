@@ -100,9 +100,9 @@ final class DocumentSnapshotFactory
                 'address' => $reservation->property->address,
             ],
             'guest' => [
-                'id' => $guest->id,
-                'name' => trim($guest->first_name.' '.$guest->last_name),
-                'email' => $guest->email,
+                'id' => $guest?->id,
+                'name' => $guest === null ? null : trim($guest->first_name.' '.$guest->last_name),
+                'email' => $guest?->email,
             ],
         ];
     }

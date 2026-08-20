@@ -115,6 +115,9 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('payment-requests/{paymentRequest}/revoke', [PaymentRequestController::class, 'revoke'])->middleware('idempotent');
     Route::post('payment-attempts/{paymentAttempt}/reconcile', [ProviderFinanceController::class, 'reconcile'])->middleware('idempotent');
     Route::post('provider-refunds/{refund}/execute', [ProviderFinanceController::class, 'refund'])->middleware('idempotent');
+    Route::post('provider-refunds/{providerRefund}/recover', [ProviderFinanceController::class, 'recoverRefund'])->middleware('idempotent');
+    Route::post('provider-disputes/{providerDispute}/resolve', [ProviderFinanceController::class, 'resolveDispute'])->middleware('idempotent');
+    Route::post('settlement-entries/{settlementEntry}/variance', [ProviderFinanceController::class, 'settlement'])->middleware('idempotent');
     Route::apiResource('deposits', DepositController::class)->only(['index', 'store', 'show']);
     Route::post('deposits/{deposit}/waive', [DepositController::class, 'waive'])->middleware('idempotent');
 

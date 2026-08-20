@@ -39,6 +39,8 @@ use App\Models\PaymentAttempt;
 use App\Models\PaymentRequest;
 use App\Models\Program;
 use App\Models\Property;
+use App\Models\ProviderDispute;
+use App\Models\ProviderDisputeRevision;
 use App\Models\ProviderEvent;
 use App\Models\ProviderRefund;
 use App\Models\RatePlan;
@@ -52,6 +54,10 @@ use App\Models\ResourceCategory;
 use App\Models\RetailSale;
 use App\Models\RetailSaleLine;
 use App\Models\SettlementEntry;
+use App\Models\SettlementEntryRevision;
+use App\Models\SettlementReportImport;
+use App\Models\SettlementReportRow;
+use App\Models\SettlementVarianceAction;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\TaxRule;
@@ -133,8 +139,14 @@ class AppServiceProvider extends ServiceProvider
             PaymentAttempt::class,
             PaymentRequest::class,
             ProviderEvent::class,
+            ProviderDispute::class,
+            ProviderDisputeRevision::class,
             ProviderRefund::class,
             SettlementEntry::class,
+            SettlementEntryRevision::class,
+            SettlementReportImport::class,
+            SettlementReportRow::class,
+            SettlementVarianceAction::class,
             Program::class,
             Property::class,
             RatePlan::class,

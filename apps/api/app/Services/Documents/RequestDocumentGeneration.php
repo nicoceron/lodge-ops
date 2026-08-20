@@ -38,6 +38,42 @@ final class RequestDocumentGeneration
         ?GeneratedDocument $replaces = null,
     ): DocumentGenerationRequest {
         $actor->can('generate', [DocumentGenerationRequest::class, $kind, $reservation]) || abort(403);
+
+        return $this->request($actor, $reservation, $kind, $locale, $idempotencyKey, $payment, $change, $acknowledgement, $replaces);
+    }
+
+    public function handleSystem(
+        Reservation $reservation,
+        DocumentKind $kind,
+        string $locale,
+        string $idempotencyKey,
+        ?Payment $payment = null,
+        ?ReservationChange $change = null,
+    ): DocumentGenerationRequest {
+        if (! DocumentTemplate::query()->where('kind', $kind->value)->where('is_active', true)->exists()) {
+            DocumentTemplate::query()->create([
+                'name' => str($kind->value)->replace('_', ' ')->title(),
+                'kind' => $kind->value,
+                'version' => ((int) DocumentTemplate::query()->where('kind', $kind->value)->max('version')) + 1,
+                'definition' => ['locale' => null],
+                'is_active' => true,
+            ]);
+        }
+
+        return $this->request(null, $reservation, $kind, $locale, $idempotencyKey, $payment, $change);
+    }
+
+    private function request(
+        ?User $actor,
+        Reservation $reservation,
+        DocumentKind $kind,
+        string $locale,
+        string $idempotencyKey,
+        ?Payment $payment = null,
+        ?ReservationChange $change = null,
+        ?GuestPortalAcknowledgement $acknowledgement = null,
+        ?GeneratedDocument $replaces = null,
+    ): DocumentGenerationRequest {
         $tenantId = app(TenantContext::class)->tenant()->id;
         if ($replaces !== null && ($replaces->reservation_id !== $reservation->id || $replaces->kind !== $kind->value)) {
             abort(422, 'A replacement must have the same reservation and document kind.');
@@ -61,7 +97,7 @@ final class RequestDocumentGeneration
             }
             $checksum = $this->canonical->checksum($snapshot);
             $created = DocumentGenerationRequest::query()->create([
-                'requested_by' => $actor->id,
+                'requested_by' => $actor?->id,
                 'document_template_id' => $template->id,
                 'reservation_id' => $locked->id,
                 'guest_id' => $locked->primary_guest_id,

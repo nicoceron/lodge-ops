@@ -1,7 +1,7 @@
 # P3-06A online payment requests, links, and Mercado Pago implementation plan
 
 Date: 2026-08-18
-Status: **deterministic implementation complete; Colombia/MCO provider journey partially proven; Argentina/ARS WP-11 release gate open**
+Status: **software-controlled closure complete; Colombia/MCO provider journey partially proven; Argentina/ARS WP-11 release gate open**
 Branch: `codex/p3-06-payment-gateway-mercado-pago`
 Base: clean `main` at or after P3-03 merge `e459935`
 Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 3 plan](client-ready-phase-3-plan.md), [feature matrix](feature-matrix.md), [UAT ledger](client-uat-ledger.md), [reference benchmark](reference-code-quality-benchmark.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md)
@@ -179,13 +179,15 @@ Keep `reservation_changes` as the Inn refund/audit lifecycle. Add provider execu
 - response checksum, bounded error, attempt timestamps
 - unique `(tenant_id, provider, environment, provider_refund_id)` and stable command key
 
-### `settlement_entries`
+### Settlement reports and revisions
 
-- provider payment/refund/dispute/payout identity
-- gross, fee, tax/withholding, financing, refunded, chargeback and net minor units with explicit currency
-- settlement currency/date/status and source report/API checksum
-- reconciliation state: `matched`, `variance`, `unmatched`, `ignored_with_reason`
-- unique provider/account/source identity and indexes for unresolved Finance work
+- `settlement_report_imports` is the immutable report envelope: provider/environment/account, report type, provider report ID/revision, original filename, exact file SHA-256, reporting dates, currency, provider generation metadata and fixture marker.
+- `settlement_report_rows` stores a deterministic row identity and occurrence ordinal plus an explicit allow-list of reconciliation fields. Payer/guest columns, credentials and the original raw row are not retained.
+- Account Money and Released Money are separate contracts. Account Money `SETTLEMENT_DATE` is approval time and `MONEY_RELEASE_DATE` is the expected release time; Released Money `DATE` is the actual balance movement and `RECORD_TYPE` is authoritative before localized/free-text `DESCRIPTION`.
+- payment lookup facts are not payout proof. Provider payment `money_release_schema` and `status_detail` are never relabeled as payout/settlement identity or status.
+- `settlement_entries` keeps provider payment/refund/dispute identity and nullable payout identity/date/status, gross, fee, nullable tax/withholding/financing/refunded/chargeback/net minor units, explicit currencies and reconciliation state.
+- `settlement_entry_revisions` is append-only. Reimporting the same exact report is a no-op; the same provider report ID with changed bytes produces a new immutable import/revision and visible variance.
+- Account-level withdrawal/payout and Released Money availability movements remain account-level and are never attached to a payment merely because they share a report.
 
 ## 5. Application commands and event processing
 
@@ -246,9 +248,16 @@ Implement narrow commands with database transactions and consistent lock order:
    - calls provider with stable idempotency key;
    - fetches after ambiguous timeout;
    - invokes `CompleteRefund` only after authoritative provider success.
-10. `RecordProviderDispute` and settlement reconciliation
+10. `RecoverProviderRefund`
+   - performs an authoritative fetch for provider-dashboard refunds or ambiguous execution;
+   - locks and commits Inn accounting plus provider execution success together;
+   - preserves an already-succeeded recovery without another provider call;
+   - is available through authorized Finance actions, CLI, and scheduled stuck-refund recovery.
+11. `RecordProviderDispute` and settlement reconciliation
    - record claims/chargebacks without rewriting the original payment;
-   - surface amount/status mismatch and net settlement variance to Finance.
+   - preserve complete provider facts in append-only revisions and post only the remaining reversible amount;
+   - surface amount/status mismatch and net settlement variance to Finance;
+   - import deterministic Account Money and Released Money reports with exact decimal parsing and immutable source checksums.
 
 ## 6. API and user experience
 
@@ -270,8 +279,8 @@ Implement narrow commands with database transactions and consistent lock order:
 - Payment-request table/detail with issue, preview, copy link, queue delivery, resend, rotate token, revoke and replace actions. Every action requires confirmation where money or access changes and records a reason.
 - Payment-attempt table/detail with reservation, source/charge money, provider IDs, status/detail, age, last event and reconciliation state.
 - Event ledger with signature/processing result and sanitized payload metadata.
-- Actions: fetch/reconcile, replay failed event, mark investigated with reason, request/execute refund, retry ambiguous refund, generate receipt.
-- Separate mismatch, failed event, pending-too-long, dispute and settlement-variance queues.
+- Actions: fetch/reconcile, replay failed event, mark investigated with reason, request/execute/recover refund, generate receipt, and investigate/resolve settlement variance with actor and note.
+- Separate mismatch, failed event, pending-too-long, dispute, settlement-report exception and settlement-variance queues.
 - Provider-origin payments cannot use manual reconcile/reverse actions that bypass the provider workflow.
 
 ### HTTP/OpenAPI
@@ -419,23 +428,25 @@ If the planning branch already exists, verify its base and preserve the uncommit
 
 Do not mark the slice complete with only `Http::fake()`, a provider-dashboard payment link, manually inserted provider-origin payments, simulated unsigned callbacks, redirect query parameters, or a settings screen. The release claim is **Inn-owned reservation payment links plus Mercado Pago test-mode hosted checkout and provider-backed refund**, not generic card processing, card-present processing or production activation.
 
-## 12. Implementation evidence — 2026-08-18
+## 12. Implementation evidence — updated 2026-08-20
 
 Implemented on `codex/p3-06-payment-gateway-mercado-pago` from baseline `e459935`:
 
-- ordered request/attempt/event/refund/settlement schema with tenant composite foreign keys, provider uniqueness, money/state checks, and a PostgreSQL partial unique index for one reusable attempt;
+- ordered request/attempt/event/refund/dispute/settlement schema with tenant composite foreign keys, provider-account/environment identity, money/state checks, PostgreSQL partial uniqueness, immutable report imports/rows/revisions, and upgrade/rollback proof;
 - hashed one-time link issuance, rotation, expiry, revocation, authoritative amount calculation, ARS direct charge and explicit current USD→ARS snapshot acceptance;
 - provider-neutral gateway/factory/DTO boundary plus the Checkout Pro REST preference, payment lookup, raw `x-signature` verification, refund, and exact decimal normalization adapter;
-- encrypted provider-event persistence, after-commit queued lookup, duplicate/mismatch handling, exactly-once provider-only payment application, deposit/folio effect, settlement gross/fee/net entry, and provider-only refund execution;
-- staff API/OpenAPI and Filament issue/rotate/revoke flow, phone-safe guest link and non-authoritative return pages, Finance attempt/event/settlement queues, and reconcile/replay/expiry commands;
-- deterministic `PaymentRequestLifecycleTest`, `MercadoPagoGatewayContractTest`, and PostgreSQL active-attempt race coverage, plus the unchanged full regression suite.
+- encrypted provider-event persistence, signed HTTP intake, normal-worker `provider-events` consumption, lease/crash recovery, duplicate/mismatch handling, and exactly-once provider-only payment/deposit/folio/receipt application;
+- provider refund execution plus authoritative recovery, atomic completion, scheduled stuck-refund recovery, and dashboard-refund fallback without duplicate accounting;
+- append-only disputes and complete fact revisions, remaining-amount chargeback protection, immutable settlement revisions, deterministic official Account Money/Released Money CSV import, account-level payout isolation, and Finance variance actions;
+- staff API/OpenAPI and Filament issue/rotate/revoke flow, phone-safe guest link and non-authoritative return pages, Finance attempt/event/refund/dispute/settlement queues, and reconcile/replay/expiry/report-import commands;
+- real HTTP bad/missing/stale signature, unknown resource and throttling coverage; property/record authorization; scheduler lease/boundary/retry coverage; and PostgreSQL races for duplicate workers, manual reconcile versus webhook, refund execute versus recover, refund versus chargeback, settlement replay, and expiry versus approval.
 - local Filament/guest browser UAT: staff issue → 390×844 exact-money guest state → rotation makes the old link `404` → replacement resolves → revocation shows a terminal non-payable page; the test request was revoked afterward and browser logs were clean.
 
-Final deterministic verification after the live-provider compatibility fixes: SQLite `295` tests (`288` passed, `7` skipped; `1,976` assertions), PostgreSQL `295` tests (`294` passed, `1` skipped; `1,957` assertions), authenticated Playwright `7/7`, public Playwright `4/4`, PHPStan `0` errors, Pint clean, ESLint/TypeScript clean, OpenAPI `90` paths / `125` operations / `102` resolved references, Composer/npm audits clean, changed-file Gitleaks clean, production assets built, and rebuilt Docker services healthy under the smoke gate.
+Latest deterministic verification: SQLite `325` tests (`310` passed, `15` expected PostgreSQL-only skips; `2,396` assertions), PostgreSQL `325` tests (`324` passed, `1` expected Docker host-path skip; `2,433` assertions), authenticated Playwright `7/7` with the explicit provider spec separately gated/skipped, public Playwright `4/4`, PHPStan `0` errors, Pint clean, ESLint/TypeScript clean, API/web production builds clean, OpenAPI `93` paths / `128` operations / `102` resolved references, Composer/npm audits clean, Docker services healthy under the full smoke gate, and the explicit provider Playwright journey `1/1`. The provider browser journey proved mobile guest link → hosted deterministic checkout → informational return → signed HTTP webhook consumed by the ordinary Compose worker → exactly one payment/deposit/folio effect and automatic payment receipt PDF → Finance settlement investigation → partial refund authoritative recovery and refund receipt PDF. The final secret scan is recorded in the PR evidence before publication.
 
 Baseline before code changes: focused financial/documents `36` tests (`30` passed, `6` skipped), SQLite `280` tests (`274` passed, `6` skipped; `1,921` assertions), PostgreSQL `280` tests (`279` passed, `1` skipped; `1,897` assertions).
 
-## 13. Provider evidence — 2026-08-19
+## 13. Provider evidence — updated 2026-08-20
 
 Secrets are configured only in the ignored, mode-`600` API environment file and were injected into the API and queue workers. The public webhook used a temporary HTTPS tunnel; neither the URL key nor its signing secret is retained in Git.
 
@@ -454,6 +465,7 @@ Observed limitations and release classification:
 - the runbook requires an Argentina seller/test buyer and ARS; the available personal developer account is Colombia/MCO and COP;
 - the Colombia hosted flow rendered manual `CONT` and `OTHE` test cards as `UNDEFINED SOURCE` and kept the final payment action disabled;
 - direct provider payment and refund calls returned `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, so those API paths cannot substitute for the blocked hosted pending/rejected cases on this account;
-- the signed-delivery test used Mercado Pago's documented HMAC format and a real provider payment, but an actual provider-originated webhook delivery was not observed.
+- the signed-delivery test used Mercado Pago's documented HMAC format and a real provider payment. Dashboard/test simulation plus authenticated lookup is the supported sandbox-notification proof; production activation separately requires a real provider-signed delivery through public HTTPS.
+- the authorized MCO developer token successfully created redacted MLA test seller/buyer identities and an ARS preference, but the preference remained hosted on the Colombia site and the test-user response did not provide an MLA seller access token. No credentials were retained. A same-country MLA seller application/access token is therefore an external provider/account gate, not a remaining software task.
 
 WP-11 therefore remains open. Keep the pull request draft and describe it as deterministic implementation plus MCO provider evidence, not Argentina sandbox-complete or production-ready. P3-06B remains blocked until this release criterion is met or explicitly changed.

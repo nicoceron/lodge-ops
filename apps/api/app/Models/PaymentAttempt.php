@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\PaymentAttemptState;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property string $id
@@ -82,5 +83,10 @@ class PaymentAttempt extends TenantModel
     public function integrationConnection(): BelongsTo
     {
         return $this->belongsTo(IntegrationConnection::class);
+    }
+
+    public function providerDisputes(): HasMany
+    {
+        return $this->hasMany(ProviderDispute::class);
     }
 }

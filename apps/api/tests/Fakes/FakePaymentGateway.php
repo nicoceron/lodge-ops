@@ -6,6 +6,7 @@ use App\Contracts\Payments\PaymentGateway;
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Data\Payments\CheckoutRequest;
 use App\Data\Payments\HostedCheckout;
+use App\Data\Payments\ProviderDispute;
 use App\Data\Payments\ProviderPayment;
 use App\Data\Payments\ProviderRefund;
 use App\Data\Payments\ProviderRefundRequest;
@@ -18,11 +19,20 @@ final class FakePaymentGateway implements PaymentGateway, PaymentGatewayFactory
     /** @var array<string, ProviderPayment> */
     public array $payments = [];
 
+    /** @var array<string, ProviderDispute> */
+    public array $disputes = [];
+
     /** @var list<CheckoutRequest> */
     public array $checkouts = [];
 
     /** @var list<ProviderRefundRequest> */
     public array $refunds = [];
+
+    /** @var array<string, ProviderRefund> */
+    public array $refundResults = [];
+
+    /** @var list<array{payment_id: string, refund_id: string}> */
+    public array $fetchRefundCalls = [];
 
     public function for(IntegrationConnection $connection): PaymentGateway
     {
@@ -41,16 +51,34 @@ final class FakePaymentGateway implements PaymentGateway, PaymentGatewayFactory
         return $this->payments[$providerPaymentId] ?? throw new \RuntimeException('Fake provider payment not found.');
     }
 
+    public function fetchDispute(string $providerDisputeId): ProviderDispute
+    {
+        return $this->disputes[$providerDisputeId] ?? throw new \RuntimeException('Fake provider dispute not found.');
+    }
+
     public function refund(ProviderRefundRequest $request): ProviderRefund
     {
         $this->refunds[] = $request;
 
-        return new ProviderRefund('refund-'.$request->idempotencyKey, $request->providerPaymentId, 'approved', $request->amountMinor, $request->currency);
+        $result = new ProviderRefund(
+            'refund-'.$request->idempotencyKey,
+            $request->providerPaymentId,
+            'approved',
+            $request->amountMinor,
+            $request->currency,
+            $this->payments[$request->providerPaymentId]->providerAccount ?? 'seller-1',
+        );
+        $this->refundResults[$result->id] = $result;
+
+        return $result;
     }
 
     public function fetchRefund(string $providerPaymentId, string $providerRefundId): ProviderRefund
     {
-        return new ProviderRefund($providerRefundId, $providerPaymentId, 'approved', 1, 'ARS');
+        $this->fetchRefundCalls[] = ['payment_id' => $providerPaymentId, 'refund_id' => $providerRefundId];
+
+        return $this->refundResults[$providerRefundId]
+            ?? throw new \RuntimeException('Fake provider refund not found.');
     }
 
     public function verifyWebhook(WebhookRequest $request): VerifiedProviderEvent

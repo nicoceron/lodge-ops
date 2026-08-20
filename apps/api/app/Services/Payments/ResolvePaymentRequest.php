@@ -21,7 +21,12 @@ final class ResolvePaymentRequest
 
         return DB::transaction(function () use ($candidate): PaymentRequest {
             $request = PaymentRequest::query()->lockForUpdate()->findOrFail($candidate->id);
-            if ($request->state === PaymentRequestState::Open && $request->expires_at->isPast()) {
+            if (in_array($request->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true) && $request->expires_at->isPast()) {
+                $request->attempts()->whereIn('state', ['creating', 'checkout_ready', 'pending'])->update([
+                    'state' => 'expired',
+                    'last_error' => 'Payment request expired before authoritative approval.',
+                    'last_processed_at' => now(),
+                ]);
                 $request->update(['state' => PaymentRequestState::Expired]);
             }
             $request->update([

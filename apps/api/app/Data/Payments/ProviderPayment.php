@@ -4,7 +4,7 @@ namespace App\Data\Payments;
 
 final readonly class ProviderPayment
 {
-    /** @param array<string, int> $settlement */
+    /** @param array<string, mixed> $settlement */
     public function __construct(
         public string $id,
         public string $externalReference,

@@ -112,7 +112,7 @@ services:
 
   worker:
     <<: *api-common
-    command: php artisan queue:work --queue=critical,documents,automations,default,notifications,integrations,reports --tries=3 --timeout=180
+    command: php artisan queue:work --queue=critical,provider-events,documents,automations,default,notifications,integrations,reports --tries=3 --timeout=180
     depends_on:
       postgres:
         condition: service_healthy

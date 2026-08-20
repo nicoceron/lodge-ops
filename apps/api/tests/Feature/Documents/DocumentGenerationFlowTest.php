@@ -103,7 +103,7 @@ class DocumentGenerationFlowTest extends TestCase
         $this->assertStringNotContainsString('private/evidence.jpg', $json);
         $this->assertStringNotContainsString('never-export', $json);
         $this->assertStringNotContainsString('<script>', $json);
-        $provider = Payment::query()->create(['reservation_id' => $reservation->id, 'status' => PaymentStatus::Succeeded, 'origin' => PaymentOrigin::Provider, 'method' => 'card', 'provider' => 'sandbox', 'provider_reference' => 'provider-1', 'currency' => 'COP', 'amount_minor' => 100, 'processed_at' => now()]);
+        $provider = Payment::query()->create(['reservation_id' => $reservation->id, 'status' => PaymentStatus::Succeeded, 'origin' => PaymentOrigin::Provider, 'method' => 'card', 'provider' => 'sandbox', 'environment' => 'sandbox', 'provider_account' => 'provider-doc-test', 'provider_reference' => 'provider-1', 'currency' => 'COP', 'amount_minor' => 100, 'processed_at' => now()]);
         $providerSnapshot = $factory->build(DocumentKind::PaymentReceipt, $reservation, $template, 'en', $provider);
         $this->assertSame('Payment reported by provider', data_get($providerSnapshot, 'payload.payment.wording'));
     }
@@ -253,7 +253,7 @@ class DocumentGenerationFlowTest extends TestCase
         [, $property] = $this->tenantEnvironment();
         $guest = Guest::factory()->create();
         $reservation = Reservation::factory()->create(['property_id' => $property->id, 'primary_guest_id' => $guest->id, 'status' => ReservationStatus::CheckedOut]);
-        $payment = Payment::query()->create(['reservation_id' => $reservation->id, 'status' => PaymentStatus::Refunded, 'origin' => PaymentOrigin::Provider, 'method' => 'card', 'provider' => 'test-provider', 'provider_reference' => 'charge-1', 'currency' => 'USD', 'amount_minor' => 50000, 'processed_at' => now()->subDay()]);
+        $payment = Payment::query()->create(['reservation_id' => $reservation->id, 'status' => PaymentStatus::Refunded, 'origin' => PaymentOrigin::Provider, 'method' => 'card', 'provider' => 'test-provider', 'environment' => 'sandbox', 'provider_account' => 'provider-doc-test', 'provider_reference' => 'charge-1', 'currency' => 'USD', 'amount_minor' => 50000, 'processed_at' => now()->subDay()]);
         $change = ReservationChange::query()->create(['reservation_id' => $reservation->id, 'type' => 'refund_completed', 'status' => 'completed', 'currency' => 'USD', 'amount_minor' => 12500, 'reference' => 'refund-1', 'metadata' => ['payment_id' => $payment->id, 'reason' => 'Guest adjustment'], 'occurred_at' => now()]);
         $refundTemplate = DocumentTemplate::query()->create(['name' => 'Refund receipt', 'kind' => DocumentKind::RefundReceipt->value, 'version' => 1, 'definition' => [], 'is_active' => true]);
         $refund = app(DocumentSnapshotFactory::class)->build(DocumentKind::RefundReceipt, $reservation, $refundTemplate, 'en', change: $change);

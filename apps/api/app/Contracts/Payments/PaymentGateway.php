@@ -4,6 +4,7 @@ namespace App\Contracts\Payments;
 
 use App\Data\Payments\CheckoutRequest;
 use App\Data\Payments\HostedCheckout;
+use App\Data\Payments\ProviderDispute;
 use App\Data\Payments\ProviderPayment;
 use App\Data\Payments\ProviderRefund;
 use App\Data\Payments\ProviderRefundRequest;
@@ -15,6 +16,8 @@ interface PaymentGateway
     public function createHostedCheckout(CheckoutRequest $request): HostedCheckout;
 
     public function fetchPayment(string $providerPaymentId): ProviderPayment;
+
+    public function fetchDispute(string $providerDisputeId): ProviderDispute;
 
     public function refund(ProviderRefundRequest $request): ProviderRefund;
 

@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Data\Payments\ProviderPayment;
 use App\Enums\DepositStatus;
+use App\Enums\DocumentKind;
 use App\Enums\PaymentOrigin;
+use App\Enums\PaymentRequestState;
 use App\Enums\PaymentStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\Deposit;
@@ -13,7 +15,9 @@ use App\Models\PaymentAttempt;
 use App\Models\PaymentRequest;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
+use App\Models\Tenant;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\Documents\RequestDocumentGeneration;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -22,22 +26,45 @@ final class PaymentService
     public function __construct(
         private readonly FolioService $folio,
         private readonly OutboxRecorder $outbox,
+        private readonly RequestDocumentGeneration $documents,
     ) {}
 
     public function recordProvider(PaymentAttempt $attempt, ProviderPayment $providerPayment): Payment
     {
         return DB::transaction(function () use ($attempt, $providerPayment): Payment {
+            Tenant::query()->whereKey($attempt->tenant_id)->lockForUpdate()->firstOrFail();
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($attempt->reservation_id);
             $request = PaymentRequest::query()->lockForUpdate()->findOrFail($attempt->payment_request_id);
             $lockedAttempt = PaymentAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
+            if ($providerPayment->providerAccount === '' || $providerPayment->providerAccount !== $lockedAttempt->provider_account) {
+                throw new DomainException('The provider payment account does not match the payment attempt.');
+            }
             $existing = Payment::query()->where('provider', $lockedAttempt->provider)
+                ->where('environment', $lockedAttempt->environment)
+                ->where('provider_account', $lockedAttempt->provider_account)
                 ->where('provider_reference', $providerPayment->id)->lockForUpdate()->first();
             if ($existing !== null) {
-                if ($request->payment_id === null) {
-                    $request->update(['payment_id' => $existing->id, 'state' => 'paid', 'paid_at' => $existing->processed_at ?? now()]);
+                if ($existing->reservation_id !== $reservation->id
+                    || (string) data_get($existing->metadata, 'payment_attempt_id') !== $lockedAttempt->id) {
+                    throw new DomainException('The provider payment identity is already attached to a different reservation or attempt.');
                 }
+                if ($request->payment_id === $existing->id) {
+                    $this->requestProviderReceipt($reservation, $existing);
+
+                    return $existing;
+                }
+                if (! in_array($request->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true)
+                    || $request->expires_at->isPast() || $request->payment_id !== null) {
+                    throw new DomainException('The provider payment belongs to a stale, expired, revoked, superseded, or already-paid request and requires Finance review/refund.');
+                }
+                $request->update(['payment_id' => $existing->id, 'state' => 'paid', 'paid_at' => $existing->processed_at ?? now()]);
+                $this->requestProviderReceipt($reservation, $existing);
 
                 return $existing;
+            }
+            if (! in_array($request->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true)
+                || $request->expires_at->isPast()) {
+                throw new DomainException('The provider payment belongs to a stale, expired, revoked, superseded, or already-paid request and requires Finance review/refund.');
             }
             if ($request->payment_id !== null) {
                 throw new DomainException('The payment request is already satisfied by another payment.');
@@ -56,6 +83,8 @@ final class PaymentService
                 'method' => 'mercado_pago_checkout_pro',
                 'origin' => PaymentOrigin::Provider,
                 'provider' => $lockedAttempt->provider,
+                'environment' => $lockedAttempt->environment,
+                'provider_account' => $lockedAttempt->provider_account,
                 'provider_reference' => $providerPayment->id,
                 'currency' => $request->source_currency,
                 'amount_minor' => $request->source_amount_minor,
@@ -81,9 +110,21 @@ final class PaymentService
                 'amount_minor' => $payment->amount_minor,
                 'origin' => 'provider',
             ]);
+            $this->requestProviderReceipt($reservation, $payment);
 
             return $payment->fresh(['reservation', 'deposits']);
         }, 3);
+    }
+
+    private function requestProviderReceipt(Reservation $reservation, Payment $payment): void
+    {
+        $this->documents->handleSystem(
+            $reservation,
+            DocumentKind::PaymentReceipt,
+            app()->getLocale(),
+            'provider-payment-receipt:'.$payment->id,
+            $payment,
+        );
     }
 
     /** @param array<string, mixed> $data */
@@ -139,7 +180,9 @@ final class PaymentService
     public function reconcile(Payment $payment, ?int $actorId, ?string $depositId = null): Payment
     {
         return DB::transaction(function () use ($payment, $actorId, $depositId): Payment {
-            $locked = Payment::query()->with('reservation')->lockForUpdate()->findOrFail($payment->id);
+            $snapshot = Payment::query()->findOrFail($payment->id);
+            $reservation = Reservation::query()->lockForUpdate()->findOrFail($snapshot->reservation_id);
+            $locked = Payment::query()->with('reservation')->lockForUpdate()->findOrFail($snapshot->id);
             if ($locked->origin === PaymentOrigin::Provider) {
                 throw new DomainException('Provider-origin payments can only be reconciled through the provider workflow.');
             }
@@ -148,6 +191,13 @@ final class PaymentService
             }
             if ($locked->status !== PaymentStatus::Pending) {
                 throw new DomainException('Only pending payments may be reconciled.');
+            }
+            $outstanding = max(0, $this->folio->summary($reservation)['balance_minor']);
+            if ($locked->amount_minor > $outstanding && PaymentRequest::query()
+                ->where('reservation_id', $reservation->id)
+                ->whereNotNull('payment_id')
+                ->exists()) {
+                throw new DomainException('The payment exceeds the remaining reservation balance and requires Finance review.');
             }
 
             $deposit = $depositId === null

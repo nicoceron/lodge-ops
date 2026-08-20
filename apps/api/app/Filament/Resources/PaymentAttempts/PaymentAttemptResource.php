@@ -46,7 +46,9 @@ class PaymentAttemptResource extends TenantResource
         return $table->columns([
             TextColumn::make('created_at')->label('Started')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->sortable(),
             TextColumn::make('reservation.confirmation_number')->label('Reservation')->searchable(),
-            TextColumn::make('state')->badge()->formatStateUsing(InnPresentation::label(...))->color(fn ($state): string => InnPresentation::statusColor($state)),
+            TextColumn::make('state')->badge()
+                ->state(fn (PaymentAttempt $record): string => InnPresentation::label($record->state))
+                ->color(fn (PaymentAttempt $record): string => InnPresentation::statusColor($record->state)),
             TextColumn::make('source_amount_minor')->label('Source')->money(fn (PaymentAttempt $record): string => $record->source_currency, divideBy: 100),
             TextColumn::make('charge_amount_minor')->label('Charged')->money(fn (PaymentAttempt $record): string => $record->charge_currency, divideBy: 100),
             TextColumn::make('provider_payment_id')->label('Provider payment')->copyable()->placeholder('—'),

@@ -9,7 +9,6 @@ use App\Enums\ProviderEventState;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\PaymentAttempt;
 use App\Models\ProviderEvent;
-use App\Models\SettlementEntry;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,34 +16,66 @@ use Throwable;
 
 final class ProcessProviderEvent
 {
-    public function __construct(private readonly PaymentGatewayFactory $gateways, private readonly PaymentService $payments) {}
+    private const PROCESSING_LEASE_SECONDS = 90;
+
+    public function __construct(
+        private readonly PaymentGatewayFactory $gateways,
+        private readonly PaymentService $payments,
+        private readonly RecordProviderDispute $disputes,
+        private readonly RecordSettlementRevision $settlements,
+    ) {}
 
     public function handle(ProviderEvent $event): ProviderEvent
     {
-        $claimed = DB::transaction(function () use ($event): ProviderEvent {
+        [$claimed, $shouldProcess] = DB::transaction(function () use ($event): array {
             $locked = ProviderEvent::query()->lockForUpdate()->findOrFail($event->id);
-            if (in_array($locked->processing_state, [ProviderEventState::Processed, ProviderEventState::Duplicate], true)) {
-                return $locked;
+            if (in_array($locked->processing_state, [ProviderEventState::Processed, ProviderEventState::Duplicate, ProviderEventState::Mismatched], true)) {
+                return [$locked, false];
             }
-            $locked->update(['processing_state' => ProviderEventState::Processing, 'attempt_count' => $locked->attempt_count + 1]);
+            $staleClaim = $locked->processing_state === ProviderEventState::Processing
+                && $locked->updated_at->lte(now()->subSeconds(self::PROCESSING_LEASE_SECONDS));
+            if ($locked->processing_state === ProviderEventState::Processing && ! $staleClaim) {
+                return [$locked, false];
+            }
+            $locked->update([
+                'processing_state' => ProviderEventState::Processing,
+                'attempt_count' => $locked->attempt_count + 1,
+                'last_error' => $staleClaim ? 'Reclaimed after the previous processing lease expired.' : null,
+            ]);
 
-            return $locked;
+            return [$locked, true];
         }, 3);
-        if ($claimed->processing_state !== ProviderEventState::Processing) {
+        if (! $shouldProcess) {
             return $claimed;
         }
 
         try {
+            if ($this->isClaimEvent($claimed)) {
+                return $this->mismatch($claimed, 'Mercado Pago claim notifications are unsupported in this slice and remain unapplied for Finance review.');
+            }
+            if ($this->isDisputeEvent($claimed)) {
+                try {
+                    $remote = $this->gateways->for($claimed->integrationConnection)->fetchDispute($claimed->resource_id);
+                    $this->disputes->handle($claimed, $remote);
+                    $claimed->update(['processing_state' => ProviderEventState::Processed, 'processed_at' => now(), 'last_error' => null]);
+
+                    return $claimed->fresh();
+                } catch (DomainException $exception) {
+                    return $this->mismatch($claimed, $exception->getMessage());
+                }
+            }
             $providerPayment = $this->gateways->for($claimed->integrationConnection)->fetchPayment($claimed->resource_id);
             $attempt = PaymentAttempt::query()
+                ->where('integration_connection_id', $claimed->integration_connection_id)
                 ->where('provider', $claimed->provider)
                 ->where('environment', $claimed->environment)
+                ->where('provider_account', $claimed->provider_account)
                 ->where(fn ($query) => $query->where('external_reference', $providerPayment->externalReference)->orWhere('provider_payment_id', $providerPayment->id))
                 ->first();
             if ($attempt === null) {
                 return $this->mismatch($claimed, 'No payment attempt matches the provider resource.');
             }
-            if (! $this->matches($attempt, $providerPayment)) {
+            if (! $this->matches($claimed, $attempt, $providerPayment)) {
                 $attempt->update([
                     'state' => PaymentAttemptState::Mismatched,
                     'provider_payment_id' => $providerPayment->id,
@@ -57,7 +88,53 @@ final class ProcessProviderEvent
                 return $this->mismatch($claimed, 'Provider identity, account, amount, or currency mismatch.');
             }
 
+            if ($providerPayment->status === 'refunded') {
+                $attempt->update([
+                    'provider_status' => $providerPayment->status,
+                    'provider_status_detail' => $providerPayment->statusDetail,
+                    'last_checked_at' => now(),
+                    'last_processed_at' => now(),
+                    'last_error' => 'Provider reports a refund; Finance must recover the identified provider refund before an Inn folio effect.',
+                ]);
+                $this->settlements->handle($attempt, $providerPayment);
+                $claimed->update([
+                    'processing_state' => ProviderEventState::Processed,
+                    'processed_at' => now(),
+                    'last_error' => 'Authoritative refund reported; awaiting provider-refund recovery identity.',
+                ]);
+
+                return $claimed->fresh();
+            }
+            if ($providerPayment->status === 'charged_back') {
+                $attempt->update([
+                    'provider_status' => $providerPayment->status,
+                    'provider_status_detail' => $providerPayment->statusDetail,
+                    'last_checked_at' => now(),
+                    'last_processed_at' => now(),
+                    'last_error' => 'Chargeback reported by payment lookup; awaiting/processing the authoritative chargeback topic before any folio impact.',
+                ]);
+                $this->settlements->handle($attempt, $providerPayment);
+                $claimed->update([
+                    'processing_state' => ProviderEventState::Processed,
+                    'processed_at' => now(),
+                    'last_error' => 'Chargeback payment status retained; authoritative chargeback lifecycle is handled by the chargeback topic.',
+                ]);
+
+                return $claimed->fresh();
+            }
             $state = $this->state($providerPayment->status);
+            if ($state === null) {
+                $attempt->update([
+                    'state' => PaymentAttemptState::Mismatched,
+                    'provider_payment_id' => $providerPayment->id,
+                    'provider_status' => $providerPayment->status,
+                    'provider_status_detail' => $providerPayment->statusDetail,
+                    'last_error' => 'Unknown provider payment state; left unapplied for Finance.',
+                    'last_processed_at' => now(),
+                ]);
+
+                return $this->mismatch($claimed, 'Unknown provider payment state; left unapplied for Finance.');
+            }
             $attempt->update([
                 'state' => $state,
                 'provider_payment_id' => $providerPayment->id,
@@ -75,7 +152,7 @@ final class ProcessProviderEvent
 
                     return $this->mismatch($claimed, $exception->getMessage());
                 }
-                $this->recordSettlement($attempt, $providerPayment);
+                $this->settlements->handle($attempt, $providerPayment);
             }
             $claimed->update(['processing_state' => ProviderEventState::Processed, 'processed_at' => now(), 'last_error' => null]);
 
@@ -86,22 +163,24 @@ final class ProcessProviderEvent
         }
     }
 
-    private function matches(PaymentAttempt $attempt, ProviderPayment $payment): bool
+    private function matches(ProviderEvent $event, PaymentAttempt $attempt, ProviderPayment $payment): bool
     {
-        return $attempt->external_reference === $payment->externalReference
+        return $event->resource_id === $payment->id
+            && $event->provider_account === $payment->providerAccount
+            && $attempt->external_reference === $payment->externalReference
             && $attempt->provider_account === $payment->providerAccount
             && $attempt->charge_amount_minor === $payment->amountMinor
             && $attempt->charge_currency === $payment->currency;
     }
 
-    private function state(string $providerStatus): PaymentAttemptState
+    private function state(string $providerStatus): ?PaymentAttemptState
     {
         return match ($providerStatus) {
             'approved' => PaymentAttemptState::Approved,
             'pending', 'in_process', 'in_mediation' => PaymentAttemptState::Pending,
             'cancelled' => PaymentAttemptState::Cancelled,
-            'refunded', 'charged_back' => PaymentAttemptState::Mismatched,
-            default => PaymentAttemptState::Rejected,
+            'rejected' => PaymentAttemptState::Rejected,
+            default => null,
         };
     }
 
@@ -112,24 +191,17 @@ final class ProcessProviderEvent
         return $event->fresh();
     }
 
-    private function recordSettlement(PaymentAttempt $attempt, ProviderPayment $payment): void
+    private function isDisputeEvent(ProviderEvent $event): bool
     {
-        $gross = $payment->settlement['gross_minor'] ?? $payment->amountMinor;
-        $fee = $payment->settlement['fee_minor'] ?? 0;
-        $net = $payment->settlement['net_minor'] ?? ($gross - $fee);
-        SettlementEntry::query()->updateOrCreate([
-            'provider' => $attempt->provider,
-            'provider_account' => $attempt->provider_account,
-            'source_type' => 'payment',
-            'source_id' => $payment->id,
-        ], [
-            'integration_connection_id' => $attempt->integration_connection_id,
-            'gross_minor' => $gross,
-            'fee_minor' => $fee,
-            'net_minor' => $net,
-            'currency' => $payment->currency,
-            'source_checksum' => hash('sha256', json_encode($payment->settlement, JSON_THROW_ON_ERROR)),
-            'reconciliation_state' => $gross - $fee === $net ? 'matched' : 'variance',
-        ]);
+        $topic = strtolower((string) ($event->topic ?? $event->event_type ?? ''));
+
+        return str_contains($topic, 'chargeback');
+    }
+
+    private function isClaimEvent(ProviderEvent $event): bool
+    {
+        $topic = strtolower((string) ($event->topic ?? $event->event_type ?? ''));
+
+        return str_contains($topic, 'claim');
     }
 }

@@ -16,4 +16,9 @@ class SettlementEntryPolicy extends TenantPolicy
     {
         return $this->canViewFinance($user, $entry);
     }
+
+    public function resolve(User $user, SettlementEntry $entry): bool
+    {
+        return $this->canManageMoney($user, $entry);
+    }
 }

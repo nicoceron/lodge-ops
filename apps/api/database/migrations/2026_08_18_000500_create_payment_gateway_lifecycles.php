@@ -161,10 +161,10 @@ return new class extends Migration
             $table->string('source_id', 160);
             $table->bigInteger('gross_minor')->default(0);
             $table->bigInteger('fee_minor')->default(0);
-            $table->bigInteger('tax_minor')->default(0);
-            $table->bigInteger('financing_minor')->default(0);
-            $table->bigInteger('refunded_minor')->default(0);
-            $table->bigInteger('chargeback_minor')->default(0);
+            $table->bigInteger('tax_minor')->nullable();
+            $table->bigInteger('financing_minor')->nullable();
+            $table->bigInteger('refunded_minor')->nullable();
+            $table->bigInteger('chargeback_minor')->nullable();
             $table->bigInteger('net_minor')->default(0);
             $table->char('currency', 3);
             $table->char('settlement_currency', 3)->nullable();

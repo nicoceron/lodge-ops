@@ -33,6 +33,11 @@ final class RevokeOrSupersedePaymentRequest
                 'revoked_by' => $actorId,
                 'revocation_reason' => trim($reason),
             ]);
+            $locked->attempts()->whereIn('state', ['creating', 'checkout_ready', 'pending'])->update([
+                'state' => 'expired',
+                'last_error' => $superseded ? 'Payment request superseded.' : 'Payment request revoked.',
+                'last_processed_at' => now(),
+            ]);
             $this->outbox->record('payment_request', $locked->id, $superseded ? 'payment_request.superseded' : 'payment_request.revoked', [
                 'payment_request_id' => $locked->id,
                 'reason' => trim($reason),

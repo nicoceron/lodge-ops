@@ -17,7 +17,7 @@ class MercadoPagoGatewayContractTest extends TestCase
         $checkout = $gateway->createHostedCheckout(new CheckoutRequest('external-1', 'idem-1', 12_345, 'ARS', 'Deposit', 'https://inn.test/return', 'https://inn.test/return', 'https://inn.test/return', 'https://inn.test/webhook'));
 
         $this->assertSame('pref-1', $checkout->preferenceId);
-        $this->assertSame(123.45, data_get($transport->payload, 'items.0.unit_price'));
+        $this->assertSame('123.45', (string) data_get($transport->payload, 'items.0.unit_price'));
         $this->assertSame('idem-1', $transport->headers['X-Idempotency-Key']);
     }
 
@@ -58,11 +58,97 @@ class MercadoPagoGatewayContractTest extends TestCase
         $this->assertSame(200_000, $refund->amountMinor);
     }
 
+    public function test_payment_account_and_nullable_settlement_facts_come_from_the_provider_resource(): void
+    {
+        $transport = new RecordingTransport([
+            'id' => 123,
+            'collector_id' => 456,
+            'external_reference' => 'external-1',
+            'status' => 'approved',
+            'status_detail' => 'accredited',
+            'transaction_amount' => '100.00',
+            'currency_id' => 'ARS',
+            'fee_details' => [['amount' => '2.00']],
+            'transaction_details' => ['net_received_amount' => '98.00'],
+        ]);
+        $payment = (new MercadoPagoCheckoutProGateway($transport, 'secret', 'configured-account'))->fetchPayment('123');
+
+        $this->assertSame('456', $payment->providerAccount);
+        $this->assertSame(10_000, $payment->settlement['gross_minor']);
+        $this->assertSame(200, $payment->settlement['fee_minor']);
+        $this->assertNull($payment->settlement['tax_minor']);
+        $this->assertNull($payment->settlement['payout_identity']);
+    }
+
+    public function test_provider_fee_and_charge_detail_decimals_are_summed_without_binary_floats(): void
+    {
+        $payment = (new MercadoPagoCheckoutProGateway(new RecordingTransport([
+            'id' => 124,
+            'collector_id' => 456,
+            'external_reference' => 'external-exact-sums',
+            'status' => 'approved',
+            'transaction_amount' => '1.00',
+            'currency_id' => 'ARS',
+            'fee_details' => [['amount' => '0.10'], ['amount' => '0.20']],
+            'charges_details' => [
+                ['name' => 'tax withholding', 'amount' => '0.05'],
+                ['name' => 'withholding adjustment', 'amount' => '0.06'],
+            ],
+        ]), 'secret', 'configured-account'))->fetchPayment('124');
+
+        $this->assertSame(30, $payment->settlement['fee_minor']);
+        $this->assertSame(11, $payment->settlement['withholding_minor']);
+        $this->assertSame(70, $payment->settlement['net_minor']);
+    }
+
+    public function test_payment_status_and_partial_refund_fixtures_preserve_provider_truth(): void
+    {
+        foreach (['approved', 'pending', 'in_process', 'rejected', 'cancelled', 'refunded', 'charged_back', 'provider_future_state'] as $status) {
+            $payload = [
+                'id' => 'payment-'.$status,
+                'collector_id' => 456,
+                'external_reference' => 'external-'.$status,
+                'status' => $status,
+                'status_detail' => 'fixture-detail',
+                'transaction_amount' => '100.00',
+                'currency_id' => 'ARS',
+                'transaction_amount_refunded' => $status === 'approved' ? '25.00' : null,
+            ];
+
+            $payment = (new MercadoPagoCheckoutProGateway(new RecordingTransport($payload), 'secret', 'configured-account'))
+                ->fetchPayment('payment-'.$status);
+
+            $this->assertSame($status, $payment->status);
+            $this->assertSame('456', $payment->providerAccount);
+            if ($status === 'approved') {
+                $this->assertSame(2_500, $payment->settlement['refunded_minor']);
+            }
+            if ($status === 'charged_back') {
+                $this->assertNull($payment->settlement['chargeback_minor']);
+            }
+        }
+    }
+
+    public function test_malformed_payment_money_is_rejected(): void
+    {
+        $gateway = new MercadoPagoCheckoutProGateway(new RecordingTransport([
+            'id' => 'payment-malformed',
+            'collector_id' => 456,
+            'external_reference' => 'external-malformed',
+            'status' => 'approved',
+            'transaction_amount' => 'not-money',
+            'currency_id' => 'ARS',
+        ]), 'secret', 'configured-account');
+
+        $this->expectException(\Throwable::class);
+        $gateway->fetchPayment('payment-malformed');
+    }
+
     public function test_webhook_signature_is_verified_before_json_is_exposed(): void
     {
         $secret = 'webhook-secret';
         $gateway = new MercadoPagoCheckoutProGateway(new RecordingTransport([]), $secret, 'seller-1');
-        $timestamp = (string) time();
+        $timestamp = (string) (time() * 1000);
         $manifest = "id:123;request-id:req-1;ts:{$timestamp};";
         $signature = hash_hmac('sha256', $manifest, $secret);
         $event = $gateway->verifyWebhook(new WebhookRequest(
@@ -74,6 +160,35 @@ class MercadoPagoGatewayContractTest extends TestCase
         $this->assertSame('123', $event->resourceId);
         $this->expectException(\RuntimeException::class);
         $gateway->verifyWebhook(new WebhookRequest('{}', ['x-signature' => "ts={$timestamp},v1=bad", 'x-request-id' => 'req-1'], ['data.id' => '123']));
+    }
+
+    public function test_webhook_rejects_missing_stale_and_malformed_inputs(): void
+    {
+        $gateway = new MercadoPagoCheckoutProGateway(new RecordingTransport([]), 'webhook-secret', 'seller-1');
+        foreach ([
+            new WebhookRequest('{}', [], ['data.id' => '123']),
+            $this->signedWebhook('{}', (string) ((time() - 601) * 1000)),
+            $this->signedWebhook('{malformed', (string) (time() * 1000)),
+        ] as $request) {
+            try {
+                $gateway->verifyWebhook($request);
+                $this->fail('Invalid webhook input must be rejected.');
+            } catch (\RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    private function signedWebhook(string $body, string $timestamp): WebhookRequest
+    {
+        $manifest = "id:123;request-id:req-test;ts:{$timestamp};";
+        $signature = hash_hmac('sha256', $manifest, 'webhook-secret');
+
+        return new WebhookRequest(
+            $body,
+            ['x-signature' => "ts={$timestamp},v1={$signature}", 'x-request-id' => 'req-test'],
+            ['data.id' => '123'],
+        );
     }
 }
 
@@ -104,6 +219,7 @@ final class RefundLookupTransport implements MercadoPagoTransport
 
         return [
             'id' => 'payment-1',
+            'collector_id' => 'seller-1',
             'external_reference' => 'external-1',
             'status' => 'approved',
             'transaction_amount' => 10000,

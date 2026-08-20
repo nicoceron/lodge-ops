@@ -2,11 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Contracts\Payments\PaymentGatewayFactory;
+use App\Data\Payments\ProviderDispute as ProviderDisputeData;
+use App\Data\Payments\ProviderPayment;
+use App\Data\Payments\ProviderRefund as ProviderRefundData;
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
 use App\Enums\PaymentRequestPurpose;
 use App\Enums\PaymentStatus;
+use App\Enums\ProviderEventState;
 use App\Enums\ReportExportFormat;
 use App\Enums\ReportExportKind;
 use App\Enums\ReportExportStatus;
@@ -16,22 +21,32 @@ use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\Payment;
 use App\Models\PaymentAttempt;
+use App\Models\ProviderEvent;
+use App\Models\ProviderRefund;
 use App\Models\Reservation;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CompleteRefund;
 use App\Services\FolioService;
+use App\Services\Payments\CreateProviderCheckout;
+use App\Services\Payments\ExecuteProviderRefund;
 use App\Services\Payments\IssuePaymentRequest;
+use App\Services\Payments\ProcessProviderEvent;
+use App\Services\Payments\RecordSettlementRevision;
+use App\Services\Payments\RecoverProviderRefund;
 use App\Services\PaymentService;
 use App\Services\RequestRefund;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTenant;
+use Tests\Fakes\FakePaymentGateway;
 use Tests\TestCase;
 use Throwable;
 
@@ -261,6 +276,207 @@ class PostgresFinancialConcurrencyTest extends TestCase
         $this->assertSame(1, DB::table('report_exports')->where('deduplication_key', $deduplicationKey)->count());
     }
 
+    public function test_concurrent_provider_event_workers_claim_one_event_once(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $reservation, $attempt, , $membership] = $this->providerPaymentEnvironment('event-race-payment');
+        $event = $this->providerEvent($attempt, 'event-race-delivery', 'event-race-payment');
+
+        $process = fn (): string => app(ProcessProviderEvent::class)->handle($event)->processing_state->value;
+        $results = $this->concurrently([$process, $process], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, $event->fresh()->attempt_count);
+        $this->assertSame(ProviderEventState::Processed, $event->fresh()->processing_state);
+        $this->assertSame(1, Payment::query()->where('provider_reference', 'event-race-payment')->count());
+        $this->assertSame(1, $reservation->folioLines()->where('payment_id', Payment::query()->where('provider_reference', 'event-race-payment')->value('id'))->count());
+    }
+
+    public function test_manual_reconcile_racing_webhook_leaves_one_succeeded_payment_effect(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $reservation, $attempt, , $membership] = $this->providerPaymentEnvironment('manual-webhook-race-payment', process: false);
+        $user = $membership->user;
+        $manual = app(PaymentService::class)->recordManual([
+            'reservation_id' => $reservation->id,
+            'method' => 'bank_transfer',
+            'amount_minor' => 10_000,
+        ], $user->id);
+        $event = $this->providerEvent($attempt, 'manual-webhook-race-delivery', 'manual-webhook-race-payment');
+
+        $results = $this->concurrently([
+            fn (): string => app(PaymentService::class)->reconcile($manual, $user->id)->status->value,
+            fn (): string => app(ProcessProviderEvent::class)->handle($event)->processing_state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertContains(collect($results)->where('ok', true)->count(), [1, 2], json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, Payment::query()->where('status', PaymentStatus::Succeeded)->count());
+        $this->assertSame(1, $reservation->folioLines()->where('type', FolioLineType::Payment)->count());
+        $this->assertSame(0, app(FolioService::class)->summary($reservation)['balance_minor']);
+    }
+
+    public function test_concurrent_refund_recovery_workers_post_one_local_completion(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $reservation, $attempt, $payment, $membership] = $this->providerPaymentEnvironment('refund-race-payment');
+        $user = $membership->user;
+        app(FolioService::class)->append($reservation, FolioLineType::Adjustment, 'Cancellation credit', 1000, -5_000, $user->id);
+        $request = app(RequestRefund::class)->handle($reservation, $payment, 5_000, 'Provider recovery race', $user->id);
+        $refund = ProviderRefund::query()->create([
+            'property_id' => $attempt->property_id,
+            'payment_id' => $payment->id,
+            'reservation_change_id' => $request->id,
+            'integration_connection_id' => $attempt->integration_connection_id,
+            'provider' => $attempt->provider,
+            'environment' => $attempt->environment,
+            'provider_account' => $attempt->provider_account,
+            'source_amount_minor' => 5_000,
+            'source_currency' => 'ARS',
+            'charge_amount_minor' => 5_000,
+            'charge_currency' => 'ARS',
+            'idempotency_key' => (string) Str::uuid(),
+            'provider_payment_id' => $payment->provider_reference,
+            'state' => 'processing',
+        ]);
+        $fake = app(PaymentGatewayFactory::class);
+        $this->assertInstanceOf(FakePaymentGateway::class, $fake);
+        $fake->refundResults['refund-race-id'] = new ProviderRefundData('refund-race-id', $payment->provider_reference, 'approved', 5_000, 'ARS', $attempt->provider_account);
+
+        $recover = fn (): string => app(RecoverProviderRefund::class)->handle($refund, 'refund-race-id', $user->id)->state->value;
+        $results = $this->concurrently([$recover, $recover], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame('succeeded', $refund->fresh()->state->value);
+        $this->assertSame(1, $request->events()->where('type', 'refund_completed')->count());
+        $this->assertSame(1, $reservation->folioLines()->where('type', 'refund')->count());
+    }
+
+    public function test_refund_execute_racing_authoritative_recovery_posts_one_effect(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $reservation, $attempt, $payment, $membership] = $this->providerPaymentEnvironment('execute-recover-race-payment');
+        $user = $membership->user;
+        app(FolioService::class)->append($reservation, FolioLineType::Adjustment, 'Cancellation credit', 1000, -5_000, $user->id);
+        $request = app(RequestRefund::class)->handle($reservation, $payment, 5_000, 'Execute versus recover', $user->id);
+        $idempotencyKey = (string) Str::uuid();
+        $providerRefundId = 'refund-'.$idempotencyKey;
+        $refund = ProviderRefund::query()->create([
+            'property_id' => $attempt->property_id,
+            'payment_id' => $payment->id,
+            'reservation_change_id' => $request->id,
+            'integration_connection_id' => $attempt->integration_connection_id,
+            'provider' => $attempt->provider,
+            'environment' => $attempt->environment,
+            'provider_account' => $attempt->provider_account,
+            'source_amount_minor' => 5_000,
+            'source_currency' => 'ARS',
+            'charge_amount_minor' => 5_000,
+            'charge_currency' => 'ARS',
+            'idempotency_key' => $idempotencyKey,
+            'provider_payment_id' => $payment->provider_reference,
+            'state' => 'processing',
+        ]);
+        $fake = app(PaymentGatewayFactory::class);
+        $this->assertInstanceOf(FakePaymentGateway::class, $fake);
+        $fake->refundResults[$providerRefundId] = new ProviderRefundData($providerRefundId, $payment->provider_reference, 'approved', 5_000, 'ARS', 'seller-1');
+
+        $results = $this->concurrently([
+            fn (): string => app(ExecuteProviderRefund::class)->handle($request, $user->id)->state->value,
+            fn (): string => app(RecoverProviderRefund::class)->handle($refund, $providerRefundId, $user->id)->state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame('succeeded', $refund->fresh()->state->value);
+        $this->assertSame($providerRefundId, $refund->fresh()->provider_refund_id);
+        $this->assertSame(1, $request->events()->where('type', 'refund_completed')->count());
+        $this->assertSame(1, $reservation->folioLines()->where('type', FolioLineType::Refund)->count());
+    }
+
+    public function test_concurrent_refund_and_lost_chargeback_never_over_apply_payment_value(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $reservation, $attempt, $payment, $membership] = $this->providerPaymentEnvironment('refund-chargeback-payment');
+        $user = $membership->user;
+        app(FolioService::class)->append($reservation, FolioLineType::Adjustment, 'Cancellation credit', 1000, -10_000, $user->id);
+        $request = app(RequestRefund::class)->handle($reservation, $payment, 10_000, 'Competing chargeback', $user->id);
+        $refund = ProviderRefund::query()->create([
+            'property_id' => $attempt->property_id,
+            'payment_id' => $payment->id,
+            'reservation_change_id' => $request->id,
+            'integration_connection_id' => $attempt->integration_connection_id,
+            'provider' => $attempt->provider,
+            'environment' => $attempt->environment,
+            'provider_account' => $attempt->provider_account,
+            'source_amount_minor' => 10_000,
+            'source_currency' => 'ARS',
+            'charge_amount_minor' => 10_000,
+            'charge_currency' => 'ARS',
+            'idempotency_key' => (string) Str::uuid(),
+            'provider_payment_id' => $payment->provider_reference,
+            'state' => 'processing',
+        ]);
+        $fake = app(PaymentGatewayFactory::class);
+        $this->assertInstanceOf(FakePaymentGateway::class, $fake);
+        $fake->refundResults['refund-competing-id'] = new ProviderRefundData('refund-competing-id', $payment->provider_reference, 'approved', 10_000, 'ARS', 'seller-1');
+        $fake->disputes['chargeback-competing-id'] = new ProviderDisputeData(
+            'chargeback-competing-id', $payment->provider_reference, 'charged_back', 'settled', 10_000, 'ARS',
+            $attempt->provider_account, 'general', false, false, null, CarbonImmutable::now()->subDay(), CarbonImmutable::now(),
+        );
+        $event = $this->providerEvent($attempt, 'chargeback-competing-delivery', 'chargeback-competing-id', 'topic_chargebacks_wh');
+
+        $results = $this->concurrently([
+            fn (): string => app(RecoverProviderRefund::class)->handle($refund, 'refund-competing-id', $user->id)->state->value,
+            fn (): string => app(ProcessProviderEvent::class)->handle($event)->processing_state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $refundEffect = (int) $reservation->changes()->where('type', 'refund_completed')->where('status', 'completed')->sum('amount_minor');
+        $chargebackEffect = (int) $reservation->folioLines()->where('metadata->provider_dispute_effect', 'chargeback')->sum('gross_amount_minor');
+        $this->assertLessThanOrEqual($payment->amount_minor, $refundEffect + $chargebackEffect, json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertContains(collect($results)->where('ok', true)->count(), [1, 2], json_encode($results, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_concurrent_settlement_replays_create_one_immutable_revision(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, , $attempt, , $membership] = $this->providerPaymentEnvironment('settlement-race-payment', process: false);
+        $payment = new ProviderPayment(
+            'settlement-race-payment', $attempt->external_reference, 'approved', 'accredited', 10_000, 'ARS', $attempt->provider_account,
+            ['gross_minor' => 10_000, 'fee_minor' => 500, 'tax_minor' => 100, 'net_minor' => 9_400],
+        );
+
+        $record = fn (): string => app(RecordSettlementRevision::class)->handle($attempt, $payment)->id;
+        $results = $this->concurrently([$record, $record], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertDatabaseCount('settlement_entries', 1);
+        $this->assertDatabaseCount('settlement_entry_revisions', 1);
+    }
+
+    public function test_expiry_racing_authoritative_approval_never_applies_stale_money(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, , $attempt, , $membership] = $this->providerPaymentEnvironment('expiry-race-payment', process: false);
+        $attempt->paymentRequest()->update(['expires_at' => now()->subSecond()]);
+        $event = $this->providerEvent($attempt, 'expiry-race-delivery', 'expiry-race-payment');
+
+        $results = $this->concurrently([
+            fn (): string => (string) Artisan::call('payments:expire-requests', ['--tenant' => $tenant->id]),
+            fn (): string => app(ProcessProviderEvent::class)->handle($event)->processing_state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame('expired', $attempt->paymentRequest->fresh()->state->value);
+        $this->assertDatabaseMissing('payments', ['provider_reference' => 'expiry-race-payment']);
+        $this->assertSame(0, $attempt->reservation->folioLines()->whereNotNull('payment_id')->count());
+    }
+
     /** @return array{Tenant, Reservation, Payment, User, Membership} */
     private function refundablePayment(): array
     {
@@ -280,6 +496,65 @@ class PostgresFinancialConcurrencyTest extends TestCase
         ], $user->id, true);
 
         return [$tenant, $reservation, $payment, $user, $membership];
+    }
+
+    /** @return array{Tenant, Reservation, PaymentAttempt, Payment|null, Membership} */
+    private function providerPaymentEnvironment(string $providerPaymentId, bool $process = true): array
+    {
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'currency' => 'ARS',
+            'subtotal_minor' => 10_000,
+            'tax_minor' => 0,
+            'total_minor' => 10_000,
+        ]);
+        $request = app(IssuePaymentRequest::class)->handle($reservation, PaymentRequestPurpose::FullOutstanding, null, null, $user->id)->request;
+        $connection = IntegrationConnection::query()->create([
+            'name' => 'provider-race-'.$providerPaymentId,
+            'type' => 'payment',
+            'configuration' => [
+                'provider' => 'mercado_pago',
+                'environment' => 'sandbox',
+                'provider_account' => 'seller-race',
+                'return_url_base' => 'https://inn.test',
+                'webhook_key' => str_repeat('r', 48),
+            ],
+            'secret_reference' => 'env:RACE_GATEWAY_TOKEN',
+        ]);
+        $fake = new FakePaymentGateway;
+        $this->app->instance(PaymentGatewayFactory::class, $fake);
+        $attempt = app(CreateProviderCheckout::class)->handle($request, $connection);
+        $fake->payments[$providerPaymentId] = new ProviderPayment(
+            $providerPaymentId, $attempt->external_reference, 'approved', 'accredited', 10_000, 'ARS', 'seller-race',
+        );
+        $payment = null;
+        if ($process) {
+            app(ProcessProviderEvent::class)->handle($this->providerEvent($attempt, 'setup-'.$providerPaymentId, $providerPaymentId));
+            $payment = Payment::query()->where('provider_reference', $providerPaymentId)->sole();
+        }
+
+        return [$tenant, $reservation, $attempt->fresh(), $payment, $membership];
+    }
+
+    private function providerEvent(PaymentAttempt $attempt, string $delivery, string $resource, string $topic = 'payment'): ProviderEvent
+    {
+        return ProviderEvent::query()->create([
+            'integration_connection_id' => $attempt->integration_connection_id,
+            'provider' => $attempt->provider,
+            'environment' => $attempt->environment,
+            'provider_account' => $attempt->provider_account,
+            'delivery_id' => $delivery,
+            'topic' => $topic,
+            'event_type' => $topic,
+            'action' => $topic.'.updated',
+            'resource_id' => $resource,
+            'signature_valid' => true,
+            'received_at' => now(),
+            'processing_state' => ProviderEventState::Received,
+            'raw_body_checksum' => hash('sha256', $delivery),
+        ]);
     }
 
     /** @param array<int, callable(): string> $operations @return array<int, array{ok: bool, result?: string, error?: string}> */
