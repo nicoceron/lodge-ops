@@ -38,7 +38,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
+use LogicException;
 use RuntimeException;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -220,6 +222,62 @@ class CommercialRulesSecondReviewTest extends TestCase
             $this->assertGreaterThanOrEqual(2, count($history['voucher_redemption_history']));
             $this->assertContains($eventType, collect($history['voucher_redemption_history'])->flatMap(fn (array $redemption): array => array_column($redemption['events'], 'type'))->all());
         }
+    }
+
+    public function test_voucher_redemption_facts_are_immutable_while_lifecycle_transitions_remain_valid(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        [$plan, $category] = $this->publishedRate($property, 10_000);
+        $promotion = CommercialPromotion::query()->create([
+            'property_id' => $property->id, 'name' => 'Immutable redemption', 'public_label' => 'Immutable redemption',
+            'state' => 'published', 'currency' => 'USD', 'discount_type' => 'fixed', 'fixed_amount_minor' => 1000,
+            'requires_code' => true, 'published_at' => now(), 'approval_owner_id' => auth()->id(),
+        ]);
+        app(CommercialPromotionService::class)->issueVoucher($promotion, 'IMMUTABLE-REDEMPTION');
+        $quote = app(BookingQuoteService::class)->create($this->quoteInput($property, $plan, $category) + [
+            'voucher_code' => 'immutable-redemption',
+            'promotion_session_id' => 'immutable-redemption-session',
+        ]);
+        $reservation = app(CommitBookingQuote::class)->handle($quote, Guest::factory()->create()->id);
+        $redemption = VoucherRedemption::query()->where('reservation_id', $reservation->id)->firstOrFail();
+
+        $mutations = [
+            'voucher_id' => (string) Str::uuid(),
+            'booking_quote_id' => (string) Str::uuid(),
+            'reservation_id' => (string) Str::uuid(),
+            'guest_id' => null,
+            'session_key_hash' => str_repeat('f', 64),
+            'command_id' => (string) Str::uuid(),
+            'currency' => 'EUR',
+            'discount_minor' => $redemption->discount_minor + 1,
+            'reserved_at' => $redemption->reserved_at->addSecond(),
+        ];
+        foreach ($mutations as $field => $value) {
+            $original = $redemption->fresh()->getRawOriginal($field);
+            try {
+                $redemption->fresh()->forceFill([$field => $value])->save();
+                $this->fail("Voucher redemption {$field} must be immutable.");
+            } catch (LogicException $exception) {
+                $this->assertSame('Voucher redemption facts are immutable.', $exception->getMessage());
+            }
+            $this->assertSame($original, $redemption->fresh()->getRawOriginal($field));
+        }
+
+        app(CommercialPromotionService::class)->confirm($reservation);
+        $this->assertSame('confirmed', $redemption->fresh()->state);
+        $this->assertNotNull($redemption->fresh()->confirmed_at);
+        app(CommercialPromotionService::class)->release($reservation, 'Valid lifecycle regression', false);
+        $this->assertSame('released', $redemption->fresh()->state);
+        $this->assertNotNull($redemption->fresh()->released_at);
+        $this->assertSame(['reserved', 'confirmed', 'released'], $redemption->events()->pluck('type')->all());
+
+        try {
+            $redemption->fresh()->delete();
+            $this->fail('Voucher redemption deletion must be rejected.');
+        } catch (LogicException $exception) {
+            $this->assertSame('Voucher redemption facts are immutable.', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('voucher_redemptions', ['id' => $redemption->id]);
     }
 
     /** @return array{RatePlan, RatePlan, CommercialPromotion, CommercialPromotion, TaxRule, TaxRule, Voucher, Voucher} */

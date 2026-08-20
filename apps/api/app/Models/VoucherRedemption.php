@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use LogicException;
 
 /**
  * @property string $id
@@ -19,6 +20,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class VoucherRedemption extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $redemption): void {
+            $allowed = ['state', 'confirmed_at', 'released_at', 'updated_at'];
+            if (array_diff(array_keys($redemption->getDirty()), $allowed) !== []) {
+                throw new LogicException('Voucher redemption facts are immutable.');
+            }
+        });
+        static::deleting(fn () => throw new LogicException('Voucher redemption facts are immutable.'));
+    }
+
     protected function casts(): array
     {
         return [
