@@ -11,6 +11,7 @@ use App\Models\Voucher;
 use App\Services\VoucherCodeCanonicalizer;
 use App\Support\Tenancy\TenantContext;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -55,6 +56,13 @@ class VoucherResource extends TenantResource
             TextColumn::make('public_label')->searchable(), TextColumn::make('promotion.name'), TextColumn::make('property.name'),
             TextColumn::make('state')->badge(), TextColumn::make('redemptions_count')->counts('redemptions')->label('Uses'),
             TextColumn::make('valid_until')->dateTime()->placeholder('No expiry'),
+        ])->recordActions([
+            Action::make('suspend')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state === 'active')
+                ->action(fn (Voucher $record) => $record->update(['state' => 'suspended'])),
+            Action::make('reactivate')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state === 'suspended')
+                ->action(fn (Voucher $record) => $record->update(['state' => 'active'])),
+            Action::make('retire')->color('danger')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state !== 'retired')
+                ->action(fn (Voucher $record) => $record->update(['state' => 'retired'])),
         ]);
     }
 

@@ -53,7 +53,7 @@ class ReservationForm
                     Select::make('rate_plan_id')->label('Rate plan')
                         ->options(fn (Get $get): array => RatePlan::query()
                             ->when($get('property_id'), fn ($query, $propertyId) => $query->where('property_id', $propertyId))
-                            ->where('is_active', true)->orderBy('name')->get()
+                            ->where('is_active', true)->where('state', 'published')->orderBy('name')->get()
                             ->mapWithKeys(fn (RatePlan $plan): array => [$plan->id => "{$plan->name} · {$plan->currency}"])->all())
                         ->searchable()->preload()->live()->required(),
                     Select::make('program_id')->label('Primary package / activity')->relationship('program', 'name')->searchable()->preload()->live(),

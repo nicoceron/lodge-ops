@@ -8,10 +8,11 @@ use App\Filament\Support\InnPresentation;
 use App\Models\CancellationPolicy;
 use App\Models\CatalogItem;
 use App\Models\DepositPolicy;
+use App\Models\Program;
 use App\Models\RatePlan;
 use App\Models\RateRule;
 use App\Models\ResourceCategory;
-use App\Services\RatePlanPublicationValidator;
+use App\Services\CommercialVersionPublisher;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -63,6 +64,7 @@ class RatePlanResource extends TenantResource
             Section::make('Nightly rules')->description('Highest priority matching rule prices each night.')->schema([
                 Repeater::make('rules')->relationship()->defaultItems(1)->columns(3)->schema([
                     Select::make('resource_category_id')->label('Accommodation category')->options(fn (): array => ResourceCategory::query()->where('counts_as_stay', true)->where('is_active', true)->pluck('name', 'id')->all()),
+                    Select::make('program_id')->label('Program')->options(fn (): array => Program::query()->where('is_active', true)->pluck('name', 'id')->all()),
                     TextInput::make('name')->default('Nightly rate')->required(),
                     Select::make('price_type')->options(['per_night' => 'Per night', 'per_person' => 'Per person / night'])->default('per_night')->required(),
                     TextInput::make('amount_minor')->label('Amount (minor units)')->integer()->minValue(0)->required(),
@@ -76,6 +78,10 @@ class RatePlanResource extends TenantResource
                     TextInput::make('adult_amount_minor')->integer()->minValue(0), TextInput::make('child_amount_minor')->integer()->minValue(0),
                     TextInput::make('infant_amount_minor')->integer()->minValue(0), TextInput::make('single_supplement_minor')->integer()->minValue(0)->default(0),
                     TextInput::make('length_of_stay_adjustment_basis_points')->integer()->minValue(-10000)->maxValue(100000)->default(0),
+                    Repeater::make('group_tiers')->columns(2)->schema([
+                        TextInput::make('minimum_guests')->integer()->minValue(1)->required(),
+                        TextInput::make('adjustment_basis_points')->integer()->minValue(-10000)->maxValue(100000)->required(),
+                    ]),
                     Toggle::make('closed_to_arrival'), Toggle::make('closed_to_departure'), Toggle::make('stop_sell'),
                     Toggle::make('blackout'), Toggle::make('buyout_only'),
                 ]),
@@ -113,11 +119,7 @@ class RatePlanResource extends TenantResource
             Action::make('publish')->requiresConfirmation()->icon('heroicon-o-check-circle')
                 ->visible(fn (RatePlan $record): bool => $record->state === 'draft')
                 ->action(function (RatePlan $record): void {
-                    app(RatePlanPublicationValidator::class)->validate($record);
-                    $record->state = 'published';
-                    $record->published_at = now();
-                    $record->approved_by = auth()->id();
-                    $record->save();
+                    app(CommercialVersionPublisher::class)->publishRatePlan($record, auth()->id());
                     Notification::make()->title('Rate plan version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')

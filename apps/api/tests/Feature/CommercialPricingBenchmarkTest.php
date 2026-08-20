@@ -32,6 +32,7 @@ class CommercialPricingBenchmarkTest extends TestCase
         ] as $name => $ruleData) {
             $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => ucfirst($name), 'currency' => 'USD', 'maximum_occupancy' => 12]);
             RateRule::query()->create($ruleData + ['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id]);
+            DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
             $scenarios[$name] = [
                 'property_id' => $property->id, 'rate_plan_id' => $plan->id, 'resource_category_id' => $category->id,
                 'starts_at' => $arrival, 'ends_at' => $arrival->addDays(7), 'adults' => $name === 'group' ? 6 : 2,

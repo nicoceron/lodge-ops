@@ -14,6 +14,7 @@ use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Services\AmendReservation;
 use App\Services\CompleteRefund;
+use App\Services\QuoteExplanationService;
 use App\Services\ReallocateResource;
 use App\Services\RequestRefund;
 use Filament\Actions\Action;
@@ -30,7 +31,19 @@ final class ReservationChangeActions
     /** @return array<Action> */
     public static function make(): array
     {
-        return [self::amend(), self::move(), self::requestRefund(), self::completeRefund()];
+        return [self::explainQuote(), self::amend(), self::move(), self::requestRefund(), self::completeRefund()];
+    }
+
+    private static function explainQuote(): Action
+    {
+        return Action::make('explainQuote')->label('Historical quote explanation')->icon('heroicon-o-document-magnifying-glass')
+            ->visible(fn (Reservation $record): bool => $record->booking_quote_id !== null
+                && auth()->user()?->can('view', $record->bookingQuote) === true)
+            ->modalHeading('Historical quote explanation')
+            ->modalDescription(fn (Reservation $record): string => collect(app(QuoteExplanationService::class)->project($record->bookingQuote))
+                ->only(['currency', 'subtotal_minor', 'discount_minor', 'tax_minor', 'total_minor'])
+                ->map(fn ($value, $key): string => str($key)->replace('_', ' ')->title().': '.$value)->implode("\n"))
+            ->modalSubmitAction(false)->modalCancelActionLabel('Close');
     }
 
     private static function amend(): Action
@@ -55,7 +68,7 @@ final class ReservationChangeActions
             ->schema([
                 Select::make('rate_plan_id')->label('Rate plan')
                     ->options(fn (Reservation $record): array => RatePlan::query()->where('property_id', $record->property_id)
-                        ->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())->required()->searchable(),
+                        ->where('is_active', true)->where('state', 'published')->orderBy('name')->pluck('name', 'id')->all())->required()->searchable(),
                 Select::make('resource_category_id')->label('Accommodation category')->live()
                     ->options(fn (Reservation $record): array => ResourceCategory::query()->where('property_id', $record->property_id)
                         ->where('counts_as_stay', true)->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())->required()->searchable(),

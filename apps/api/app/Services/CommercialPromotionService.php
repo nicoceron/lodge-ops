@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\BookingQuote;
 use App\Models\CommercialPromotion;
+use App\Models\CommercialPromotionUsage;
+use App\Models\CommercialPromotionUsageEvent;
 use App\Models\Guest;
 use App\Models\Reservation;
 use App\Models\Voucher;
@@ -43,7 +45,7 @@ final class CommercialPromotionService
     public function eligible(array $input, string $currency, CarbonImmutable $businessDate): Collection
     {
         $propertyId = (string) $input['property_id'];
-        $promotions = CommercialPromotion::query()->with('vouchers')
+        $promotions = CommercialPromotion::query()
             ->where('state', 'published')->where('currency', strtoupper($currency))
             ->where(fn ($query) => $query->whereNull('property_id')->orWhere('property_id', $propertyId))
             ->where(fn ($query) => $query->whereNull('valid_from')->orWhere('valid_from', '<=', $businessDate->toDateString()))
@@ -111,7 +113,7 @@ final class CommercialPromotionService
 
         return $selected->each(function (CommercialPromotion $promotion) use ($voucher, $sessionHash): void {
             $promotion->setAttribute('resolved_voucher_id', $promotion->requires_code ? $voucher?->id : null);
-            $promotion->setAttribute('resolved_session_hash', $promotion->requires_code ? $sessionHash : null);
+            $promotion->setAttribute('resolved_session_hash', $sessionHash);
         })->values();
     }
 
@@ -167,71 +169,134 @@ final class CommercialPromotionService
         ];
     }
 
-    public function reserveForCommit(BookingQuote $quote, Reservation $reservation, ?Guest $guest): ?VoucherRedemption
+    public function reserveForCommit(BookingQuote $quote, Reservation $reservation, ?Guest $guest, bool $amendment = false): ?VoucherRedemption
     {
-        $voucherId = data_get($quote->calculation_snapshot, 'voucher_id');
-        if (! is_string($voucherId) || $voucherId === '') {
-            return null;
-        }
-        $existing = VoucherRedemption::query()->where('booking_quote_id', $quote->id)->first();
-        if ($existing !== null) {
-            return $existing;
-        }
-
-        $voucher = Voucher::query()->with('promotion')->lockForUpdate()->findOrFail($voucherId);
-        if ($voucher->state !== 'active' || ($voucher->property_id !== null && $voucher->property_id !== $reservation->property_id)) {
-            throw $this->genericVoucherError();
-        }
-        $discount = (int) $quote->discount_minor;
-        $active = VoucherRedemption::query()->where('voucher_id', $voucher->id)->whereIn('state', ['reserved', 'confirmed']);
-        $usage = (clone $active)->count();
-        $spent = (int) (clone $active)->sum('discount_minor');
-        $limit = $voucher->usage_limit ?? $voucher->promotion->usage_limit;
-        $budget = $voucher->budget_minor ?? $voucher->promotion->budget_minor;
-        $guestLimit = $voucher->per_guest_limit ?? $voucher->promotion->per_guest_limit;
-        $sessionLimit = $voucher->per_session_limit ?? $voucher->promotion->per_session_limit;
         $sessionHash = data_get($quote->calculation_snapshot, 'promotion_session_hash');
-        if (($limit !== null && $usage >= $limit) || ($budget !== null && $spent + $discount > $budget)
-            || ($guest?->id !== null && $guestLimit !== null && (clone $active)->where('guest_id', $guest->id)->count() >= $guestLimit)
-            || ($sessionLimit !== null && (! is_string($sessionHash)
-                || (clone $active)->where('session_key_hash', $sessionHash)->count() >= $sessionLimit))) {
-            throw $this->genericVoucherError();
-        }
+        $snapshots = collect((array) data_get($quote->calculation_snapshot, 'promotion_versions', []))
+            ->sortBy(fn (array $facts): string => sprintf('%010d:%s', 1000000 - (int) ($facts['priority'] ?? 0), (string) ($facts['promotion_id'] ?? '')));
+        $redemption = null;
+        foreach ($snapshots as $facts) {
+            $promotionId = (string) ($facts['promotion_id'] ?? '');
+            $discount = (int) ($facts['discount_minor'] ?? 0);
+            if ($promotionId === '' || $discount <= 0) {
+                continue;
+            }
+            if (CommercialPromotionUsage::query()->where('commercial_promotion_id', $promotionId)->where('booking_quote_id', $quote->id)->exists()) {
+                continue;
+            }
 
-        $redemption = VoucherRedemption::query()->create([
-            'voucher_id' => $voucher->id, 'booking_quote_id' => $quote->id, 'reservation_id' => $reservation->id,
-            'guest_id' => $guest?->id, 'session_key_hash' => is_string($sessionHash) ? $sessionHash : null,
-            'command_id' => $quote->id, 'state' => 'reserved',
-            'currency' => $quote->currency, 'discount_minor' => $discount, 'reserved_at' => now(),
-        ]);
-        $this->event($redemption, 'reserved', 'Atomic booking hold', ['quote_id' => $quote->id, 'discount_minor' => $discount]);
+            $promotion = CommercialPromotion::query()->lockForUpdate()->findOrFail($promotionId);
+            $active = CommercialPromotionUsage::query()->where('commercial_promotion_id', $promotion->id)
+                ->whereIn('state', ['reserved', 'confirmed'])
+                ->when($amendment, fn ($query) => $query->where('reservation_id', '!=', $reservation->id));
+            if (($promotion->usage_limit !== null && (clone $active)->count() >= $promotion->usage_limit)
+                || ($promotion->budget_minor !== null && (int) (clone $active)->sum('discount_minor') + $discount > $promotion->budget_minor)
+                || ($guest?->id !== null && $promotion->per_guest_limit !== null && (clone $active)->where('guest_id', $guest->id)->count() >= $promotion->per_guest_limit)
+                || ($promotion->per_session_limit !== null && (! is_string($sessionHash)
+                    || (clone $active)->where('session_key_hash', $sessionHash)->count() >= $promotion->per_session_limit))) {
+                throw $this->genericVoucherError();
+            }
+            $voucherId = is_string($facts['voucher_id'] ?? null) ? $facts['voucher_id'] : null;
+            $voucher = null;
+            if ($voucherId !== null) {
+                $voucher = Voucher::query()->with('promotion')->lockForUpdate()->findOrFail($voucherId);
+                if ($voucher->state !== 'active' || $voucher->commercial_promotion_id !== $promotion->id
+                    || ($voucher->property_id !== null && $voucher->property_id !== $reservation->property_id)) {
+                    throw $this->genericVoucherError();
+                }
+                $voucherActive = VoucherRedemption::query()->where('voucher_id', $voucher->id)
+                    ->whereIn('state', ['reserved', 'confirmed'])
+                    ->when($amendment, fn ($query) => $query->where('reservation_id', '!=', $reservation->id));
+                $limit = $voucher->usage_limit ?? $promotion->usage_limit;
+                $budget = $voucher->budget_minor ?? $promotion->budget_minor;
+                $guestLimit = $voucher->per_guest_limit ?? $promotion->per_guest_limit;
+                $sessionLimit = $voucher->per_session_limit ?? $promotion->per_session_limit;
+                if (($limit !== null && (clone $voucherActive)->count() >= $limit)
+                    || ($budget !== null && (int) (clone $voucherActive)->sum('discount_minor') + $discount > $budget)
+                    || ($guest?->id !== null && $guestLimit !== null && (clone $voucherActive)->where('guest_id', $guest->id)->count() >= $guestLimit)
+                    || ($sessionLimit !== null && (! is_string($sessionHash) || (clone $voucherActive)->where('session_key_hash', $sessionHash)->count() >= $sessionLimit))) {
+                    throw $this->genericVoucherError();
+                }
+            }
+
+            $usage = CommercialPromotionUsage::query()->create([
+                'commercial_promotion_id' => $promotion->id, 'voucher_id' => $voucher?->id,
+                'booking_quote_id' => $quote->id, 'reservation_id' => $reservation->id, 'guest_id' => $guest?->id,
+                'session_key_hash' => is_string($sessionHash) ? $sessionHash : null, 'state' => 'reserved',
+                'currency' => $quote->currency, 'discount_minor' => $discount, 'reserved_at' => now(),
+            ]);
+            $this->usageEvent($usage, 'reserved', ['quote_id' => $quote->id, 'discount_minor' => $discount, 'promotion_version' => $facts['promotion_version'] ?? null]);
+            if ($voucher !== null) {
+                $redemption = VoucherRedemption::query()->create([
+                    'voucher_id' => $voucher->id, 'booking_quote_id' => $quote->id, 'reservation_id' => $reservation->id,
+                    'guest_id' => $guest?->id, 'session_key_hash' => is_string($sessionHash) ? $sessionHash : null,
+                    'command_id' => $quote->id, 'state' => 'reserved', 'currency' => $quote->currency,
+                    'discount_minor' => $discount, 'reserved_at' => now(),
+                ]);
+                $this->event($redemption, 'reserved', 'Atomic booking hold', ['quote_id' => $quote->id, 'discount_minor' => $discount]);
+            }
+        }
 
         return $redemption;
     }
 
     public function confirm(Reservation $reservation): void
     {
-        $redemption = VoucherRedemption::query()->where('reservation_id', $reservation->id)->lockForUpdate()->first();
-        if ($redemption === null || $redemption->state === 'confirmed') {
-            return;
+        foreach (CommercialPromotionUsage::query()->where('reservation_id', $reservation->id)->where('state', 'reserved')->lockForUpdate()->get() as $usage) {
+            $usage->update(['state' => 'confirmed', 'confirmed_at' => now(), 'released_at' => null]);
+            $this->usageEvent($usage, 'confirmed', []);
         }
-        if (! in_array($redemption->state, ['reserved', 'reinstated'], true)) {
-            throw ValidationException::withMessages(['voucher_code' => 'The promotion can no longer be confirmed.']);
+        foreach (VoucherRedemption::query()->where('reservation_id', $reservation->id)->whereIn('state', ['reserved', 'reinstated'])->lockForUpdate()->get() as $redemption) {
+            $redemption->update(['state' => 'confirmed', 'confirmed_at' => now(), 'released_at' => null]);
+            $this->event($redemption, 'confirmed', 'Reservation confirmed', []);
         }
-        $redemption->update(['state' => 'confirmed', 'confirmed_at' => now(), 'released_at' => null]);
-        $this->event($redemption, 'confirmed', 'Reservation confirmed', []);
     }
 
     public function release(Reservation $reservation, string $reason, bool $cancellation): void
     {
-        $redemption = VoucherRedemption::query()->with('voucher.promotion')->where('reservation_id', $reservation->id)->lockForUpdate()->first();
-        if ($redemption === null || $redemption->state === 'released') {
-            return;
+        foreach (CommercialPromotionUsage::query()->with('promotion')->where('reservation_id', $reservation->id)->whereIn('state', ['reserved', 'confirmed'])->lockForUpdate()->get() as $usage) {
+            if (! $cancellation || $usage->promotion->reinstate_on_cancel) {
+                $usage->update(['state' => 'released', 'released_at' => now()]);
+                $this->usageEvent($usage, 'released', ['reason' => $reason, 'cancellation' => $cancellation]);
+            }
         }
-        $mayReinstate = ! $cancellation || $redemption->voucher->promotion->reinstate_on_cancel;
-        $state = $mayReinstate ? 'reinstated' : $redemption->state;
-        $redemption->update(['state' => $state, 'released_at' => $mayReinstate ? now() : null]);
-        $this->event($redemption, $mayReinstate ? 'reinstated' : 'retained', $reason, ['cancellation' => $cancellation]);
+        foreach (VoucherRedemption::query()->with('voucher.promotion')->where('reservation_id', $reservation->id)->whereIn('state', ['reserved', 'confirmed'])->lockForUpdate()->get() as $redemption) {
+            $mayReinstate = ! $cancellation || $redemption->voucher->promotion->reinstate_on_cancel;
+            if ($mayReinstate) {
+                $redemption->update(['state' => 'released', 'released_at' => now()]);
+            }
+            $this->event($redemption, $mayReinstate ? 'released' : 'retained', $reason, ['cancellation' => $cancellation]);
+        }
+    }
+
+    public function replaceForAmendment(BookingQuote $quote, Reservation $reservation, ?Guest $guest): void
+    {
+        $oldUsages = CommercialPromotionUsage::query()->where('reservation_id', $reservation->id)
+            ->whereIn('state', ['reserved', 'confirmed'])->lockForUpdate()->get();
+        $oldRedemptions = VoucherRedemption::query()->where('reservation_id', $reservation->id)
+            ->whereIn('state', ['reserved', 'confirmed'])->lockForUpdate()->get();
+        $this->reserveForCommit($quote, $reservation, $guest, true);
+        foreach ($oldUsages as $usage) {
+            $replacement = CommercialPromotionUsage::query()->where('booking_quote_id', $quote->id)
+                ->where('commercial_promotion_id', $usage->commercial_promotion_id)->first();
+            $usage->update(['state' => 'released', 'released_at' => now(), 'superseded_by_id' => $replacement?->id]);
+            $this->usageEvent($usage, 'superseded', ['replacement_usage_id' => $replacement?->id, 'discount_delta_minor' => ($replacement === null ? 0 : $replacement->discount_minor) - $usage->discount_minor]);
+        }
+        foreach ($oldRedemptions as $redemption) {
+            $redemption->update(['state' => 'released', 'released_at' => now()]);
+            $this->event($redemption, 'superseded', 'Reservation amendment', ['replacement_quote_id' => $quote->id]);
+        }
+        if ($reservation->status->value === 'confirmed') {
+            $this->confirm($reservation);
+        }
+    }
+
+    private function usageEvent(CommercialPromotionUsage $usage, string $type, array $facts): void
+    {
+        CommercialPromotionUsageEvent::query()->create([
+            'commercial_promotion_usage_id' => $usage->id, 'actor_id' => auth()->id(),
+            'type' => $type, 'facts' => $facts, 'occurred_at' => now(),
+        ]);
     }
 
     private function event(VoucherRedemption $redemption, string $type, string $reason, array $facts): void

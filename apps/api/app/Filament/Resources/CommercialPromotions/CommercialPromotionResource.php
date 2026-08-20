@@ -6,6 +6,10 @@ use App\Filament\Resources\CommercialPromotions\Pages\ManageCommercialPromotions
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\CommercialPromotion;
+use App\Models\Program;
+use App\Models\RatePlan;
+use App\Models\ResourceCategory;
+use App\Services\CommercialVersionPublisher;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
@@ -47,6 +51,11 @@ class CommercialPromotionResource extends TenantResource
             TextInput::make('budget_minor')->integer()->minValue(1), TextInput::make('stacking_group')->maxLength(80),
             TextInput::make('priority')->integer()->default(0), Toggle::make('requires_code'), Toggle::make('exclusive'),
             Toggle::make('reinstate_on_cancel')->helperText('If enabled, cancellation releases the use while preserving append-only history.'),
+            Select::make('applicability.rate_plan_ids')->label('Rate plans')->multiple()->options(fn (): array => RatePlan::query()->pluck('name', 'id')->all()),
+            Select::make('applicability.resource_category_ids')->label('Accommodation categories')->multiple()->options(fn (): array => ResourceCategory::query()->where('is_active', true)->pluck('name', 'id')->all()),
+            Select::make('applicability.program_ids')->label('Programs')->multiple()->options(fn (): array => Program::query()->where('is_active', true)->pluck('name', 'id')->all()),
+            TextInput::make('applicability.minimum_stay')->label('Minimum stay')->integer()->minValue(1),
+            TextInput::make('applicability.maximum_stay')->label('Maximum stay')->integer()->minValue(1),
         ])]);
     }
 
@@ -60,12 +69,7 @@ class CommercialPromotionResource extends TenantResource
             Action::make('publish')->icon('heroicon-o-check-circle')->requiresConfirmation()
                 ->visible(fn (CommercialPromotion $record): bool => $record->state === 'draft')
                 ->action(function (CommercialPromotion $record): void {
-                    if ($record->approval_owner_id === null) {
-                        $record->approval_owner_id = auth()->id();
-                    }
-                    $record->state = 'published';
-                    $record->published_at = now();
-                    $record->save();
+                    app(CommercialVersionPublisher::class)->publishPromotion($record, auth()->id());
                     Notification::make()->title('Promotion version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')

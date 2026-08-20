@@ -112,8 +112,10 @@ final class BookingQuoteService
         }
 
         $plan = RatePlan::query()->with(['rules', 'services.catalogItem', 'depositPolicy', 'cancellationPolicy.tiers'])
-            ->whereKey($ratePlanId)->where('property_id', $propertyId)->where('is_active', true)->firstOrFail();
-        if ($plan->active_from?->isAfter($starts) || $plan->active_until?->isBefore($ends->subDay())) {
+            ->whereKey($ratePlanId)->where('property_id', $propertyId)->where('is_active', true)
+            ->where('state', 'published')->firstOrFail();
+        if (($plan->active_from !== null && $plan->active_from->toDateString() > $arrivalDate->toDateString())
+            || ($plan->active_until !== null && $plan->active_until->toDateString() < $departureDate->subDay()->toDateString())) {
             throw ValidationException::withMessages(['rate_plan_id' => 'The rate plan is not active for the complete stay.']);
         }
         if ($occupancy < $plan->minimum_occupancy || ($plan->maximum_occupancy !== null && $occupancy > $plan->maximum_occupancy)) {
@@ -129,8 +131,8 @@ final class BookingQuoteService
             $serviceOn = $arrivalDate->addDays($night);
             $rule = $this->ruleFor(
                 $plan, $category->id, $programId = ($input['program_id'] ?? null), $serviceOn,
-                $arrivalDate, $departureDate, $nightCount, $occupancy, (bool) ($input['is_buyout'] ?? false),
-                $night === 0, $night === $nightCount - 1, $timezone,
+                $arrivalDate, $nightCount, $occupancy, (bool) ($input['is_buyout'] ?? false),
+                $night === 0, false, $timezone,
             );
             [$quantity, $unitAmount, $amount, $basis, $priceExplanation] = $this->nightlyPrice($rule, $adults, $children, $infants, $nightCount);
             $lines[] = [
@@ -157,6 +159,13 @@ final class BookingQuoteService
             ];
         }
 
+        // Departure restrictions govern the property's local departure business date,
+        // not the final charged night. The selected top-priority rule may not fall back.
+        $this->ruleFor(
+            $plan, $category->id, $programId, $departureDate, $arrivalDate,
+            $nightCount, $occupancy, (bool) ($input['is_buyout'] ?? false), false, true, $timezone,
+        );
+
         $program = empty($input['program_id']) ? null : Program::query()
             ->whereKey($input['program_id'])->where('property_id', $propertyId)->where('is_active', true)->firstOrFail();
         if ($program !== null && $program->price_minor > 0) {
@@ -166,7 +175,7 @@ final class BookingQuoteService
             $lines[] = [
                 'type' => 'service',
                 'description' => $program->name,
-                'service_on' => $starts->toDateString(),
+                'service_on' => $arrivalDate->toDateString(),
                 'basis' => 'per_program',
                 'calculation_order' => 200,
                 'quantity_thousandths' => 1000,
@@ -198,10 +207,10 @@ final class BookingQuoteService
             $multiplier = match ($service->quantity_basis) {
                 'per_night' => $nightCount,
                 'per_person' => $occupancy,
-                'per_person_night' => $occupancy * $nightCount,
+                'per_person_night' => $this->checkedMultiply($occupancy, $nightCount, 'optional_services'),
                 default => 1,
             };
-            $quantity = $requestedQuantity * $multiplier;
+            $quantity = $this->checkedMultiply($requestedQuantity, $multiplier, 'optional_services');
             $unit = (int) ($service->amount_minor ?? $service->catalogItem->price_minor);
             $amount = $service->selection_type === 'included' ? 0 : $this->checkedMultiply($unit, $quantity, 'optional_services');
             $running = (int) collect($lines)->sum('gross_amount_minor');
@@ -234,9 +243,10 @@ final class BookingQuoteService
         $taxableBase = $baseTotal - $discountTotal;
         $taxTotal = 0;
         $exclusiveTax = 0;
-        $taxRules = TaxRule::query()->where('property_id', $propertyId)->where('is_active', true)
-            ->where(fn ($query) => $query->whereNull('active_from')->orWhere('active_from', '<=', $starts->toDateString()))
-            ->where(fn ($query) => $query->whereNull('active_until')->orWhere('active_until', '>=', $ends->subDay()->toDateString()))
+        $taxRules = TaxRule::query()->where('property_id', $propertyId)->where('is_active', true)->where('state', 'published')
+            ->where(fn ($query) => $query->whereNull('currency')->orWhere('currency', strtoupper($plan->currency)))
+            ->where(fn ($query) => $query->whereNull('active_from')->orWhere('active_from', '<=', $arrivalDate->toDateString()))
+            ->where(fn ($query) => $query->whereNull('active_until')->orWhere('active_until', '>=', $departureDate->subDay()->toDateString()))
             ->orderByDesc('priority')->get();
         foreach ($taxRules as $taxRule) {
             $ruleTaxableBase = $taxRule->taxable_discount_allocation === 'after_tax' ? $baseTotal : $taxableBase;
@@ -264,6 +274,7 @@ final class BookingQuoteService
                     " taxable amount using {$taxRule->rounding_scope} rounding.",
                 'metadata' => [
                     'tax_rule_id' => $taxRule->id, 'tax_rule_version' => $taxRule->version,
+                    'currency' => $taxRule->currency,
                     'inclusive' => $taxRule->is_inclusive, 'rounding_scope' => $taxRule->rounding_scope,
                     'taxable_discount_allocation' => $taxRule->taxable_discount_allocation,
                     'jurisdiction_inputs' => $taxRule->jurisdiction_inputs,
@@ -345,7 +356,7 @@ final class BookingQuoteService
             'deposit_policy_snapshot' => $quote->deposit_policy_snapshot,
             'cancellation_policy_snapshot' => $quote->cancellation_policy_snapshot,
             'calculation_snapshot' => $quote->calculation_snapshot,
-            'lines' => $quote->lines->map(fn ($line): array => [
+            'lines' => $quote->lines->sortBy(fn ($line): string => sprintf('%010d:%s', $line->calculation_order, $line->id))->values()->map(fn ($line): array => [
                 'type' => $line->type,
                 'description' => $line->description,
                 'service_on' => $line->service_on?->toDateString(),
@@ -371,7 +382,6 @@ final class BookingQuoteService
         ?string $programId,
         CarbonImmutable $date,
         CarbonImmutable $arrivalDate,
-        CarbonImmutable $departureDate,
         int $nights,
         int $occupancy,
         bool $buyout,
@@ -380,30 +390,33 @@ final class BookingQuoteService
         string $timezone,
     ): RateRule {
         $advanceDays = (int) CarbonImmutable::now($timezone)->startOfDay()->diffInDays($arrivalDate, false);
-        $rule = $plan->rules->first(function (RateRule $rule) use ($categoryId, $programId, $date, $arrivalDate, $nights, $occupancy, $buyout, $arrival, $departure, $advanceDays): bool {
+        $rule = $plan->rules->first(function (RateRule $rule) use ($categoryId, $programId, $date, $buyout): bool {
             $weekdays = $rule->weekdays ?? [];
-            $arrivalDays = $rule->allowed_arrival_days ?? [];
 
             return ($rule->resource_category_id === null || $rule->resource_category_id === $categoryId)
                 && ($rule->program_id === null || $rule->program_id === $programId)
-                && ($rule->starts_on === null || ! $rule->starts_on->isAfter($date))
-                && ($rule->ends_on === null || ! $rule->ends_on->isBefore($date))
+                && ($rule->starts_on === null || $rule->starts_on->toDateString() <= $date->toDateString())
+                && ($rule->ends_on === null || $rule->ends_on->toDateString() >= $date->toDateString())
                 && ($weekdays === [] || in_array($date->dayOfWeekIso, array_map('intval', $weekdays), true))
-                && $nights >= $rule->minimum_stay
-                && ($rule->maximum_stay === null || $nights <= $rule->maximum_stay)
-                && ($rule->minimum_advance_days === null || $advanceDays >= $rule->minimum_advance_days)
-                && ($rule->maximum_advance_days === null || $advanceDays <= $rule->maximum_advance_days)
-                && ($rule->minimum_occupancy === null || $occupancy >= $rule->minimum_occupancy)
-                && ($rule->maximum_occupancy === null || $occupancy <= $rule->maximum_occupancy)
-                && (! $rule->buyout_only || $buyout)
-                && ($arrivalDays === [] || ! $arrival || in_array($arrivalDate->dayOfWeekIso, array_map('intval', $arrivalDays), true))
-                && ! ($arrival && $rule->closed_to_arrival)
-                && ! ($departure && $rule->closed_to_departure)
-                && ! $rule->blackout
-                && ! $rule->stop_sell;
+                && (! $rule->buyout_only || $buyout);
         });
         if ($rule === null) {
             throw ValidationException::withMessages(['rate_plan_id' => 'No sellable rate is available for every requested night.']);
+        }
+
+        $arrivalDays = array_map('intval', $rule->allowed_arrival_days ?? []);
+        $blocked = $rule->blackout || $rule->stop_sell
+            || $nights < $rule->minimum_stay
+            || ($rule->maximum_stay !== null && $nights > $rule->maximum_stay)
+            || ($rule->minimum_advance_days !== null && $advanceDays < $rule->minimum_advance_days)
+            || ($rule->maximum_advance_days !== null && $advanceDays > $rule->maximum_advance_days)
+            || ($rule->minimum_occupancy !== null && $occupancy < $rule->minimum_occupancy)
+            || ($rule->maximum_occupancy !== null && $occupancy > $rule->maximum_occupancy)
+            || ($arrival && $arrivalDays !== [] && ! in_array($arrivalDate->dayOfWeekIso, $arrivalDays, true))
+            || ($arrival && $rule->closed_to_arrival)
+            || ($departure && $rule->closed_to_departure);
+        if ($blocked) {
+            throw ValidationException::withMessages(['rate_plan_id' => 'The governing rate rule does not permit this stay.']);
         }
 
         return $rule;
@@ -436,11 +449,11 @@ final class BookingQuoteService
             ->first(fn (array $candidate): bool => ($adults + $children) >= (int) ($candidate['minimum_guests'] ?? PHP_INT_MAX));
         if (is_array($tier)) {
             $adjustment = (int) ($tier['adjustment_basis_points'] ?? 0);
-            $amount += $this->roundRatio($amount * $adjustment, 10000, 'half_up');
+            $amount = $this->checkedAdd([$amount, $this->basisPointAdjustment($amount, $adjustment, 'group tier')], 'group tier');
             $explanation .= " Group tier {$adjustment} basis-point adjustment.";
         }
         if ($rule->length_of_stay_adjustment_basis_points !== 0) {
-            $amount += $this->roundRatio($amount * $rule->length_of_stay_adjustment_basis_points, 10000, 'half_up');
+            $amount = $this->checkedAdd([$amount, $this->basisPointAdjustment($amount, (int) $rule->length_of_stay_adjustment_basis_points, 'length_of_stay')], 'length_of_stay');
             $explanation .= " Length-of-stay {$rule->length_of_stay_adjustment_basis_points} basis-point adjustment for {$nights} nights.";
         }
         if ($amount < 0 || $amount > PHP_INT_MAX) {
@@ -520,6 +533,16 @@ final class BookingQuoteService
         return $left * $right;
     }
 
+    private function basisPointAdjustment(int $amount, int $basisPoints, string $field): int
+    {
+        $absolute = abs($basisPoints);
+        if ($amount < 0 || ($amount !== 0 && $absolute > intdiv(PHP_INT_MAX, $amount))) {
+            throw ValidationException::withMessages([$field => 'The calculated adjustment is outside supported integer-money limits.']);
+        }
+
+        return $this->roundRatio($amount * $basisPoints, 10000, 'half_up');
+    }
+
     /** @param list<int> $values */
     private function checkedAdd(array $values, string $field): int
     {
@@ -543,6 +566,18 @@ final class BookingQuoteService
             'deposit_policy_snapshot', 'cancellation_policy_snapshot', 'calculation_snapshot', 'lines',
         ]);
 
-        return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        return hash('sha256', json_encode($this->canonicalize($payload), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    private function canonicalize(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return array_map(fn (mixed $item): mixed => $this->canonicalize($item), $value);
     }
 }

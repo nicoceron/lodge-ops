@@ -6,6 +6,7 @@ use App\Filament\Resources\TaxRules\Pages\ManageTaxRules;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\TaxRule;
+use App\Services\CommercialVersionPublisher;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -39,6 +40,7 @@ class TaxRuleResource extends TenantResource
             Select::make('property_id')->options(InnPresentation::propertyOptions(...))->required(), TextInput::make('name')->required(),
             TextInput::make('version')->integer()->minValue(1)->default(1)->required(),
             Select::make('calculation_type')->options(['percentage' => 'Percentage', 'fixed' => 'Fixed amount'])->default('percentage')->required(),
+            TextInput::make('currency')->label('Fixed-tax currency')->length(3)->dehydrateStateUsing(fn (?string $state): ?string => $state === null ? null : strtoupper($state)),
             TextInput::make('percentage_basis_points')->label('Basis points')->integer()->minValue(0)->maxValue(10000),
             TextInput::make('fixed_amount_minor')->label('Fixed amount (minor units)')->integer()->minValue(0), Toggle::make('is_inclusive'),
             DatePicker::make('active_from'), DatePicker::make('active_until')->afterOrEqual('active_from'),
@@ -60,9 +62,7 @@ class TaxRuleResource extends TenantResource
             Action::make('publish')->requiresConfirmation()->icon('heroicon-o-check-circle')
                 ->visible(fn (TaxRule $record): bool => $record->state === 'draft')
                 ->action(function (TaxRule $record): void {
-                    $record->update([
-                        'state' => 'published', 'published_at' => now(), 'approved_by' => auth()->id(),
-                    ]);
+                    app(CommercialVersionPublisher::class)->publishTaxRule($record, auth()->id());
                     Notification::make()->title('Tax-input version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')

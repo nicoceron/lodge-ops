@@ -18,6 +18,7 @@ use App\Services\ReservationService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -181,6 +182,7 @@ class N2ApiIdempotencyTest extends TestCase
             'resource_category_id' => $categoryId,
             'amount_minor' => $nightlyRate,
         ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
 
         return [$plan, $policy];
     }

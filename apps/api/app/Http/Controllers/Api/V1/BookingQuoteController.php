@@ -7,7 +7,6 @@ use App\Models\BookingQuote;
 use App\Models\Reservation;
 use App\Services\BookingQuoteService;
 use App\Services\QuoteExplanationService;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -53,8 +52,7 @@ class BookingQuoteController extends Controller
 
     public function show(BookingQuote $bookingQuote, QuoteExplanationService $explanations): JsonResponse
     {
-        $this->authorize('viewAny', Reservation::class);
-        abort_unless(app(TenantContext::class)->canAccessProperty($bookingQuote->property_id), 404);
+        $this->authorize('view', $bookingQuote);
 
         return response()->json(['data' => $explanations->project($bookingQuote)]);
     }

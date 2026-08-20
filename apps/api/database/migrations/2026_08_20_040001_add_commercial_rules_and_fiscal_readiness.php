@@ -19,6 +19,8 @@ return new class extends Migration
             $table->dropUnique(['tenant_id', 'property_id', 'name', 'currency']);
             $table->unique(['tenant_id', 'property_id', 'name', 'currency', 'version'], 'rate_plans_version_unique');
         });
+        DB::table('rate_plans')->where('is_active', true)->update(['state' => 'published', 'published_at' => now()]);
+        DB::table('rate_plans')->where('is_active', false)->update(['state' => 'retired', 'retired_at' => now()]);
 
         Schema::table('rate_rules', function (Blueprint $table): void {
             $table->string('name')->default('Nightly rate')->after('resource_category_id');
@@ -43,6 +45,7 @@ return new class extends Migration
         Schema::table('tax_rules', function (Blueprint $table): void {
             $table->unsignedInteger('version')->default(1)->after('name');
             $table->string('state', 20)->default('draft')->after('version');
+            $table->char('currency', 3)->nullable()->after('state');
             $table->foreignUuid('supersedes_id')->nullable()->after('state');
             $table->string('taxable_discount_allocation', 32)->default('before_tax')->after('is_inclusive');
             $table->string('rounding_mode', 20)->default('half_up')->after('taxable_discount_allocation');
@@ -57,6 +60,12 @@ return new class extends Migration
         Schema::table('tax_rules', function (Blueprint $table): void {
             $table->foreign('supersedes_id', 'tax_rules_supersedes_id_foreign')->references('id')->on('tax_rules')->nullOnDelete();
         });
+        // Legacy percentage inputs can be preserved as published versions. A legacy
+        // fixed amount has no defensible currency, so it remains a draft until staff
+        // supplies that explicit jurisdictional input.
+        DB::table('tax_rules')->where('is_active', true)->where('calculation_type', '!=', 'fixed')
+            ->update(['state' => 'published', 'published_at' => now()]);
+        DB::table('tax_rules')->where('is_active', false)->update(['state' => 'retired', 'retired_at' => now()]);
 
         Schema::table('booking_quotes', function (Blueprint $table): void {
             $table->unsignedSmallInteger('infants')->default(0)->after('children');
@@ -196,11 +205,55 @@ return new class extends Migration
             $table->index(['tenant_id', 'voucher_redemption_id', 'occurred_at'], 'voucher_events_history_idx');
         });
 
+        Schema::create('commercial_promotion_usages', function (Blueprint $table): void {
+            $this->tenantUuid($table);
+            $table->foreignUuid('commercial_promotion_id')->constrained()->restrictOnDelete();
+            $table->foreignUuid('voucher_id')->nullable()->constrained()->restrictOnDelete();
+            $table->foreignUuid('booking_quote_id')->constrained()->restrictOnDelete();
+            $table->foreignUuid('reservation_id')->constrained()->restrictOnDelete();
+            $table->foreignUuid('guest_id')->nullable()->constrained()->nullOnDelete();
+            $table->char('session_key_hash', 64)->nullable();
+            $table->string('state', 20)->default('reserved');
+            $table->char('currency', 3);
+            $table->unsignedBigInteger('discount_minor');
+            $table->timestampTz('reserved_at');
+            $table->timestampTz('confirmed_at')->nullable();
+            $table->timestampTz('released_at')->nullable();
+            $table->foreignUuid('superseded_by_id')->nullable();
+            $table->timestamps();
+            $table->unique(['tenant_id', 'commercial_promotion_id', 'booking_quote_id'], 'promotion_usage_quote_unique');
+            $table->index(['tenant_id', 'commercial_promotion_id', 'state'], 'promotion_usage_limit_idx');
+            $table->index(['tenant_id', 'commercial_promotion_id', 'guest_id'], 'promotion_usage_guest_idx');
+            $table->index(['tenant_id', 'commercial_promotion_id', 'session_key_hash'], 'promotion_usage_session_idx');
+            $table->foreign(['tenant_id', 'commercial_promotion_id'], 'promotion_usage_tenant_promotion_fk')
+                ->references(['tenant_id', 'id'])->on('commercial_promotions')->restrictOnDelete();
+            $table->foreign(['tenant_id', 'booking_quote_id'], 'promotion_usage_tenant_quote_fk')
+                ->references(['tenant_id', 'id'])->on('booking_quotes')->restrictOnDelete();
+            $table->foreign(['tenant_id', 'reservation_id'], 'promotion_usage_tenant_reservation_fk')
+                ->references(['tenant_id', 'id'])->on('reservations')->restrictOnDelete();
+        });
+        Schema::table('commercial_promotion_usages', function (Blueprint $table): void {
+            $table->foreign('superseded_by_id', 'promotion_usage_superseded_by_fk')->references('id')->on('commercial_promotion_usages')->nullOnDelete();
+        });
+
+        Schema::create('commercial_promotion_usage_events', function (Blueprint $table): void {
+            $this->tenantUuid($table);
+            $table->foreignUuid('commercial_promotion_usage_id')->constrained()->restrictOnDelete();
+            $table->foreignId('actor_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('type', 24);
+            $table->json('facts');
+            $table->timestampTz('occurred_at');
+            $table->timestamps();
+            $table->foreign(['tenant_id', 'commercial_promotion_usage_id'], 'promotion_usage_events_tenant_usage_fk')
+                ->references(['tenant_id', 'id'])->on('commercial_promotion_usages')->restrictOnDelete();
+        });
+
         Schema::create('fiscal_source_snapshots', function (Blueprint $table): void {
             $this->tenantUuid($table);
             $table->foreignUuid('property_id')->constrained()->restrictOnDelete();
             $table->foreignUuid('reservation_id')->constrained()->restrictOnDelete();
             $table->unsignedInteger('reservation_revision');
+            $table->char('source_revision', 64);
             $table->string('source_type', 32)->default('operational_folio');
             $table->char('currency', 3);
             $table->bigInteger('net_minor');
@@ -210,7 +263,7 @@ return new class extends Migration
             $table->char('checksum', 64);
             $table->timestampTz('captured_at');
             $table->timestamps();
-            $table->unique(['tenant_id', 'reservation_id', 'reservation_revision', 'source_type'], 'fiscal_source_snapshot_unique');
+            $table->unique(['tenant_id', 'reservation_id', 'source_revision', 'source_type'], 'fiscal_source_snapshot_unique');
             $table->foreign(['tenant_id', 'property_id'], 'fiscal_snapshots_tenant_property_fk')
                 ->references(['tenant_id', 'id'])->on('properties')->restrictOnDelete();
             $table->foreign(['tenant_id', 'reservation_id'], 'fiscal_snapshots_tenant_reservation_fk')
@@ -222,14 +275,35 @@ return new class extends Migration
             DB::statement("ALTER TABLE commercial_promotions ADD CONSTRAINT commercial_promotions_discount_check CHECK ((discount_type = 'percentage' AND percentage_basis_points BETWEEN 1 AND 10000 AND fixed_amount_minor IS NULL) OR (discount_type = 'fixed' AND fixed_amount_minor > 0 AND percentage_basis_points IS NULL))");
             DB::statement("ALTER TABLE vouchers ADD CONSTRAINT vouchers_state_check CHECK (state IN ('active', 'suspended', 'retired'))");
             DB::statement("ALTER TABLE voucher_redemptions ADD CONSTRAINT voucher_redemptions_state_check CHECK (state IN ('reserved', 'confirmed', 'released', 'reinstated'))");
+            DB::statement("ALTER TABLE tax_rules ADD CONSTRAINT tax_rules_fixed_currency_check CHECK (calculation_type <> 'fixed' OR currency IS NOT NULL OR state = 'draft')");
+            DB::statement("CREATE UNIQUE INDEX rate_plans_one_published_idx ON rate_plans (tenant_id, property_id, name, currency) WHERE state = 'published'");
+            DB::statement("CREATE UNIQUE INDEX tax_rules_one_published_idx ON tax_rules (tenant_id, property_id, name) WHERE state = 'published'");
+            DB::statement("CREATE UNIQUE INDEX commercial_promotions_one_published_idx ON commercial_promotions (tenant_id, COALESCE(property_id, '00000000-0000-0000-0000-000000000000'::uuid), name) WHERE state = 'published'");
         } else {
             DB::statement("CREATE UNIQUE INDEX commercial_promotions_version_unique ON commercial_promotions (tenant_id, ifnull(property_id, '00000000-0000-0000-0000-000000000000'), name, version)");
+            DB::statement("CREATE UNIQUE INDEX rate_plans_one_published_idx ON rate_plans (tenant_id, property_id, name, currency) WHERE state = 'published'");
+            DB::statement("CREATE UNIQUE INDEX tax_rules_one_published_idx ON tax_rules (tenant_id, property_id, name) WHERE state = 'published'");
+            DB::statement("CREATE UNIQUE INDEX commercial_promotions_one_published_idx ON commercial_promotions (tenant_id, ifnull(property_id, '00000000-0000-0000-0000-000000000000'), name) WHERE state = 'published'");
         }
     }
 
     public function down(): void
     {
+        $versionedFactsExist = DB::table('rate_plans')->where('version', '>', 1)->exists()
+            || DB::table('tax_rules')->where('version', '>', 1)->exists()
+            || DB::table('commercial_promotions')->exists()
+            || DB::table('fiscal_source_snapshots')->exists();
+        $testTeardownOverride = app()->runningUnitTests() && getenv('COMMERCIAL_TEST_TEARDOWN') === '1';
+        if ($versionedFactsExist && ! $testTeardownOverride) {
+            throw new RuntimeException('Commercial-rules migration cannot be rolled back after versioned pricing, promotion usage, or fiscal-source facts exist. Export/archive those immutable records and execute a reviewed data-collapse migration first.');
+        }
+
+        DB::statement('DROP INDEX IF EXISTS rate_plans_one_published_idx');
+        DB::statement('DROP INDEX IF EXISTS tax_rules_one_published_idx');
+
         Schema::dropIfExists('fiscal_source_snapshots');
+        Schema::dropIfExists('commercial_promotion_usage_events');
+        Schema::dropIfExists('commercial_promotion_usages');
         Schema::dropIfExists('voucher_redemption_events');
         Schema::dropIfExists('voucher_redemptions');
         Schema::dropIfExists('vouchers');
@@ -250,7 +324,7 @@ return new class extends Migration
             $table->dropForeign(['supersedes_id']);
             $table->dropForeign(['approved_by']);
             $table->dropColumn([
-                'version', 'state', 'supersedes_id', 'taxable_discount_allocation', 'rounding_mode', 'rounding_scope',
+                'version', 'state', 'currency', 'supersedes_id', 'taxable_discount_allocation', 'rounding_mode', 'rounding_scope',
                 'jurisdiction_inputs', 'published_at', 'retired_at', 'approved_by',
             ]);
             $table->unique(['tenant_id', 'property_id', 'name']);

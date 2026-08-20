@@ -26,6 +26,18 @@ class PostgresCommercialConcurrencyTest extends TestCase
 {
     use CreatesTenant, DatabaseMigrations;
 
+    protected function tearDown(): void
+    {
+        // DatabaseMigrations must dismantle its isolated test schema. Production
+        // rollback remains guarded unless this explicit unit-test-only flag is set.
+        putenv('COMMERCIAL_TEST_TEARDOWN=1');
+        try {
+            parent::tearDown();
+        } finally {
+            putenv('COMMERCIAL_TEST_TEARDOWN');
+        }
+    }
+
     public function test_final_room_and_final_voucher_use_have_one_winner_and_rollback_together(): void
     {
         $this->requirePostgresConcurrency();
@@ -34,6 +46,7 @@ class PostgresCommercialConcurrencyTest extends TestCase
         $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 2]);
         $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Race rate', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $promotion = CommercialPromotion::query()->create([
             'property_id' => $property->id, 'name' => 'Last use', 'public_label' => 'Last use', 'state' => 'published',
             'currency' => 'USD', 'discount_type' => 'fixed', 'fixed_amount_minor' => 1000,

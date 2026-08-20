@@ -16,6 +16,7 @@ use App\Services\BookingQuoteService;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Livewire\Livewire;
@@ -65,6 +66,7 @@ class CommercialAuthorizationAndFilamentTest extends TestCase
         Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id]);
         $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'API rate', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $headers = ['X-Tenant-ID' => $tenant->id, 'Idempotency-Key' => (string) Str::uuid()];
         $payload = [
             'property_id' => $property->id, 'rate_plan_id' => $plan->id, 'resource_category_id' => $category->id,
@@ -79,6 +81,7 @@ class CommercialAuthorizationAndFilamentTest extends TestCase
         Resource::factory()->create(['property_id' => $otherProperty->id, 'category_id' => $otherCategory->id]);
         $otherPlan = RatePlan::query()->create(['property_id' => $otherProperty->id, 'name' => 'Other', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $otherPlan->id, 'resource_category_id' => $otherCategory->id, 'amount_minor' => 1000]);
+        DB::table('rate_plans')->where('id', $otherPlan->id)->update(['state' => 'published', 'published_at' => now()]);
         $otherQuote = app(BookingQuoteService::class)->create([
             'property_id' => $otherProperty->id, 'rate_plan_id' => $otherPlan->id, 'resource_category_id' => $otherCategory->id,
             'starts_at' => now()->addDays(30), 'ends_at' => now()->addDays(31), 'adults' => 1,

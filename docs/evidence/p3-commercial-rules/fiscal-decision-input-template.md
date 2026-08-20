@@ -79,4 +79,4 @@ Date: **Pending**
 
 ## Current Agent 04 determination
 
-At the 2026-08-20 implementation baseline, no approved legal entity, jurisdiction, invoice class, tax registration/rates, numbering authorization, point of sale, correction rules, exchange-rate rule, or fiscal authority/provider contract exists in the repository. Therefore Agent 04B remains deferred and Inn's current operational documents remain non-fiscal.
+At the 2026-08-20 implementation baseline, no approved legal entity, jurisdiction, invoice class, tax registration/rates, numbering authorization, point of sale, correction rules, exchange-rate rule, fiscal authority/provider contract, or signed deferment exists in the repository. Therefore the Agent 04B decision is **pending**, regulated issuance is **blocked**, and Inn's current operational documents remain non-fiscal. Only a completed approval above may authorize Agent 04B; only a separately recorded written client deferment may classify it as deferred for final certification.
