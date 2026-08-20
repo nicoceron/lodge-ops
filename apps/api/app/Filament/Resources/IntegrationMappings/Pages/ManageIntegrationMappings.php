@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\IntegrationMappings\Pages;
 
 use App\Filament\Resources\IntegrationMappings\IntegrationMappingResource;
+use App\Models\IntegrationConnection;
+use App\Services\Integrations\IntegrationMappingService;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ManageRecords;
 
@@ -12,12 +14,17 @@ class ManageIntegrationMappings extends ManageRecords
 
     protected function getHeaderActions(): array
     {
-        return [CreateAction::make()->mutateDataUsing(function (array $data): array {
-            $data['valid_from'] = now();
-            $data['conflict_state'] = 'clear';
-            $data['facts_checksum'] = hash('sha256', json_encode($data['safe_facts'] ?? [], JSON_THROW_ON_ERROR));
-
-            return $data;
-        })];
+        return [CreateAction::make()->using(fn (array $data) => app(IntegrationMappingService::class)->version(
+            IntegrationConnection::query()->findOrFail($data['integration_connection_id']),
+            $data['property_id'] ?? null,
+            $data['capability'],
+            $data['direction'],
+            $data['local_entity_type'],
+            $data['local_key'],
+            $data['external_entity_type'],
+            $data['external_key'],
+            (int) $data['transform_version'],
+            $data['safe_facts'] ?? [],
+        ))];
     }
 }

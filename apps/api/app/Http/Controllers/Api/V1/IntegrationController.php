@@ -10,6 +10,7 @@ use App\Models\IntegrationMapping;
 use App\Models\IntegrationSyncRun;
 use App\Services\IntegrationConnectionService;
 use App\Services\Integrations\EndpointKeyService;
+use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\Integrations\IntegrationEventService;
 use App\Services\Integrations\IntegrationHealthService;
 use App\Services\Integrations\IntegrationReconciliationService;
@@ -100,13 +101,22 @@ class IntegrationController extends Controller
         $data = $request->validate([
             'capability' => ['required', Rule::in(IntegrationRunService::CAPABILITIES)],
             'property_id' => ['nullable', 'uuid'],
-            'trigger' => ['sometimes', Rule::in(['manual', 'scheduled', 'reconciliation', 'resume'])],
+            'trigger' => ['sometimes', Rule::in(['manual', 'scheduled', 'reconciliation'])],
         ]);
         $propertyId = $data['property_id'] ?? $connection->property_id;
         abort_unless($propertyId === null || app(TenantContext::class)->canAccessProperty($propertyId), 403);
         $run = $runs->start($connection, $data['capability'], $propertyId, $data['trigger'] ?? 'manual', $idempotencyKey, $request->user()->id);
 
         return response()->json(['data' => $run], 202);
+    }
+
+    public function resumeRun(Request $request, IntegrationSyncRun $run, IntegrationRunService $runs): JsonResponse
+    {
+        $this->authorize('update', $run);
+        $idempotencyKey = $this->requiredIdempotencyKey($request);
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
+
+        return response()->json(['data' => $runs->resume($run, $idempotencyKey, $request->user()->id, $data['reason'])], 202);
     }
 
     public function events(IntegrationConnection $connection): JsonResponse
@@ -163,7 +173,10 @@ class IntegrationController extends Controller
     /** @return array<string,mixed> */
     private function connectionData(IntegrationConnection $connection): array
     {
-        return collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key'])->all();
+        $data = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();
+        $data['configuration'] = app(IntegrationConfigurationPolicy::class)->publicView($connection->configuration);
+
+        return $data;
     }
 
     private function requiredIdempotencyKey(Request $request): string

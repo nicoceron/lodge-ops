@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\Integrations\RateLimitedIntegrationException;
 use App\Models\IntegrationSyncRun;
 use App\Models\Tenant;
 use App\Services\Integrations\IntegrationRunService;
@@ -31,6 +32,10 @@ class ExecuteIntegrationRunJob implements ShouldQueue
     {
         $context->clear();
         $context->set(Tenant::query()->findOrFail($this->tenantId));
-        $runs->executePage(IntegrationSyncRun::query()->findOrFail($this->runId));
+        try {
+            $runs->executePage(IntegrationSyncRun::query()->findOrFail($this->runId));
+        } catch (RateLimitedIntegrationException $exception) {
+            $this->release($exception->retryAfterSeconds);
+        }
     }
 }

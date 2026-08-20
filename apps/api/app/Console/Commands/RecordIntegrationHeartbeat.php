@@ -42,19 +42,29 @@ class RecordIntegrationHeartbeat extends Command
             }
         }
 
-        $snapshot = [
-            'occurred_at' => now()->toIso8601String(),
-            'queued_runs' => DB::table('integration_sync_runs')->whereIn('status', ['queued', 'running', 'blocked'])->count(),
-            'backlog_items' => DB::table('integration_sync_run_items')->whereIn('status', ['pending', 'retryable', 'processing'])->count(),
-            'open_dead_letters' => DB::table('integration_dead_letters')->where('status', 'open')->count(),
-        ];
-        Cache::put('integration:scheduler-heartbeat', $snapshot, now()->addMinutes(5));
-        event(new IntegrationSchedulerHeartbeat(
-            $snapshot['occurred_at'],
-            $snapshot['queued_runs'],
-            $snapshot['backlog_items'],
-            $snapshot['open_dead_letters'],
-        ));
+        $scopes = DB::table('integration_connections')->select(['tenant_id', 'property_id'])->distinct()->get();
+        foreach ($scopes as $scope) {
+            $scopeRuns = DB::table('integration_sync_runs')->where('tenant_id', $scope->tenant_id)
+                ->where('property_id', $scope->property_id);
+            $snapshot = [
+                'occurred_at' => now()->toIso8601String(),
+                'queued_runs' => (clone $scopeRuns)->whereIn('status', ['queued', 'running', 'blocked'])->count(),
+                'backlog_items' => DB::table('integration_sync_run_items')->where('tenant_id', $scope->tenant_id)
+                    ->where('property_id', $scope->property_id)->whereIn('status', ['pending', 'retryable', 'processing'])->count(),
+                'open_dead_letters' => DB::table('integration_dead_letters')->where('tenant_id', $scope->tenant_id)
+                    ->where('property_id', $scope->property_id)->where('status', 'open')->count(),
+            ];
+            $scopeKey = $scope->property_id ?? 'global';
+            Cache::put("integration:scheduler-heartbeat:{$scope->tenant_id}:{$scopeKey}", $snapshot, now()->addMinutes(5));
+            event(new IntegrationSchedulerHeartbeat(
+                $scope->tenant_id,
+                $scope->property_id,
+                $snapshot['occurred_at'],
+                $snapshot['queued_runs'],
+                $snapshot['backlog_items'],
+                $snapshot['open_dead_letters'],
+            ));
+        }
 
         DB::table('integration_sync_runs')
             ->where(function ($query): void {

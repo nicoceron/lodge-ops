@@ -20,7 +20,8 @@ final class ReceiveProviderWebhook
     public function handle(string $webhookKey, string $rawBody, array $headers, array $query): ProviderEvent
     {
         $connection = $this->endpointKeys->resolveConnection($webhookKey);
-        abort_unless($connection->type === 'payment', 404);
+        abort_unless($connection->type === 'payment' && $connection->provider === 'mercado_pago'
+            && $connection->product === 'checkout_pro' && $connection->is_enabled && $connection->revoked_at === null, 404);
         $verified = $this->gateways->for($connection)->verifyWebhook(new WebhookRequest($rawBody, $headers, $query));
         $checksum = hash('sha256', $rawBody);
 
@@ -28,8 +29,8 @@ final class ReceiveProviderWebhook
             $event = DB::transaction(fn (): ProviderEvent => ProviderEvent::query()->create([
                 'integration_connection_id' => $connection->id,
                 'provider' => 'mercado_pago',
-                'environment' => data_get($connection->configuration, 'environment', 'sandbox'),
-                'provider_account' => data_get($connection->configuration, 'provider_account'),
+                'environment' => $connection->environment,
+                'provider_account' => $connection->external_account_id,
                 'delivery_id' => $verified->deliveryId,
                 'topic' => $verified->topic,
                 'event_type' => $verified->type,
@@ -46,8 +47,8 @@ final class ReceiveProviderWebhook
         } catch (QueryException) {
             $original = ProviderEvent::query()
                 ->where('provider', 'mercado_pago')
-                ->where('environment', data_get($connection->configuration, 'environment', 'sandbox'))
-                ->where('provider_account', data_get($connection->configuration, 'provider_account'))
+                ->where('environment', $connection->environment)
+                ->where('provider_account', $connection->external_account_id)
                 ->where(fn ($query) => $query->where('delivery_id', $verified->deliveryId)->orWhere('raw_body_checksum', $checksum))
                 ->firstOrFail();
 
@@ -55,8 +56,8 @@ final class ReceiveProviderWebhook
                 'integration_connection_id' => $connection->id,
                 'duplicate_of_id' => $original->id,
                 'provider' => 'mercado_pago',
-                'environment' => data_get($connection->configuration, 'environment', 'sandbox'),
-                'provider_account' => data_get($connection->configuration, 'provider_account'),
+                'environment' => $connection->environment,
+                'provider_account' => $connection->external_account_id,
                 'delivery_id' => 'duplicate-'.Str::uuid(),
                 'topic' => $verified->topic,
                 'event_type' => $verified->type,

@@ -168,6 +168,7 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::get('integrations/{connection}/runs', [IntegrationController::class, 'runs']);
     Route::post('integrations/{connection}/runs', [IntegrationController::class, 'startRun'])->middleware('idempotent');
     Route::get('integration-runs', [IntegrationController::class, 'runs']);
+    Route::post('integration-runs/{run}/resume', [IntegrationController::class, 'resumeRun'])->middleware('idempotent');
     Route::get('integrations/{connection}/events', [IntegrationController::class, 'events']);
     Route::post('integration-events/{event}/replay', [IntegrationController::class, 'replayEvent'])->middleware('idempotent');
     Route::get('integrations/{connection}/dead-letters', [IntegrationController::class, 'deadLetters']);

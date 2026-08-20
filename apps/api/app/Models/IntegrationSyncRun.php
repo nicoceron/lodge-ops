@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Integrations\SafeIntegrationError;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -29,6 +30,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class IntegrationSyncRun extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(function (IntegrationSyncRun $run): void {
+            if ($run->last_error !== null) {
+                $run->last_error = SafeIntegrationError::from($run->last_error);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

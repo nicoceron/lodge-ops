@@ -153,11 +153,54 @@ class ExtendedOperationsTest extends TestCase
         } catch (DomainException) {
             $this->assertTrue(true);
         }
+        foreach ([
+            ['provider' => 'mercado_pago'],
+            ['headers' => ['Authorization' => 'Bearer should-not-persist']],
+            ['webhook_signing_secret_reference' => 'raw-secret-value'],
+            ['endpoint_url' => 'https://user:password@example.test/callback'],
+            ['fixture' => ['nested' => ['environment' => 'production']]],
+        ] as $unsafeConfiguration) {
+            try {
+                $service->configure(
+                    'Unsafe typed '.Str::random(6), 'webhook', $unsafeConfiguration, 'env:SAFE_REFERENCE', null,
+                    'contract_fake', 'webhooks', 'account-'.Str::random(8), 'sandbox', ['webhook.inbound', 'webhook.outbound'],
+                );
+                $this->fail('Unapproved, sensitive, or divergent typed configuration must fail.');
+            } catch (DomainException) {
+                $this->addToAssertionCount(1);
+            }
+        }
 
         app(TenantContext::class)->clear();
         $this->tenantEnvironment(authenticate: false);
         $this->assertFalse(IntegrationConnection::query()->whereKey($connection->id)->exists());
         $this->assertNotEmpty($tenantA->id);
+    }
+
+    public function test_integration_api_persists_typed_configuration_but_redacts_secret_references(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment(MembershipRole::Administrator);
+        $response = $this->withHeaders([
+            'X-Tenant-ID' => $tenant->id, 'Idempotency-Key' => 'typed-integration-config-0001',
+        ])->putJson('/api/v1/integrations', [
+            'name' => 'Typed webhook', 'type' => 'webhook', 'property_id' => $property->id,
+            'provider' => 'contract_fake', 'product' => 'webhooks', 'external_account_id' => 'typed-account',
+            'environment' => 'sandbox', 'capabilities' => ['webhook.inbound'],
+            'secret_reference' => 'env:TYPED_CONNECTION_SECRET',
+            'configuration' => ['webhook_signing_secret_reference' => 'vault://tenant/webhook-signing'],
+        ])->assertOk();
+        $response->assertJsonPath('data.provider', 'contract_fake')
+            ->assertJsonPath('data.configuration.webhook_signing_secret_reference', '[configured]')
+            ->assertJsonMissing(['secret_reference' => 'env:TYPED_CONNECTION_SECRET'])
+            ->assertJsonMissing(['webhook_signing_secret_reference' => 'vault://tenant/webhook-signing']);
+        app(TenantContext::class)->set($tenant, $membership);
+        $connection = IntegrationConnection::query()->sole();
+        $this->assertSame('vault://tenant/webhook-signing', $connection->configuration['webhook_signing_secret_reference']);
+        $this->assertArrayNotHasKey('provider', $connection->configuration);
+
+        $this->withHeader('X-Tenant-ID', $tenant->id)->getJson('/api/v1/integrations/'.$connection->id)
+            ->assertOk()->assertJsonPath('data.configuration.webhook_signing_secret_reference', '[configured]')
+            ->assertJsonMissing(['secret_reference' => 'env:TYPED_CONNECTION_SECRET']);
     }
 
     public function test_document_template_versions_are_immutable(): void

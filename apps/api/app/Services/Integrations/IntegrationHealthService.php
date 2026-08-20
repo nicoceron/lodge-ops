@@ -68,7 +68,7 @@ final class IntegrationHealthService
             'dead_letters' => IntegrationDeadLetter::query()->where('integration_connection_id', $connection->id)->where('status', 'open')->count(),
             'circuit_open' => $connection->circuit_opened_at?->isFuture() ?? false,
             'throttled_until' => $connection->throttled_until,
-            'scheduler_heartbeat' => Cache::get('integration:scheduler-heartbeat'),
+            'scheduler_heartbeat' => Cache::get('integration:scheduler-heartbeat:'.$connection->tenant_id.':'.($connection->property_id ?? 'global')),
         ];
     }
 }

@@ -21,8 +21,8 @@ final class IntegrationOperationRecorder
             'actor_id' => $actorId,
             'operation' => $operation,
             'idempotency_key_hash' => $idempotencyKeyHash,
-            'reason' => str($reason)->limit(500),
-            'safe_facts' => $facts,
+            'reason' => SafeIntegrationError::from($reason),
+            'safe_facts' => SafeIntegrationError::value($facts),
             'occurred_at' => now(),
         ]);
     }

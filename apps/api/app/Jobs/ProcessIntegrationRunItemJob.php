@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\Integrations\RateLimitedIntegrationException;
 use App\Models\IntegrationSyncRunItem;
 use App\Models\Tenant;
 use App\Services\Integrations\IntegrationRunService;
@@ -32,7 +33,11 @@ class ProcessIntegrationRunItemJob implements ShouldQueue
     {
         $context->clear();
         $context->set(Tenant::query()->findOrFail($this->tenantId));
-        $runs->processItem(IntegrationSyncRunItem::query()->findOrFail($this->itemId));
+        try {
+            $runs->processItem(IntegrationSyncRunItem::query()->findOrFail($this->itemId));
+        } catch (RateLimitedIntegrationException $exception) {
+            $this->release($exception->retryAfterSeconds);
+        }
     }
 
     public function failed(?Throwable $exception): void

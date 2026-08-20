@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -13,9 +14,13 @@ return new class extends Migration
     /** @var list<array{tenant_id:string,connection_id:string}> */
     private array $legacyEndpointKeys = [];
 
+    /** @var list<array{tenant_id:string,connection_id:string,identity:array<string,mixed>}> */
+    private array $identityConflicts = [];
+
     public function up(): void
     {
         $this->legacyEndpointKeys = [];
+        $this->identityConflicts = [];
 
         Schema::table('integration_connections', function (Blueprint $table): void {
             $table->foreignUuid('property_id')->nullable()->after('tenant_id')->constrained()->restrictOnDelete();
@@ -27,6 +32,7 @@ return new class extends Migration
             $table->json('capabilities')->nullable()->after('configuration');
             $table->unsignedInteger('configuration_version')->default(1)->after('capabilities');
             $table->unsignedInteger('webhook_key_version')->default(0)->after('payment_webhook_key');
+            $table->text('legacy_endpoint_key_ciphertext')->nullable()->after('webhook_key_version');
             $table->boolean('is_enabled')->default(false)->after('status');
             $table->timestampTz('revoked_at')->nullable()->after('is_enabled');
             $table->timestampTz('last_success_at')->nullable()->after('last_synced_at');
@@ -40,6 +46,7 @@ return new class extends Migration
         });
 
         $this->backfillConnections();
+        $this->preflightCanonicalIdentities();
 
         Schema::table('integration_connections', function (Blueprint $table): void {
             $table->string('provider', 80)->nullable(false)->change();
@@ -284,6 +291,7 @@ return new class extends Migration
         });
 
         $this->recordLegacyEndpointReconciliations();
+        $this->recordIdentityConflictReconciliations();
     }
 
     public function down(): void
@@ -318,7 +326,7 @@ return new class extends Migration
             $table->dropIndex('integration_connections_health_idx');
             $table->dropColumn([
                 'property_id', 'property_scope_key', 'provider', 'product', 'external_account_id', 'environment',
-                'capabilities', 'configuration_version', 'webhook_key_version', 'is_enabled', 'revoked_at',
+                'capabilities', 'configuration_version', 'webhook_key_version', 'legacy_endpoint_key_ciphertext', 'is_enabled', 'revoked_at',
                 'last_success_at', 'last_error_at', 'health_status', 'lag_seconds', 'last_event_at',
                 'circuit_failure_count', 'circuit_opened_at', 'throttled_until',
             ]);
@@ -343,11 +351,18 @@ return new class extends Migration
                 ? $connection->payment_webhook_key
                 : (is_string($configuration['webhook_key'] ?? null) ? $configuration['webhook_key'] : null);
             $rollbackHash = $configuration['webhook_endpoint_key_sha256'] ?? null;
-            $keyHash = is_string($rollbackHash) && preg_match('/^[a-f0-9]{64}$/', $rollbackHash) === 1 && hash_equals($rollbackHash, (string) $storedKey)
-                ? $rollbackHash
-                : ($storedKey === null ? null : hash('sha256', $storedKey));
+            $configurationRaw = is_string($configuration['webhook_key'] ?? null) && $configuration['webhook_key'] !== ''
+                ? $configuration['webhook_key']
+                : null;
+            $storedIsHash = is_string($storedKey) && preg_match('/^[a-f0-9]{64}$/', $storedKey) === 1
+                && is_string($rollbackHash) && hash_equals($storedKey, $rollbackHash);
+            $rawKey = $configurationRaw ?? ($storedIsHash ? null : $storedKey);
+            $keyHash = $rawKey === null ? ($storedIsHash ? $storedKey : null) : hash('sha256', $rawKey);
             unset($configuration['webhook_key']);
             unset($configuration['webhook_endpoint_key_sha256']);
+            foreach (['provider', 'product', 'provider_account', 'external_account_id', 'environment', 'property_id'] as $identityKey) {
+                unset($configuration[$identityKey]);
+            }
 
             if ($storedKey !== null) {
                 $this->legacyEndpointKeys[] = ['tenant_id' => $connection->tenant_id, 'connection_id' => $connection->id];
@@ -363,6 +378,7 @@ return new class extends Migration
                 'capabilities' => json_encode($connection->type === 'payment' ? ['payment.hosted_checkout'] : [], JSON_THROW_ON_ERROR),
                 'payment_webhook_key' => $keyHash,
                 'webhook_key_version' => $keyHash === null ? 0 : 1,
+                'legacy_endpoint_key_ciphertext' => $rawKey === null ? null : Crypt::encryptString($rawKey),
                 'configuration' => json_encode($configuration, JSON_THROW_ON_ERROR),
                 'is_enabled' => in_array($connection->status, ['connected', 'configured'], true),
                 'health_status' => $connection->last_error === null ? 'untested' : 'degraded',
@@ -388,14 +404,37 @@ return new class extends Migration
 
     private function prepareEndpointHashesForRollback(): void
     {
-        foreach (DB::table('integration_connections')->whereNotNull('payment_webhook_key')->get(['id', 'configuration', 'payment_webhook_key']) as $connection) {
+        foreach (DB::table('integration_connections')->get([
+            'id', 'configuration', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext', 'provider', 'product',
+            'external_account_id', 'environment', 'property_id',
+        ]) as $connection) {
             $configuration = is_string($connection->configuration)
                 ? (json_decode($connection->configuration, true) ?: [])
                 : ((array) $connection->configuration);
-            $configuration['webhook_endpoint_key_sha256'] = $connection->payment_webhook_key;
-            unset($configuration['webhook_key']);
+            $originalConflict = Schema::hasTable('integration_reconciliations')
+                ? DB::table('integration_reconciliations')->where('integration_connection_id', $connection->id)
+                    ->where('kind', 'canonical_identity_collision')->value('safe_facts')
+                : null;
+            $originalFacts = is_string($originalConflict) ? (json_decode($originalConflict, true) ?: []) : (array) $originalConflict;
+            $configuration['provider'] = $originalFacts['provider'] ?? $connection->provider;
+            $configuration['product'] = $originalFacts['product'] ?? $connection->product;
+            $configuration['provider_account'] = $originalFacts['external_account_id'] ?? $connection->external_account_id;
+            $configuration['environment'] = $originalFacts['environment'] ?? $connection->environment;
+            if (($originalFacts['property_id'] ?? $connection->property_id) !== null) {
+                $configuration['property_id'] = $originalFacts['property_id'] ?? $connection->property_id;
+            }
+            $rawKey = null;
+            if (is_string($connection->legacy_endpoint_key_ciphertext) && $connection->legacy_endpoint_key_ciphertext !== '') {
+                $rawKey = Crypt::decryptString($connection->legacy_endpoint_key_ciphertext);
+            }
+            if ($rawKey !== null) {
+                $configuration['webhook_key'] = $rawKey;
+            } else {
+                unset($configuration['webhook_key']);
+            }
             DB::table('integration_connections')->where('id', $connection->id)->update([
                 'configuration' => json_encode($configuration, JSON_THROW_ON_ERROR),
+                'payment_webhook_key' => $rawKey,
             ]);
         }
     }
@@ -411,6 +450,56 @@ return new class extends Migration
                 'status' => 'open',
                 'reason_code' => 'raw_key_removed_from_database',
                 'safe_facts' => json_encode(['required_action' => 'Rotate the endpoint key and store the issued value in the configured secret manager.'], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function preflightCanonicalIdentities(): void
+    {
+        $groups = DB::table('integration_connections')
+            ->select(['tenant_id', 'provider', 'product', 'external_account_id', 'environment', 'property_scope_key'])
+            ->selectRaw('COUNT(*) AS duplicate_count')
+            ->groupBy(['tenant_id', 'provider', 'product', 'external_account_id', 'environment', 'property_scope_key'])
+            ->havingRaw('COUNT(*) > 1')->get();
+        foreach ($groups as $group) {
+            $duplicates = DB::table('integration_connections')
+                ->where('tenant_id', $group->tenant_id)->where('provider', $group->provider)
+                ->where('product', $group->product)->where('external_account_id', $group->external_account_id)
+                ->where('environment', $group->environment)->where('property_scope_key', $group->property_scope_key)
+                ->orderBy('created_at')->orderBy('id')->get();
+            foreach ($duplicates->slice(1) as $duplicate) {
+                $identity = [
+                    'provider' => $group->provider, 'product' => $group->product,
+                    'external_account_id' => $group->external_account_id, 'environment' => $group->environment,
+                    'property_id' => $duplicate->property_id,
+                ];
+                $this->identityConflicts[] = [
+                    'tenant_id' => $duplicate->tenant_id, 'connection_id' => $duplicate->id, 'identity' => $identity,
+                ];
+                DB::table('integration_connections')->where('id', $duplicate->id)->update([
+                    'external_account_id' => 'conflict:'.$duplicate->id,
+                    'is_enabled' => false,
+                    'status' => 'disabled',
+                    'last_error' => 'Canonical identity collision requires operator reconciliation.',
+                    'health_status' => 'degraded',
+                ]);
+            }
+        }
+    }
+
+    private function recordIdentityConflictReconciliations(): void
+    {
+        foreach ($this->identityConflicts as $conflict) {
+            DB::table('integration_reconciliations')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $conflict['tenant_id'],
+                'integration_connection_id' => $conflict['connection_id'],
+                'kind' => 'canonical_identity_collision',
+                'status' => 'open',
+                'reason_code' => 'duplicate_legacy_connection_identity',
+                'safe_facts' => json_encode($conflict['identity'], JSON_THROW_ON_ERROR),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\Integrations\RateLimitedIntegrationException;
 use App\Models\IntegrationEvent;
 use App\Models\Tenant;
 use App\Services\Integrations\IntegrationEventService;
@@ -32,7 +33,11 @@ class ProcessIntegrationEventJob implements ShouldQueue
     {
         $context->clear();
         $context->set(Tenant::query()->findOrFail($this->tenantId));
-        $events->process(IntegrationEvent::query()->findOrFail($this->eventId));
+        try {
+            $events->process(IntegrationEvent::query()->findOrFail($this->eventId));
+        } catch (RateLimitedIntegrationException $exception) {
+            $this->release($exception->retryAfterSeconds);
+        }
     }
 
     public function failed(?Throwable $exception): void

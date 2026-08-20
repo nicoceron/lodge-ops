@@ -15,15 +15,21 @@ use App\Models\IntegrationConnection;
 use App\Models\IntegrationDeadLetter;
 use App\Models\IntegrationEndpointKey;
 use App\Models\IntegrationEvent;
+use App\Models\IntegrationOperation;
 use App\Models\IntegrationSyncCursor;
+use App\Models\IntegrationSyncRunItem;
+use App\Models\Property;
 use App\Services\IntegrationConnectionService;
 use App\Services\Integrations\CapabilityPortRegistry;
 use App\Services\Integrations\EndpointKeyService;
 use App\Services\Integrations\IntegrationEventService;
 use App\Services\Integrations\IntegrationHealthService;
 use App\Services\Integrations\IntegrationMappingService;
+use App\Services\Integrations\IntegrationOperationRecorder;
 use App\Services\Integrations\IntegrationRunService;
+use App\Services\Integrations\SafeIntegrationError;
 use App\Services\Integrations\StandardWebhookVerifier;
+use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,11 +63,23 @@ class IntegrationKernelTest extends TestCase
         $issued = app(EndpointKeyService::class)->rotate($connection->fresh(), 15, $user->id, 'Scheduled rotation', 'endpoint-rotation-0001');
         $this->assertSame(2, $issued['version']);
         $this->assertSame(64, strlen($issued['key']));
+        $this->assertNull($connection->fresh()->legacy_endpoint_key_ciphertext);
         $this->assertSame($connection->id, app(EndpointKeyService::class)->resolveConnection($raw)->id);
         $this->assertSame($connection->id, app(EndpointKeyService::class)->resolveConnection($issued['key'])->id);
         $this->assertDatabaseMissing('idempotency_keys', ['key' => 'endpoint-rotation-0001']);
         $this->expectException(DomainException::class);
         app(EndpointKeyService::class)->rotate($connection->fresh(), 15, $user->id, 'Duplicate rotation', 'endpoint-rotation-0001');
+    }
+
+    public function test_connection_model_rejects_divergent_configuration_identity(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $this->expectException(DomainException::class);
+        IntegrationConnection::query()->create([
+            'name' => 'Divergent MP', 'type' => 'payment', 'property_id' => $property->id,
+            'provider' => 'mercado_pago', 'product' => 'checkout_pro', 'external_account_id' => 'canonical-account',
+            'environment' => 'sandbox', 'configuration' => ['provider_account' => 'different-account'],
+        ]);
     }
 
     public function test_revoke_blocks_every_endpoint_version_without_persisting_raw_keys(): void
@@ -129,7 +147,41 @@ class IntegrationKernelTest extends TestCase
         $this->assertSame($first->id, $runs->start($connection, 'reservations.import', $property->id, 'manual', 'stable-run-command-1', $user->id)->id);
 
         $this->expectException(DomainException::class);
-        $runs->start($connection, 'reservations.import', $property->id, 'resume', 'stable-run-command-1', $user->id);
+        $runs->start($connection, 'reservations.import', $property->id, 'scheduled', 'stable-run-command-1', $user->id);
+    }
+
+    public function test_disable_blocks_claimed_page_and_explicit_resume_preserves_run_page_and_cursor(): void
+    {
+        Queue::fake();
+        [, $property, $user] = $this->tenantEnvironment();
+        $connection = $this->connection($property->id, ['reservations.import']);
+        $port = new FakeReservationPort;
+        $port->poison = false;
+        app(CapabilityPortRegistry::class)->register('contract_fake', 'reservations', 'reservations.import', $port);
+        $runs = app(IntegrationRunService::class);
+        $run = $runs->start($connection, 'reservations.import', $property->id, 'manual', 'disable-resume-run-0001', $user->id);
+        $runs->executePage($run);
+        $this->assertSame(1, $run->fresh()->page_number);
+        app(IntegrationConnectionService::class)->disable($connection->fresh(), $user->id, 'Fence active integration work.');
+        $this->assertSame('blocked', $run->fresh()->status);
+        $this->assertSame(['blocked'], $run->items()->pluck('status')->unique()->values()->all());
+        $this->assertSame(0, IntegrationSyncCursor::query()->sole()->version);
+
+        $enabled = app(IntegrationConnectionService::class)->enable($connection->fresh(), $user->id, 'Enable for explicit resume.');
+        $resumed = $runs->resume($run->fresh(), 'resume-blocked-run-0001', $user->id, 'Resume the specifically blocked run.');
+        $this->assertSame($run->id, $resumed->id);
+        $this->assertSame(1, $resumed->page_number);
+        $this->assertSame(['pending'], $resumed->items()->pluck('status')->unique()->values()->all());
+        $this->assertSame(0, IntegrationSyncCursor::query()->sole()->version);
+        $this->assertSame($resumed->id, $runs->resume($resumed->fresh(), 'resume-blocked-run-0001', $user->id, 'Idempotent retry.')->id);
+        $runs->executePage($resumed->fresh());
+        $this->assertSame(1, $port->fetchCalls, 'Resume must redispatch the persisted page instead of fetching past its cursor.');
+        foreach ($resumed->items as $item) {
+            $runs->processItem($item->fresh());
+        }
+        $this->assertSame('completed', $resumed->fresh()->status);
+        $this->assertSame(1, IntegrationSyncCursor::query()->sole()->version);
+        $this->assertTrue($enabled->is_enabled);
     }
 
     public function test_mapping_drift_versions_facts_and_opens_reconciliation(): void
@@ -178,6 +230,47 @@ class IntegrationKernelTest extends TestCase
         $this->assertSame(0, IntegrationSyncCursor::query()->sole()->version);
         Queue::assertPushed(ExecuteIntegrationRunJob::class, fn ($job): bool => $job->runId === $run->id);
         Queue::assertPushed(ProcessIntegrationEventJob::class, fn ($job): bool => $job->eventId === $event->id);
+    }
+
+    public function test_health_snapshots_and_scheduler_gauges_are_isolated_by_tenant_and_property_scope(): void
+    {
+        Queue::fake();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $otherProperty = Property::factory()->create();
+        app(TenantContext::class)->set($tenant);
+        $first = app(IntegrationConnectionService::class)->configure(
+            'First health scope', 'webhook', [], 'env:HEALTH_FIRST', $property->id,
+            'contract_fake', 'reservations', 'health-first', 'sandbox', ['reservations.import'],
+        );
+        $first = app(IntegrationConnectionService::class)->enable($first, $user->id, 'Enable first health scope.');
+        $second = app(IntegrationConnectionService::class)->configure(
+            'Second health scope', 'webhook', [], 'env:HEALTH_SECOND', $otherProperty->id,
+            'contract_fake', 'reservations', 'health-second', 'sandbox', ['reservations.import'],
+        );
+        $second = app(IntegrationConnectionService::class)->enable($second, $user->id, 'Enable second health scope.');
+        $runs = app(IntegrationRunService::class);
+        $firstRun = $runs->start($first, 'reservations.import', $property->id, 'manual', 'health-first-run-0001', $user->id);
+        $secondRun = $runs->start($second, 'reservations.import', $otherProperty->id, 'manual', 'health-second-run-001', $user->id);
+        foreach ([[$firstRun, 1], [$secondRun, 2]] as [$run, $count]) {
+            for ($index = 0; $index < $count; $index++) {
+                IntegrationSyncRunItem::query()->create([
+                    'integration_sync_run_id' => $run->id, 'property_id' => $run->property_id, 'page_number' => 1,
+                    'external_key' => $run->id.'-'.$index, 'payload_checksum' => hash('sha256', $run->id.'-'.$index),
+                    'status' => 'pending', 'idempotency_key' => hash('sha256', 'health-'.$run->id.'-'.$index),
+                ]);
+            }
+        }
+        Artisan::call('integrations:heartbeat');
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $firstSnapshot = app(IntegrationHealthService::class)->snapshot($first);
+        $this->assertSame(1, $firstSnapshot['backlog']);
+        $this->assertSame(1, data_get($firstSnapshot, 'scheduler_heartbeat.backlog_items'));
+        $membership->update(['property_id' => $otherProperty->id]);
+        app(TenantContext::class)->set($tenant, $membership->fresh());
+        $secondSnapshot = app(IntegrationHealthService::class)->snapshot($second);
+        $this->assertSame(2, $secondSnapshot['backlog']);
+        $this->assertSame(2, data_get($secondSnapshot, 'scheduler_heartbeat.backlog_items'));
     }
 
     public function test_invalid_auth_health_and_partial_page_fail_safely_without_cursor_advance(): void
@@ -272,6 +365,74 @@ class IntegrationKernelTest extends TestCase
             }
         }
         $this->addToAssertionCount(3);
+    }
+
+    public function test_standard_webhook_rejects_decoded_secrets_outside_24_to_64_bytes(): void
+    {
+        $verifier = app(StandardWebhookVerifier::class);
+        foreach ([str_repeat('s', 23), str_repeat('s', 65)] as $bytes) {
+            $headers = $this->signedHeaders('{}', $bytes, 'length-test');
+            try {
+                $verifier->verify('{}', $headers, 'whsec_'.base64_encode($bytes));
+                $this->fail('Decoded Standard Webhooks secrets outside 24-64 bytes must fail closed.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('malformed', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_adversarial_credentials_are_redacted_across_connection_run_item_event_dead_letter_and_audit_sinks(): void
+    {
+        Queue::fake();
+        [, $property, $user] = $this->tenantEnvironment();
+        $connection = $this->connection($property->id, ['reservations.import']);
+        $message = 'token=token-value secret:secret-value password="password value with spaces" api-key=api-key-value '
+            .'Bearer bearer-value Basic basic-value https://user:pass@provider.example/path?token=url-value '
+            .'{"access_token":"json-token-value","client_secret":"json-secret-value"}';
+        $redacted = SafeIntegrationError::from($message);
+        $secretValues = [
+            'token-value', 'secret-value', 'password value with spaces', 'api-key-value', 'bearer-value',
+            'basic-value', 'user:pass', 'url-value', 'json-token-value', 'json-secret-value',
+        ];
+        foreach ($secretValues as $secret) {
+            $this->assertStringNotContainsString($secret, $redacted);
+        }
+
+        $run = app(IntegrationRunService::class)->start(
+            $connection, 'reservations.import', $property->id, 'manual', 'safe-sink-run-000001', $user->id,
+        );
+        $run->update(['last_error' => $message]);
+        $item = IntegrationSyncRunItem::query()->create([
+            'integration_sync_run_id' => $run->id, 'property_id' => $property->id, 'page_number' => 1,
+            'external_key' => 'safe-sink-item', 'payload_checksum' => hash('sha256', 'safe-sink-item'),
+            'safe_payload' => ['note' => $message, 'api_key' => 'nested-api-key-value'], 'status' => 'dead_letter',
+            'idempotency_key' => hash('sha256', 'safe-sink-item'), 'last_error' => $message,
+        ]);
+        $event = IntegrationEvent::query()->create([
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id, 'capability' => 'webhook.inbound',
+            'external_id' => 'safe-sink-event', 'event_type' => 'test', 'external_version' => '1',
+            'raw_checksum' => hash('sha256', 'safe-sink-event'), 'safe_snapshot' => ['subject' => $message, 'token' => 'event-token-value'],
+            'disposition' => 'dead_letter', 'received_at' => now(), 'last_error' => $message,
+        ]);
+        $letter = IntegrationDeadLetter::query()->create([
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'integration_sync_run_item_id' => $item->id, 'reason_code' => 'safe_sink', 'safe_error' => $message, 'status' => 'open',
+        ]);
+        $connection->update(['last_error' => $message]);
+        $operation = IntegrationOperationRecorder::record($connection, 'safe_sink_test', $user->id, $message, [
+            'message' => $message, 'password' => 'audit-password-value',
+        ]);
+        foreach ([
+            $connection->fresh()->last_error, $run->fresh()->last_error, $item->fresh()->last_error,
+            json_encode($item->fresh()->safe_payload), $event->fresh()->last_error, json_encode($event->fresh()->safe_snapshot),
+            $letter->fresh()->safe_error, $operation->fresh()->reason, json_encode($operation->fresh()->safe_facts),
+        ] as $sink) {
+            foreach ([...$secretValues, 'nested-api-key-value', 'event-token-value', 'audit-password-value'] as $secret) {
+                $this->assertStringNotContainsString($secret, (string) $sink);
+            }
+            $this->assertStringContainsString('[redacted', (string) $sink);
+        }
+        $this->assertSame(1, IntegrationOperation::query()->whereKey($operation->id)->count());
     }
 
     private function connection(string $propertyId, array $capabilities, array $configuration = []): IntegrationConnection

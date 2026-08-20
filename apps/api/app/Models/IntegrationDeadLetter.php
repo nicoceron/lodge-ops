@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Integrations\SafeIntegrationError;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -18,6 +19,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class IntegrationDeadLetter extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(fn (IntegrationDeadLetter $letter) => $letter->safe_error = SafeIntegrationError::from($letter->safe_error));
+    }
+
     protected function casts(): array
     {
         return ['replay_count' => 'integer', 'last_replayed_at' => 'immutable_datetime', 'resolved_at' => 'immutable_datetime'];

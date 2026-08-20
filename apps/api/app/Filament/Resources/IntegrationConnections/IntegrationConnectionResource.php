@@ -8,6 +8,7 @@ use App\Filament\Support\InnPresentation;
 use App\Models\IntegrationConnection;
 use App\Services\IntegrationConnectionService;
 use App\Services\Integrations\EndpointKeyService;
+use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\Integrations\IntegrationHealthService;
 use App\Services\Integrations\IntegrationReconciliationService;
 use App\Services\Integrations\IntegrationRunService;
@@ -46,6 +47,8 @@ class IntegrationConnectionResource extends TenantResource
 
     protected static string $writeCapability = 'canManageConfiguration';
 
+    protected static bool $includeTenantWideForProperty = true;
+
     protected static bool $canDeleteRecords = false;
 
     public static function form(Schema $schema): Schema
@@ -82,7 +85,9 @@ class IntegrationConnectionResource extends TenantResource
                 TextEntry::make('last_error')->label('Last error')->placeholder('No errors')->columnSpanFull(),
                 TextEntry::make('health_status')->label('Health')->badge(),
                 TextEntry::make('lag_seconds')->label('Lag seconds')->placeholder('Unknown'),
-                KeyValueEntry::make('configuration')->label('Non-secret configuration')->columnSpanFull()->placeholder('No configuration'),
+                KeyValueEntry::make('configuration')->label('Non-secret configuration')
+                    ->state(fn (IntegrationConnection $record): array => app(IntegrationConfigurationPolicy::class)->publicView($record->configuration))
+                    ->columnSpanFull()->placeholder('No configuration'),
             ]),
         ]);
     }
@@ -96,6 +101,16 @@ class IntegrationConnectionResource extends TenantResource
                 TextColumn::make('provider')->badge(),
                 TextColumn::make('product'),
                 TextColumn::make('environment')->badge(),
+                TextColumn::make('configuration_summary')->label('Non-secret configuration')
+                    ->state(function (IntegrationConnection $record): string {
+                        if ($record->configuration === []) {
+                            return 'None';
+                        }
+
+                        return collect(app(IntegrationConfigurationPolicy::class)->publicView($record->configuration))
+                            ->map(fn (mixed $value, string $key): string => $key.': '.(is_scalar($value) ? (string) $value : '[configured]'))
+                            ->implode(', ');
+                    })->wrap(),
                 TextColumn::make('status')->badge()->formatStateUsing(fn (string $state): string => InnPresentation::label($state))->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextColumn::make('last_synced_at')->label('Last sync')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
                 TextColumn::make('health_status')->label('Health')

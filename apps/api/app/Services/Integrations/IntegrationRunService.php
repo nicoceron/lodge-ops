@@ -9,11 +9,13 @@ use App\Data\Integrations\IntegrationItemResult;
 use App\Data\Integrations\IntegrationPage;
 use App\Data\Integrations\IntegrationServiceIdentity;
 use App\Exceptions\Integrations\PoisonIntegrationException;
+use App\Exceptions\Integrations\RateLimitedIntegrationException;
 use App\Jobs\ExecuteIntegrationRunJob;
 use App\Jobs\ProcessIntegrationRunItemJob;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationConnectionCapability;
 use App\Models\IntegrationDeadLetter;
+use App\Models\IntegrationOperation;
 use App\Models\IntegrationReconciliation;
 use App\Models\IntegrationSyncCursor;
 use App\Models\IntegrationSyncRun;
@@ -41,7 +43,7 @@ final class IntegrationRunService
         if (trim($idempotencyKey) === '') {
             throw new DomainException('A stable integration-run idempotency key is required.');
         }
-        if (! in_array($trigger, ['manual', 'scheduled', 'webhook', 'reconciliation', 'resume'], true)) {
+        if (! in_array($trigger, ['manual', 'scheduled', 'webhook', 'reconciliation'], true)) {
             throw new DomainException('Unsupported integration run trigger.');
         }
         $cursor = IntegrationSyncCursor::query()->firstOrCreate([
@@ -73,6 +75,46 @@ final class IntegrationRunService
         return $run;
     }
 
+    public function resume(IntegrationSyncRun $run, string $idempotencyKey, ?int $actorId, string $reason): IntegrationSyncRun
+    {
+        if (trim($idempotencyKey) === '') {
+            throw new DomainException('A stable resume idempotency key is required.');
+        }
+        $idempotencyHash = hash('sha256', $idempotencyKey);
+        $resumed = DB::transaction(function () use ($run, $idempotencyHash, $actorId, $reason): IntegrationSyncRun {
+            $locked = IntegrationSyncRun::query()->lockForUpdate()->findOrFail($run->id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($locked->integration_connection_id);
+            $existingOperation = IntegrationOperation::query()->where('integration_connection_id', $connection->id)
+                ->where('operation', 'run_resumed')->where('idempotency_key_hash', $idempotencyHash)
+                ->first();
+            if ($existingOperation !== null) {
+                if (data_get($existingOperation->safe_facts, 'run_id') === $locked->id) {
+                    return $locked;
+                }
+                throw new DomainException('This resume idempotency key was already used for a different run.');
+            }
+            if ($locked->status !== 'blocked') {
+                throw new DomainException('Only a specifically blocked integration run may be resumed.');
+            }
+            $this->assertRunnable($connection, $locked->capability, $locked->property_id);
+            $locked->items()->where('status', 'blocked')->update([
+                'status' => 'pending', 'available_at' => now(), 'started_at' => null, 'finished_at' => null, 'last_error' => null,
+            ]);
+            $locked->update([
+                'status' => 'queued', 'trigger' => 'resume', 'claim_token' => null, 'claimed_at' => null,
+                'lease_expires_at' => null, 'finished_at' => null, 'last_error' => null,
+            ]);
+            IntegrationOperationRecorder::record($connection, 'run_resumed', $actorId, $reason, [
+                'run_id' => $locked->id, 'page_number' => $locked->page_number,
+            ], $idempotencyHash);
+            DB::afterCommit(fn () => ExecuteIntegrationRunJob::dispatch($locked->tenant_id, $locked->id)->onQueue('integrations'));
+
+            return $locked->fresh();
+        }, 3);
+
+        return $resumed;
+    }
+
     public function executePage(IntegrationSyncRun $run): void
     {
         $claimed = DB::transaction(function () use ($run): ?IntegrationSyncRun {
@@ -83,7 +125,7 @@ final class IntegrationRunService
             if ($candidate->status === 'running' && $candidate->lease_expires_at?->isFuture()) {
                 return null;
             }
-            $connection = IntegrationConnection::query()->findOrFail($candidate->integration_connection_id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($candidate->integration_connection_id);
             if (! $connection->is_enabled || $connection->revoked_at !== null) {
                 $candidate->update(['status' => 'blocked', 'last_error' => 'Connection disabled or revoked during run.']);
 
@@ -134,8 +176,14 @@ final class IntegrationRunService
                 default => throw new RuntimeException('Unsupported capability.'),
             };
             $validatedItems = $this->validatedItems($page);
-            $items = DB::transaction(function () use ($claimed, $page, $validatedItems): array {
+            $items = DB::transaction(function () use ($claimed, $page, $validatedItems): ?array {
                 $locked = IntegrationSyncRun::query()->lockForUpdate()->findOrFail($claimed->id);
+                $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($locked->integration_connection_id);
+                if (! $connection->is_enabled || $connection->revoked_at !== null || $locked->status === 'blocked') {
+                    $locked->update(['status' => 'blocked', 'last_error' => 'Connection disabled after page claim.', 'claim_token' => null, 'lease_expires_at' => null]);
+
+                    return null;
+                }
                 $pageNumber = $locked->page_number + 1;
                 $ids = [];
                 foreach ($validatedItems as $fact) {
@@ -146,7 +194,7 @@ final class IntegrationRunService
                         'page_number' => $pageNumber,
                         'property_id' => $locked->property_id,
                         'payload_checksum' => $fact['checksum'],
-                        'safe_payload' => $fact['safe_snapshot'] ?? null,
+                        'safe_payload' => SafeIntegrationError::value($fact['safe_snapshot'] ?? null),
                         'status' => 'pending',
                         'idempotency_key' => hash('sha256', $locked->tenant_id."\0".$locked->integration_connection_id."\0".$locked->capability."\0".$fact['external_key']),
                         'available_at' => now(),
@@ -170,6 +218,9 @@ final class IntegrationRunService
 
                 return $ids;
             }, 3);
+            if ($items === null) {
+                return;
+            }
             if ($items === []) {
                 $this->finalizePage($claimed->fresh());
 
@@ -178,6 +229,9 @@ final class IntegrationRunService
             foreach ($items as $itemId) {
                 ProcessIntegrationRunItemJob::dispatch($claimed->tenant_id, $itemId)->onQueue('integrations');
             }
+        } catch (RateLimitedIntegrationException $exception) {
+            $claimed->update(['status' => 'queued', 'last_error' => SafeIntegrationError::from($exception), 'claim_token' => null, 'lease_expires_at' => null]);
+            throw $exception;
         } catch (Throwable $exception) {
             $safe = SafeIntegrationError::from($exception);
             $claimed->update(['status' => 'failed', 'last_error' => $safe, 'finished_at' => now(), 'claim_token' => null, 'lease_expires_at' => null]);
@@ -201,7 +255,7 @@ final class IntegrationRunService
                 return null;
             }
             $run = IntegrationSyncRun::query()->findOrFail($candidate->integration_sync_run_id);
-            $connection = IntegrationConnection::query()->findOrFail($run->integration_connection_id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($run->integration_connection_id);
             if (! $connection->is_enabled || $connection->revoked_at !== null) {
                 $run->update(['status' => 'blocked', 'last_error' => 'Connection disabled or revoked during run.']);
 
@@ -228,6 +282,9 @@ final class IntegrationRunService
             $this->completeItem($claimed, $result);
         } catch (PoisonIntegrationException $exception) {
             $this->deadLetter($claimed, 'poison_item', $exception);
+        } catch (RateLimitedIntegrationException $exception) {
+            $claimed->update(['status' => 'retryable', 'last_error' => SafeIntegrationError::from($exception), 'available_at' => now()->addSeconds($exception->retryAfterSeconds)]);
+            throw $exception;
         } catch (Throwable $exception) {
             $claimed->update(['status' => 'retryable', 'last_error' => SafeIntegrationError::from($exception), 'available_at' => now()->addMinute()]);
             throw $exception;
@@ -261,14 +318,17 @@ final class IntegrationRunService
 
     public function replay(IntegrationDeadLetter $letter, ?int $actorId, string $reason): IntegrationDeadLetter
     {
-        if ($letter->item === null || $letter->item->status === 'processing' || $letter->item->run->page_in_progress) {
-            throw new DomainException('The original item is still active or unavailable.');
-        }
         DB::transaction(function () use ($letter, $actorId, $reason): void {
-            $letter->item->update(['status' => 'pending', 'available_at' => now(), 'finished_at' => null, 'last_error' => null]);
-            $letter->update(['status' => 'replaying', 'replay_count' => $letter->replay_count + 1, 'last_replayed_at' => now(), 'owner_id' => $actorId]);
-            IntegrationOperationRecorder::record($letter->connection, 'dead_letter_replayed', $actorId, $reason, ['dead_letter_id' => $letter->id]);
-            DB::afterCommit(fn () => ProcessIntegrationRunItemJob::dispatch($letter->tenant_id, $letter->integration_sync_run_item_id)->onQueue('integrations'));
+            $locked = IntegrationDeadLetter::query()->lockForUpdate()->findOrFail($letter->id);
+            $item = $locked->item()->lockForUpdate()->first();
+            $run = $item === null ? null : IntegrationSyncRun::query()->lockForUpdate()->findOrFail($item->integration_sync_run_id);
+            if ($item === null || $run?->page_in_progress || $locked->status === 'replaying' || in_array($item->status, ['pending', 'processing', 'retryable'], true)) {
+                throw new DomainException('The original item is still active or unavailable.');
+            }
+            $item->update(['status' => 'pending', 'available_at' => now(), 'finished_at' => null, 'last_error' => null]);
+            $locked->update(['status' => 'replaying', 'replay_count' => $locked->replay_count + 1, 'last_replayed_at' => now(), 'owner_id' => $actorId]);
+            IntegrationOperationRecorder::record($locked->connection, 'dead_letter_replayed', $actorId, $reason, ['dead_letter_id' => $locked->id]);
+            DB::afterCommit(fn () => ProcessIntegrationRunItemJob::dispatch($locked->tenant_id, $locked->integration_sync_run_item_id)->onQueue('integrations'));
         }, 3);
 
         return $letter->fresh();
@@ -278,6 +338,18 @@ final class IntegrationRunService
     {
         $dispatchNext = DB::transaction(function () use ($run): bool {
             $locked = IntegrationSyncRun::query()->lockForUpdate()->findOrFail($run->id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($locked->integration_connection_id);
+            if (! $connection->is_enabled || $connection->revoked_at !== null || $locked->status === 'blocked') {
+                $locked->update([
+                    'status' => 'blocked', 'last_error' => 'Connection disabled before cursor commit.',
+                    'claim_token' => null, 'lease_expires_at' => null,
+                ]);
+                $locked->items()->whereIn('status', ['pending', 'processing', 'retryable'])->update([
+                    'status' => 'blocked', 'last_error' => 'Connection disabled before cursor commit.',
+                ]);
+
+                return false;
+            }
             $items = $locked->items()->where('page_number', $locked->page_number)->lockForUpdate()->get();
             if ($items->contains(fn ($item) => in_array($item->status, ['pending', 'processing', 'retryable'], true))) {
                 return false;
@@ -300,7 +372,7 @@ final class IntegrationRunService
                 'finished_at' => $next ? null : now(),
             ]);
             if (! $next) {
-                IntegrationConnection::query()->whereKey($locked->integration_connection_id)->update([
+                $connection->update([
                     'last_synced_at' => now(), 'last_success_at' => now(), 'last_error' => null, 'health_status' => $dead === 0 ? 'healthy' : 'degraded',
                 ]);
             }
@@ -314,12 +386,27 @@ final class IntegrationRunService
 
     private function completeItem(IntegrationSyncRunItem $item, IntegrationItemResult $result): void
     {
-        $item->update([
-            'status' => 'succeeded', 'local_key' => $result->localKey, 'http_status' => $result->httpStatus,
-            'latency_ms' => $result->latencyMs, 'request_checksum' => $result->requestChecksum,
-            'response_checksum' => $result->responseChecksum, 'finished_at' => now(), 'last_error' => null,
-        ]);
-        $run = $item->run()->firstOrFail();
+        $run = DB::transaction(function () use ($item, $result): IntegrationSyncRun {
+            $locked = IntegrationSyncRunItem::query()->lockForUpdate()->findOrFail($item->id);
+            $run = IntegrationSyncRun::query()->lockForUpdate()->findOrFail($locked->integration_sync_run_id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($run->integration_connection_id);
+            if (! $connection->is_enabled || $connection->revoked_at !== null || $run->status === 'blocked' || $locked->status === 'blocked') {
+                $locked->update(['status' => 'blocked', 'last_error' => 'Connection disabled after item claim.']);
+                $run->update(['status' => 'blocked', 'last_error' => 'Connection disabled after item claim.']);
+
+                return $run->fresh();
+            }
+            $locked->update([
+                'status' => 'succeeded', 'local_key' => $result->localKey, 'http_status' => $result->httpStatus,
+                'latency_ms' => $result->latencyMs, 'request_checksum' => $result->requestChecksum,
+                'response_checksum' => $result->responseChecksum, 'finished_at' => now(), 'last_error' => null,
+            ]);
+
+            return $run->fresh();
+        }, 3);
+        if ($run->status === 'blocked') {
+            return;
+        }
         if ($run->status === 'completed') {
             IntegrationDeadLetter::query()->where('integration_sync_run_item_id', $item->id)->update([
                 'status' => 'resolved', 'resolved_at' => now(), 'resolution' => 'Replay succeeded.',

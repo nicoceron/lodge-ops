@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Enums\PaymentRequestState;
 use App\Models\ExchangeRate;
-use App\Models\IntegrationConnection;
 use App\Models\PaymentAttempt;
 use App\Models\Tenant;
 use App\Services\Payments\CreateProviderCheckout;
+use App\Services\Payments\PaymentConnectionResolver;
 use App\Services\Payments\ResolvePaymentRequest;
 use App\Support\Tenancy\TenantContext;
 use Brick\Math\BigDecimal;
@@ -41,11 +41,11 @@ class PaymentLinkController extends Controller
         return view('payments.show', ['paymentRequest' => $paymentRequest, 'token' => $token, 'conversion' => $conversion]);
     }
 
-    public function checkout(Request $request, string $token, ResolvePaymentRequest $resolver, CreateProviderCheckout $checkout): RedirectResponse
+    public function checkout(Request $request, string $token, ResolvePaymentRequest $resolver, CreateProviderCheckout $checkout, PaymentConnectionResolver $connections): RedirectResponse
     {
         $paymentRequest = $resolver->handle($token);
         abort_if($paymentRequest === null || ! in_array($paymentRequest->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true), 409);
-        $connection = IntegrationConnection::query()->where('type', 'payment')->where('configuration->provider', 'mercado_pago')->firstOrFail();
+        $connection = $connections->forProperty($paymentRequest->tenant_id, $paymentRequest->property_id);
         $attempt = $checkout->handle(
             $paymentRequest,
             $connection,

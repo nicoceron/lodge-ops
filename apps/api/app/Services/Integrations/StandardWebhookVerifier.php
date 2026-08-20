@@ -20,7 +20,7 @@ final class StandardWebhookVerifier
         }
         $encoded = str_starts_with($secret, 'whsec_') ? substr($secret, 6) : $secret;
         $key = base64_decode($encoded, true);
-        if ($key === false || $key === '') {
+        if ($key === false || strlen($key) < 24 || strlen($key) > 64) {
             throw new RuntimeException('The Standard Webhooks signing secret is malformed.');
         }
         $expected = base64_encode(hash_hmac('sha256', $id.'.'.$timestamp.'.'.$rawBody, $key, true));

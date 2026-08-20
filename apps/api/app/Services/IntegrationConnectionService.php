@@ -4,6 +4,10 @@ namespace App\Services;
 
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationConnectionCapability;
+use App\Models\IntegrationEvent;
+use App\Models\IntegrationSyncRun;
+use App\Models\IntegrationSyncRunItem;
+use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\Integrations\IntegrationOperationRecorder;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
@@ -11,6 +15,8 @@ use Illuminate\Support\Facades\DB;
 
 class IntegrationConnectionService
 {
+    public function __construct(private readonly IntegrationConfigurationPolicy $configurationPolicy) {}
+
     public const CAPABILITY_DIRECTIONS = [
         'payment.hosted_checkout' => 'outbound',
         'reservations.import' => 'inbound',
@@ -36,13 +42,6 @@ class IntegrationConnectionService
             throw new DomainException('Unsupported integration type.');
         }
 
-        array_walk_recursive($configuration, function (mixed $value, string|int $key): void {
-            if (is_string($key) && ! str_ends_with(strtolower($key), '_reference')
-                && preg_match('/secret|password|credential|private.?key|access.?token|api.?key/i', $key) === 1) {
-                throw new DomainException('Secrets must be stored in the external secret manager.');
-            }
-        });
-
         $this->assertSecretReference($secretReference);
 
         $membershipScope = app(TenantContext::class)->propertyScopeId();
@@ -50,10 +49,10 @@ class IntegrationConnectionService
         if ($propertyId !== null && ! app(TenantContext::class)->canAccessProperty($propertyId)) {
             throw new DomainException('The integration property is outside your workspace.');
         }
-        $provider ??= (string) ($configuration['provider'] ?? $type);
-        $product ??= (string) ($configuration['product'] ?? ($provider === 'mercado_pago' ? 'checkout_pro' : $type));
-        $externalAccountId ??= (string) ($configuration['provider_account'] ?? $configuration['external_account_id'] ?? $name);
-        $environment ??= (string) ($configuration['environment'] ?? 'sandbox');
+        $provider ??= $type;
+        $product ??= $provider === 'mercado_pago' ? 'checkout_pro' : $type;
+        $externalAccountId ??= $name;
+        $environment ??= 'sandbox';
         foreach ([$provider, $product, $externalAccountId, $environment] as $identity) {
             if (trim($identity) === '') {
                 throw new DomainException('Provider, product, external account, and environment identity are required.');
@@ -63,6 +62,7 @@ class IntegrationConnectionService
         if (array_diff($capabilities, array_keys(self::CAPABILITY_DIRECTIONS)) !== []) {
             throw new DomainException('The connection contains an unsupported capability.');
         }
+        $configuration = $this->configurationPolicy->validate($configuration, $type, $provider, $product, $capabilities);
 
         return DB::transaction(function () use ($name, $type, $configuration, $secretReference, $propertyId, $provider, $product, $externalAccountId, $environment, $capabilities): IntegrationConnection {
             $connection = IntegrationConnection::query()->firstOrNew([
@@ -115,22 +115,52 @@ class IntegrationConnectionService
     public function disable(IntegrationConnection $connection, ?int $actorId, string $reason): IntegrationConnection
     {
         return DB::transaction(function () use ($connection, $actorId, $reason): IntegrationConnection {
-            $connection->update(['is_enabled' => false, 'status' => 'disabled']);
-            $connection->connectionCapabilities()->update(['state' => 'disabled']);
-            IntegrationOperationRecorder::record($connection, 'disabled', $actorId, $reason);
+            $locked = IntegrationConnection::query()->lockForUpdate()->findOrFail($connection->id);
+            $locked->update(['is_enabled' => false, 'status' => 'disabled']);
+            $locked->connectionCapabilities()->update(['state' => 'disabled']);
+            $runIds = IntegrationSyncRun::query()->where('integration_connection_id', $locked->id)
+                ->whereIn('status', ['queued', 'running'])->lockForUpdate()->pluck('id');
+            IntegrationSyncRun::query()->whereIn('id', $runIds)->update([
+                'status' => 'blocked', 'last_error' => 'Connection disabled during run.',
+                'claim_token' => null, 'lease_expires_at' => null,
+            ]);
+            IntegrationSyncRunItem::query()->whereIn('integration_sync_run_id', $runIds)
+                ->whereIn('status', ['pending', 'retryable', 'processing'])->update([
+                    'status' => 'blocked', 'last_error' => 'Connection disabled during run.',
+                ]);
+            IntegrationEvent::query()->where('integration_connection_id', $locked->id)
+                ->whereIn('disposition', ['received', 'retryable', 'processing'])->update([
+                    'disposition' => 'blocked', 'last_error' => 'Connection disabled before event processing.',
+                ]);
+            IntegrationOperationRecorder::record($locked, 'disabled', $actorId, $reason, ['blocked_run_count' => $runIds->count()]);
 
-            return $connection->fresh();
+            return $locked->fresh();
         });
     }
 
     public function revoke(IntegrationConnection $connection, ?int $actorId, string $reason): IntegrationConnection
     {
         return DB::transaction(function () use ($connection, $actorId, $reason): IntegrationConnection {
-            $connection->update(['is_enabled' => false, 'status' => 'revoked', 'revoked_at' => now(), 'secret_reference' => null]);
-            $connection->connectionCapabilities()->update(['state' => 'revoked']);
-            IntegrationOperationRecorder::record($connection, 'revoked', $actorId, $reason);
+            $locked = IntegrationConnection::query()->lockForUpdate()->findOrFail($connection->id);
+            $locked->update(['is_enabled' => false, 'status' => 'revoked', 'revoked_at' => now(), 'secret_reference' => null]);
+            $locked->connectionCapabilities()->update(['state' => 'revoked']);
+            $runIds = IntegrationSyncRun::query()->where('integration_connection_id', $locked->id)
+                ->whereIn('status', ['queued', 'running'])->lockForUpdate()->pluck('id');
+            IntegrationSyncRun::query()->whereIn('id', $runIds)->update([
+                'status' => 'blocked', 'last_error' => 'Connection revoked during run.',
+                'claim_token' => null, 'lease_expires_at' => null,
+            ]);
+            IntegrationSyncRunItem::query()->whereIn('integration_sync_run_id', $runIds)
+                ->whereIn('status', ['pending', 'retryable', 'processing'])->update([
+                    'status' => 'blocked', 'last_error' => 'Connection revoked during run.',
+                ]);
+            IntegrationEvent::query()->where('integration_connection_id', $locked->id)
+                ->whereIn('disposition', ['received', 'retryable', 'processing'])->update([
+                    'disposition' => 'blocked', 'last_error' => 'Connection revoked before event processing.',
+                ]);
+            IntegrationOperationRecorder::record($locked, 'revoked', $actorId, $reason, ['blocked_run_count' => $runIds->count()]);
 
-            return $connection->fresh();
+            return $locked->fresh();
         });
     }
 
@@ -148,7 +178,7 @@ class IntegrationConnectionService
 
     private function assertSecretReference(?string $reference): void
     {
-        if ($reference !== null && preg_match('/^(vault|aws-sm|gcp-sm|azure-kv|secret|env):(?:\/\/)?[A-Za-z0-9][A-Za-z0-9._\/-]*$/', $reference) !== 1) {
+        if ($reference !== null && ! $this->configurationPolicy->isSecretReference($reference)) {
             throw new DomainException('Secret references must use an approved secret-manager URI.');
         }
     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Integrations\SafeIntegrationError;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -19,6 +20,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class IntegrationSyncRunItem extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(function (IntegrationSyncRunItem $item): void {
+            if ($item->last_error !== null) {
+                $item->last_error = SafeIntegrationError::from($item->last_error);
+            }
+            if ($item->safe_payload !== null) {
+                $item->safe_payload = SafeIntegrationError::value($item->safe_payload);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

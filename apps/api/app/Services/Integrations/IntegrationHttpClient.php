@@ -65,12 +65,7 @@ final class IntegrationHttpClient
                     $this->emit($connection, 'rate_limited', 429, $started, $attempt, $requestChecksum, hash('sha256', $response->body()));
                     $retryAfter = $this->retryAfterSeconds($response->header('Retry-After'));
                     $connection->update(['throttled_until' => now()->addSeconds($retryAfter), 'health_status' => 'degraded', 'last_error_at' => now(), 'last_error' => 'Provider rate limit received.']);
-                    if ($attempt >= $maxAttempts) {
-                        throw new RateLimitedIntegrationException('The provider rate limit remains active.', $retryAfter);
-                    }
-                    $this->wait($retryAfter);
-
-                    continue;
+                    throw new RateLimitedIntegrationException('The provider rate limit remains active.', $retryAfter);
                 }
                 if ($response->serverError()) {
                     $this->emit($connection, 'server_error', $response->status(), $started, $attempt, $requestChecksum, hash('sha256', $response->body()));

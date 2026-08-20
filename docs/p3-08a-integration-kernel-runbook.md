@@ -15,9 +15,9 @@ This runbook operates Inn's provider-neutral integration kernel. It does **not**
 2. In **Templates & Integrations → Integration connections**, create a connection with property scope, provider, product, external account, environment, explicit capabilities, non-secret configuration, and the secret reference.
 3. Use **Test** for one registered capability. A missing named port is a failed configuration, not generic success.
 4. Use **Enable** with an actor reason. Enabled capability rows are required independently of the connection flag.
-5. For inbound webhooks, rotate the endpoint key. Copy the raw value immediately to the provider and/or secret manager; only its SHA-256 hash is retained. A repeated rotation idempotency identity never returns the old raw value.
+5. For inbound webhooks, rotate the endpoint key. Copy the raw value immediately to the provider and/or secret manager; a newly rotated value is persisted only as its SHA-256 hash. A repeated rotation idempotency identity never returns the old raw value.
 
-Legacy Mercado Pago rows retain their connection ID and provider/account/environment/property identity. Their previous endpoint value is converted to a hash for inbound compatibility, removed from configuration, and an open `legacy_endpoint_key_rotation` reconciliation instructs an operator to rotate/store a new raw endpoint key before initiating new checkouts.
+Legacy Mercado Pago rows retain their connection ID and provider/account/environment/property identity. During the staged cutover, their previous callback value is removed from public configuration, hashed for inbound lookup, and encrypted in a dedicated transition column so existing checkout callbacks remain functional. The ciphertext is cleared only after the configured secret reference resolves to the same value or an operator rotates to a replacement. An open `legacy_endpoint_key_rotation` reconciliation owns that transition. Rolling the migration down restores the legacy configuration shape; an up/down/up cycle does not lose the callback identity.
 
 ## Run and cursor policy
 
@@ -57,7 +57,7 @@ php artisan queue:work --queue=integrations --tries=4 --timeout=180
 php artisan route:list --path=integration
 ```
 
-Inspect safe checksums and correlation IDs rather than asking for raw payloads or credentials. Search `integration_operations` for actor/reason history. If a raw endpoint key was lost, rotate it; it cannot be recovered from Inn.
+Inspect safe checksums and correlation IDs rather than asking for raw payloads or credentials. Search `integration_operations` for actor/reason history. A newly rotated raw endpoint key cannot be recovered from Inn; rotate again if it was not captured. A migrated legacy key is available only through the bounded encrypted transition until its verified secret reference or replacement rotation completes.
 
 ## Verification
 

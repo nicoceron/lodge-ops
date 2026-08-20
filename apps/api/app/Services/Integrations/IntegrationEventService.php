@@ -129,7 +129,7 @@ final class IntegrationEventService
             if (! in_array($candidate->disposition, ['received', 'retryable'], true)) {
                 return null;
             }
-            $connection = IntegrationConnection::query()->findOrFail($candidate->integration_connection_id);
+            $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($candidate->integration_connection_id);
             if (! $connection->is_enabled || $connection->revoked_at !== null) {
                 $candidate->update(['disposition' => 'blocked', 'last_error' => 'Connection disabled or revoked before event processing.']);
 
@@ -155,11 +155,20 @@ final class IntegrationEventService
             }
             $identity = new IntegrationServiceIdentity($claimed->tenant_id, $claimed->property_id, $claimed->integration_connection_id, ['webhook.inbound'], 'event:'.$claimed->id);
             $port->consume($claimed->connection, $claimed, $identity, hash('sha256', $claimed->tenant_id."\0event\0".$claimed->id));
-            $claimed->update(['disposition' => 'processed', 'processed_at' => now(), 'last_error' => null]);
-            IntegrationDeadLetter::query()->where('integration_event_id', $claimed->id)->update([
-                'status' => 'resolved', 'resolved_at' => now(), 'resolution' => 'Replay succeeded.',
-            ]);
-            $claimed->connection->update(['last_success_at' => now(), 'health_status' => 'healthy', 'last_error' => null]);
+            DB::transaction(function () use ($claimed): void {
+                $locked = IntegrationEvent::query()->lockForUpdate()->findOrFail($claimed->id);
+                $connection = IntegrationConnection::query()->lockForUpdate()->findOrFail($locked->integration_connection_id);
+                if (! $connection->is_enabled || $connection->revoked_at !== null || $locked->disposition === 'blocked') {
+                    $locked->update(['disposition' => 'blocked', 'last_error' => 'Connection disabled after event claim.']);
+
+                    return;
+                }
+                $locked->update(['disposition' => 'processed', 'processed_at' => now(), 'last_error' => null]);
+                IntegrationDeadLetter::query()->where('integration_event_id', $locked->id)->update([
+                    'status' => 'resolved', 'resolved_at' => now(), 'resolution' => 'Replay succeeded.',
+                ]);
+                $connection->update(['last_success_at' => now(), 'health_status' => 'healthy', 'last_error' => null]);
+            }, 3);
         } catch (Throwable $exception) {
             $claimed->update(['disposition' => 'retryable', 'last_error' => SafeIntegrationError::from($exception)]);
             throw $exception;
@@ -188,13 +197,14 @@ final class IntegrationEventService
 
     public function replay(IntegrationEvent $event, ?int $actorId, string $reason): IntegrationEvent
     {
-        if (in_array($event->disposition, ['received', 'processing', 'retryable'], true)) {
-            throw new DomainException('The original event is still active.');
-        }
         DB::transaction(function () use ($event, $actorId, $reason): void {
-            $event->update(['disposition' => 'received', 'processed_at' => null, 'last_error' => null]);
-            IntegrationOperationRecorder::record($event->connection, 'event_replayed', $actorId, $reason, ['event_id' => $event->id]);
-            DB::afterCommit(fn () => ProcessIntegrationEventJob::dispatch($event->tenant_id, $event->id)->onQueue('integrations'));
+            $locked = IntegrationEvent::query()->lockForUpdate()->findOrFail($event->id);
+            if (in_array($locked->disposition, ['received', 'processing', 'retryable'], true)) {
+                throw new DomainException('The original event is still active.');
+            }
+            $locked->update(['disposition' => 'received', 'processed_at' => null, 'last_error' => null]);
+            IntegrationOperationRecorder::record($locked->connection, 'event_replayed', $actorId, $reason, ['event_id' => $locked->id]);
+            DB::afterCommit(fn () => ProcessIntegrationEventJob::dispatch($locked->tenant_id, $locked->id)->onQueue('integrations'));
         }, 3);
 
         return $event->fresh();
@@ -204,6 +214,6 @@ final class IntegrationEventService
     private function safeSnapshot(array $payload): array
     {
         return collect($payload)->only(['id', 'type', 'version', 'account_id', 'occurred_at', 'subject', 'action'])
-            ->map(fn ($value) => is_scalar($value) || $value === null ? $value : '[omitted]')->all();
+            ->map(fn ($value) => is_scalar($value) || $value === null ? SafeIntegrationError::value($value) : '[omitted]')->all();
     }
 }

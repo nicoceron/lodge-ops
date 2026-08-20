@@ -19,6 +19,7 @@ use App\Models\StockMovement;
 use App\Services\FinancialReportingService;
 use App\Services\GuestMergeService;
 use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\OpportunityService;
 use App\Services\RetailPostingService;
 use App\Support\Tenancy\TenantContext;
@@ -196,7 +197,14 @@ class ExtendedOperationsController extends Controller
             $query->where('property_id', $context->propertyScopeId());
         }
 
-        return response()->json(['data' => $query->get()]);
+        $configuration = app(IntegrationConfigurationPolicy::class);
+
+        return response()->json(['data' => $query->get()->map(function (IntegrationConnection $connection) use ($configuration): array {
+            $data = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();
+            $data['configuration'] = $configuration->publicView($connection->configuration);
+
+            return $data;
+        })]);
     }
 
     public function configureIntegration(Request $request, TenantContext $context, IntegrationConnectionService $service): JsonResponse
@@ -232,7 +240,10 @@ class ExtendedOperationsController extends Controller
             $data['capabilities'] ?? [],
         );
 
-        return response()->json(['data' => $connection], 200);
+        $response = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();
+        $response['configuration'] = app(IntegrationConfigurationPolicy::class)->publicView($connection->configuration);
+
+        return response()->json(['data' => $response], 200);
     }
 
     public function organizations(TenantContext $context): JsonResponse

@@ -1839,6 +1839,19 @@ paths:
         - $ref: '#/components/parameters/Page'
       responses:
         '200': { description: Property-authorized paginated integration runs. }
+  /integration-runs/{run}/resume:
+    post:
+      tags: [Integrations]
+      operationId: resumeBlockedIntegrationRun
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: run, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: The specifically identified blocked run was resumed without moving its cursor. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /integrations/{connection}/events:
     get:
       tags: [Integrations]
@@ -2334,7 +2347,7 @@ components:
       properties:
         capability: { type: string, enum: [reservations.import, accounting.journal_export, webhook.outbound] }
         property_id: { type: [string, 'null'], format: uuid }
-        trigger: { type: string, enum: [manual, scheduled, reconciliation, resume], default: manual }
+        trigger: { type: string, enum: [manual, scheduled, reconciliation], default: manual }
     DocumentRequestInput:
       type: object
       required: [kind]

@@ -528,12 +528,16 @@ class ProviderClosureTest extends TestCase
         $connection = IntegrationConnection::query()->create([
             'name' => 'production-fixture-rejected',
             'type' => 'payment',
+            'provider' => 'mercado_pago', 'product' => 'checkout_pro', 'external_account_id' => 'seller-production', 'environment' => 'production',
+            'status' => 'connected', 'is_enabled' => true, 'capabilities' => ['payment.hosted_checkout'],
             'configuration' => [
-                'provider' => 'mercado_pago', 'environment' => 'production', 'provider_account' => 'seller-production',
                 'webhook_key' => str_repeat('p', 48), 'webhook_secret_reference' => 'env:UNUSED_WEBHOOK_SECRET',
                 'transport' => 'deterministic_fixture', 'fixture' => [],
             ],
             'secret_reference' => 'env:UNUSED_PROVIDER_TOKEN',
+        ]);
+        $connection->connectionCapabilities()->create([
+            'capability' => 'payment.hosted_checkout', 'direction' => 'outbound', 'state' => 'enabled', 'configuration_version' => 1,
         ]);
 
         $this->expectException(RuntimeException::class);
@@ -595,14 +599,18 @@ class ProviderClosureTest extends TestCase
         Queue::fake();
         putenv('MP_HTTP_WEBHOOK_SECRET=provider-http-test-secret');
         $key = str_repeat('s', 48);
-        IntegrationConnection::query()->create([
+        $connection = IntegrationConnection::query()->create([
             'name' => 'signed-webhook-http', 'type' => 'payment',
+            'provider' => 'mercado_pago', 'product' => 'checkout_pro', 'external_account_id' => 'seller-http', 'environment' => 'sandbox',
+            'status' => 'connected', 'is_enabled' => true, 'capabilities' => ['payment.hosted_checkout'],
             'configuration' => [
-                'provider' => 'mercado_pago', 'environment' => 'sandbox', 'provider_account' => 'seller-http',
                 'webhook_key' => $key, 'webhook_secret_reference' => 'env:MP_HTTP_WEBHOOK_SECRET',
                 'transport' => 'deterministic_fixture', 'fixture' => [],
             ],
             'secret_reference' => 'env:UNUSED_DETERMINISTIC_TOKEN',
+        ]);
+        $connection->connectionCapabilities()->create([
+            'capability' => 'payment.hosted_checkout', 'direction' => 'outbound', 'state' => 'enabled', 'configuration_version' => 1,
         ]);
         $body = json_encode(['type' => 'payment', 'action' => 'payment.updated', 'data' => ['id' => 'unknown-resource']], JSON_THROW_ON_ERROR);
         $url = "/api/v1/payment-webhooks/{$key}?data.id=unknown-resource";
@@ -764,18 +772,22 @@ class ProviderClosureTest extends TestCase
 
     private function connection(): IntegrationConnection
     {
-        return IntegrationConnection::query()->create([
+        $connection = IntegrationConnection::query()->create([
             'name' => 'mercado-pago-argentina',
             'type' => 'payment',
+            'provider' => 'mercado_pago', 'product' => 'checkout_pro', 'external_account_id' => 'seller-1', 'environment' => 'sandbox',
+            'status' => 'connected', 'is_enabled' => true, 'capabilities' => ['payment.hosted_checkout'],
             'configuration' => [
-                'provider' => 'mercado_pago',
-                'environment' => 'sandbox',
-                'provider_account' => 'seller-1',
                 'return_url_base' => 'https://inn.test',
                 'webhook_key' => str_repeat('w', 48),
             ],
             'secret_reference' => 'env:MP_TEST_TOKEN',
         ]);
+        $connection->connectionCapabilities()->create([
+            'capability' => 'payment.hosted_checkout', 'direction' => 'outbound', 'state' => 'enabled', 'configuration_version' => 1,
+        ]);
+
+        return $connection;
     }
 
     private function signature(string $resourceId, string $requestId, int $timestamp): string

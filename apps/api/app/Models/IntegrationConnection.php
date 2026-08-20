@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Services\Integrations\EndpointKeyRuntimeStore;
+use App\Services\Integrations\SafeIntegrationError;
 use Carbon\CarbonImmutable;
+use DomainException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -32,7 +34,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class IntegrationConnection extends TenantModel
 {
-    protected $hidden = ['secret_reference', 'payment_webhook_key'];
+    protected $hidden = ['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'];
 
     public const TYPES = [
         'email' => 'Email',
@@ -66,7 +68,25 @@ class IntegrationConnection extends TenantModel
     protected static function booted(): void
     {
         static::saving(function (IntegrationConnection $connection): void {
+            if ($connection->last_error !== null) {
+                $connection->last_error = SafeIntegrationError::from($connection->last_error);
+            }
             $configuration = $connection->configuration ?? [];
+            foreach ([
+                'provider' => 'provider', 'product' => 'product', 'provider_account' => 'external_account_id',
+                'external_account_id' => 'external_account_id', 'environment' => 'environment', 'property_id' => 'property_id',
+            ] as $configurationKey => $column) {
+                $legacy = data_get($configuration, $configurationKey);
+                $canonical = $connection->getAttribute($column);
+                if ($legacy !== null && $canonical !== null && (string) $legacy !== (string) $canonical) {
+                    throw new DomainException('Integration configuration identity conflicts with its canonical columns.');
+                }
+                if ($canonical === null && $legacy !== null) {
+                    $connection->setAttribute($column, $legacy);
+                }
+                data_forget($configuration, $configurationKey);
+            }
+            $connection->configuration = $configuration;
             $rawKey = data_get($configuration, 'webhook_key');
             if (is_string($rawKey) && $rawKey !== '') {
                 app(EndpointKeyRuntimeStore::class)->remember($connection, $rawKey);
@@ -76,10 +96,10 @@ class IntegrationConnection extends TenantModel
                 $connection->webhook_key_version = max(1, (int) $connection->webhook_key_version);
             }
             $connection->property_scope_key = $connection->property_id ?: '00000000-0000-0000-0000-000000000000';
-            $connection->provider ??= (string) data_get($configuration, 'provider', $connection->type);
-            $connection->product ??= (string) data_get($configuration, 'product', $connection->provider === 'mercado_pago' ? 'checkout_pro' : $connection->type);
-            $connection->external_account_id ??= (string) data_get($configuration, 'provider_account', $connection->name);
-            $connection->environment ??= (string) data_get($configuration, 'environment', 'sandbox');
+            $connection->provider ??= $connection->type;
+            $connection->product ??= $connection->provider === 'mercado_pago' ? 'checkout_pro' : $connection->type;
+            $connection->external_account_id ??= $connection->name;
+            $connection->environment ??= 'sandbox';
         });
 
         static::saved(function (IntegrationConnection $connection): void {

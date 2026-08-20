@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Integrations\SafeIntegrationError;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
@@ -27,7 +28,18 @@ class IntegrationEvent extends TenantModel
 
     protected static function booted(): void
     {
+        static::creating(function (self $event): void {
+            if ($event->last_error !== null) {
+                $event->last_error = SafeIntegrationError::from($event->last_error);
+            }
+            if ($event->safe_snapshot !== null) {
+                $event->safe_snapshot = SafeIntegrationError::value($event->safe_snapshot);
+            }
+        });
         static::updating(function (self $event): void {
+            if ($event->isDirty('last_error') && $event->last_error !== null) {
+                $event->last_error = SafeIntegrationError::from($event->last_error);
+            }
             if (array_diff(array_keys($event->getDirty()), ['disposition', 'attempt', 'processed_at', 'last_error', 'updated_at']) !== []) {
                 throw new LogicException('Integration event facts are immutable.');
             }

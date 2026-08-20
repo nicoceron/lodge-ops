@@ -5,6 +5,9 @@ namespace App\Services\Integrations;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationMapping;
 use App\Models\IntegrationReconciliation;
+use App\Services\IntegrationConnectionService;
+use App\Support\Tenancy\TenantContext;
+use DomainException;
 use Illuminate\Support\Facades\DB;
 
 final class IntegrationMappingService
@@ -22,6 +25,16 @@ final class IntegrationMappingService
         int $transformVersion,
         array $safeFacts = [],
     ): IntegrationMapping {
+        if (! in_array($capability, $connection->capabilities ?? [], true)
+            || (IntegrationConnectionService::CAPABILITY_DIRECTIONS[$capability] ?? null) !== $direction) {
+            throw new DomainException('The mapping capability or direction is not granted by this connection.');
+        }
+        if ($connection->property_id !== null && $propertyId !== $connection->property_id) {
+            throw new DomainException('The mapping property must match its connection scope.');
+        }
+        if ($propertyId !== null && ! app(TenantContext::class)->canAccessProperty($propertyId)) {
+            throw new DomainException('The mapping property is outside your workspace.');
+        }
         $checksum = hash('sha256', json_encode($safeFacts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         return DB::transaction(function () use ($connection, $propertyId, $capability, $direction, $localEntityType, $localKey, $externalEntityType, $externalKey, $transformVersion, $safeFacts, $checksum): IntegrationMapping {

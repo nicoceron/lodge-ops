@@ -15,6 +15,8 @@ use App\Filament\Resources\ExchangeRates\Pages\ManageExchangeRates;
 use App\Filament\Resources\GeneratedDocuments\GeneratedDocumentResource;
 use App\Filament\Resources\IntegrationConnections\IntegrationConnectionResource;
 use App\Filament\Resources\IntegrationConnections\Pages\ManageIntegrationConnections;
+use App\Filament\Resources\IntegrationMappings\IntegrationMappingResource;
+use App\Filament\Resources\IntegrationMappings\Pages\ManageIntegrationMappings;
 use App\Filament\Resources\MessageTemplates\MessageTemplateResource;
 use App\Filament\Resources\Opportunities\OpportunityResource;
 use App\Filament\Resources\Organizations\OrganizationResource;
@@ -27,12 +29,16 @@ use App\Models\CommunicationSuppression;
 use App\Models\DocumentTemplate;
 use App\Models\GeneratedDocument;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationMapping;
+use App\Models\IntegrationReconciliation;
 use App\Models\MessageTemplate;
 use App\Models\Opportunity;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\RetailSale;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
+use App\Services\IntegrationConnectionService;
 use App\Services\MessageTemplateService;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -232,6 +238,53 @@ class BackOfficeFilamentTest extends TestCase
         $connection = IntegrationConnection::query()->firstOrFail();
         $this->assertSame('configured', $connection->status);
         $this->assertSame(['calendar_id' => 'ops'], $connection->configuration);
+
+        $webhook = app(IntegrationConnectionService::class)->configure(
+            'Rendered webhook', 'webhook', ['webhook_signing_secret_reference' => 'vault://tenant/render-secret'],
+            'env:RENDERED_CONNECTION_SECRET', $membership->property_id, 'contract_fake', 'webhooks', 'render-account',
+            'sandbox', ['webhook.inbound'],
+        );
+        $this->prepareFilament($tenant, $membership, $user);
+        $this->assertSame($membership->property_id, $webhook->property_id);
+        $this->assertTrue(IntegrationConnectionResource::getEloquentQuery()->whereKey($webhook->id)->exists());
+        Livewire::test(ManageIntegrationConnections::class)
+            ->assertCanSeeTableRecords([$webhook])
+            ->assertSee('[configured]')
+            ->assertDontSee('vault://tenant/render-secret')
+            ->assertDontSee('env:RENDERED_CONNECTION_SECRET');
+    }
+
+    public function test_mapping_create_modal_versions_through_service_and_enforces_role_and_property_scope(): void
+    {
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->prepareFilament($tenant, $membership, $user);
+        $connection = app(IntegrationConnectionService::class)->configure(
+            'Mapping connection', 'webhook', [], 'env:MAPPING_SECRET', $property->id,
+            'contract_fake', 'reservations', 'mapping-account', 'sandbox', ['reservations.import'],
+        );
+        $base = [
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'capability' => 'reservations.import', 'direction' => 'inbound',
+            'local_entity_type' => 'reservation', 'local_key' => 'local-1',
+            'external_entity_type' => 'booking', 'external_key' => 'external-1',
+            'transform_version' => 1, 'safe_facts' => ['status' => 'confirmed'],
+        ];
+        Livewire::test(ManageIntegrationMappings::class)->callAction('create', $base)->assertHasNoActionErrors();
+        Livewire::test(ManageIntegrationMappings::class)->callAction('create', [
+            ...$base, 'local_key' => 'local-2', 'transform_version' => 2,
+        ])->assertHasNoActionErrors();
+        $this->assertSame(2, IntegrationMapping::query()->count());
+        $this->assertNotNull(IntegrationMapping::query()->oldest('valid_from')->firstOrFail()->valid_until);
+        $this->assertSame(1, IntegrationReconciliation::query()->where('kind', 'mapping_drift')->count());
+
+        $otherProperty = Property::factory()->create();
+        Livewire::test(ManageIntegrationMappings::class)->callAction('create', [
+            ...$base, 'property_id' => $otherProperty->id, 'external_key' => 'outside-scope',
+        ])->assertActionHalted();
+
+        [, , $operations] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
+        $this->actingAs($operations);
+        $this->assertFalse(IntegrationMappingResource::canCreate());
     }
 
     public function test_generated_documents_and_published_messages_are_immutable_audit_records(): void
