@@ -104,10 +104,12 @@ class AutomationActionExecutor
         $communication = Communication::query()->firstOrCreate(
             ['automation_key' => $automationKey],
             [
+                'property_id' => data_get($context, 'reservation.property_id'),
                 'guest_id' => data_get($context, 'reservation.primary_guest_id'),
                 'reservation_id' => data_get($context, 'reservation.id'),
                 'channel' => $channel,
                 'direction' => 'outbound',
+                'purpose' => (string) ($action['purpose'] ?? 'transactional'),
                 'status' => 'queued',
                 'subject' => $this->renderer->render($action['subject'] ?? null, $context),
                 'body' => $this->renderer->render($action['body'] ?? 'A reservation update is ready.', $context),
@@ -172,10 +174,12 @@ class AutomationActionExecutor
             $communication = Communication::query()->firstOrCreate(
                 ['automation_key' => $automationKey],
                 [
+                    'property_id' => data_get($context, 'reservation.property_id'),
                     'guest_id' => data_get($context, 'reservation.primary_guest_id'),
                     'reservation_id' => $reservationId,
                     'channel' => $channel,
                     'direction' => 'outbound',
+                    'purpose' => (string) ($action['purpose'] ?? 'transactional'),
                     'status' => 'queued',
                     'subject' => $this->renderer->render($action['subject'] ?? 'Deposit reminder', $depositContext),
                     'body' => $this->renderer->render(
@@ -257,11 +261,13 @@ class AutomationActionExecutor
             return;
         }
         $communication = Communication::query()->create([
+            'property_id' => $reservation->property_id,
             'automation_key' => $automationKey,
             'guest_id' => $reservation->primary_guest_id,
             'reservation_id' => $reservation->id,
             'channel' => 'email',
             'direction' => 'outbound',
+            'purpose' => (string) ($action['purpose'] ?? 'transactional'),
             'status' => 'queued',
             'subject' => $this->renderer->render($action['subject'] ?? 'Your private lodge stay link', $invitationContext),
             'body' => $this->renderer->render(

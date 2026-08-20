@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AllocationController;
 use App\Http\Controllers\Api\V1\BookingQuoteController;
 use App\Http\Controllers\Api\V1\CalendarController;
+use App\Http\Controllers\Api\V1\CommunicationWebhookController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DepositController;
 use App\Http\Controllers\Api\V1\DocumentController;
@@ -43,6 +44,11 @@ Route::post('v1/payment-webhooks/{webhookKey}', PaymentWebhookController::class)
     ->where('webhookKey', '[A-Za-z0-9_-]{32,128}')
     ->middleware('throttle:payment-webhook')
     ->name('payment-webhooks.receive');
+
+Route::post('v1/communication-webhooks/{endpointKey}', CommunicationWebhookController::class)
+    ->where('endpointKey', '[A-Za-z0-9_-]{32,128}')
+    ->middleware('throttle:communication-webhook')
+    ->name('communication-webhooks.receive');
 
 Route::prefix('v1/guest-portal')->group(function (): void {
     Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:guest-exchange');

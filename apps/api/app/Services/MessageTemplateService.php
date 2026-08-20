@@ -58,7 +58,7 @@ class MessageTemplateService
             throw new DomainException('The guest has no recipient address for this channel.');
         }
         $recipientHash = $this->recipientHash($recipient);
-        if ($this->isSuppressed($guest, $template->channel)) {
+        if ($this->isSuppressed($guest, $template->channel, $reservation?->property_id)) {
             throw new DomainException('Communication to this recipient is suppressed.');
         }
 
@@ -71,21 +71,37 @@ class MessageTemplateService
             throw new DomainException('No published template version is available.');
         }
 
-        return DB::transaction(function () use ($template, $version, $guest, $reservation, $idempotencyKey, $context, $recipientHash): Communication {
+        $existing = Communication::query()->where('automation_key', $idempotencyKey)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $renderedSubject = $this->renderer->render($version->subject, $context);
+        $renderedBody = $this->renderer->render($version->body, $context);
+        $templateVersion = $version->version;
+        $locale = $version->language;
+
+        return DB::transaction(function () use ($template, $guest, $reservation, $idempotencyKey, $context, $recipientHash, $renderedSubject, $renderedBody, $templateVersion, $locale): Communication {
             $communication = Communication::query()->firstOrCreate(
                 ['automation_key' => $idempotencyKey],
                 [
+                    'property_id' => $reservation?->property_id,
                     'guest_id' => $guest->id,
                     'reservation_id' => $reservation?->id,
                     'channel' => $template->channel,
                     'direction' => 'outbound',
+                    'purpose' => (string) data_get($context, 'communication_purpose', 'transactional'),
+                    'template_key' => $template->key,
+                    'template_version' => $templateVersion,
+                    'locale' => $locale,
                     'status' => 'queued',
-                    'subject' => $this->renderer->render($version->subject, $context),
-                    'body' => $this->renderer->render($version->body, $context),
+                    'body' => $renderedBody,
+                    'content_checksum' => hash('sha256', $renderedSubject."\n".$renderedBody),
+                    'subject' => $renderedSubject,
                     'metadata' => [
                         'template_id' => $template->id,
-                        'template_version' => $version->version,
-                        'language' => $version->language,
+                        'template_version' => $templateVersion,
+                        'language' => $locale,
                         'recipient_hash' => $recipientHash,
                     ],
                 ],
@@ -101,7 +117,7 @@ class MessageTemplateService
         });
     }
 
-    public function isSuppressed(Guest $guest, string $channel): bool
+    public function isSuppressed(Guest $guest, string $channel, ?string $propertyId = null): bool
     {
         $recipient = $this->recipient($guest, $channel);
         if ($recipient === null || trim($recipient) === '') {
@@ -112,6 +128,8 @@ class MessageTemplateService
             ->where('channel', $channel)
             ->where('recipient_hash', $this->recipientHash($recipient))
             ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->whereNull('lifted_at')
+            ->when($propertyId, fn ($query) => $query->where(fn ($scope) => $scope->whereNull('property_id')->orWhere('property_id', $propertyId)))
             ->exists();
     }
 

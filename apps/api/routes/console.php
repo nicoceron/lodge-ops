@@ -19,8 +19,15 @@ Schedule::command('reservation-holds:expire --batch=100')
     ->onOneServer();
 
 Schedule::command('reservation-milestones:dispatch')
-    ->hourly()
-    ->withoutOverlapping()
+    ->name('reservation-milestones:dispatch')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
+Schedule::command('horizon:snapshot')
+    ->name('horizon:snapshot')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5)
     ->onOneServer();
 
 Schedule::command('artifacts:purge-expired --batch=100')

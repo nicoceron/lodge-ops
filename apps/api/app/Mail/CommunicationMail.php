@@ -19,6 +19,7 @@ class CommunicationMail extends Mailable
         public readonly ?string $attachmentDisk = null,
         public readonly ?string $attachmentPath = null,
         public readonly ?string $attachmentName = null,
+        public readonly ?string $attachmentBytes = null,
     ) {}
 
     public function envelope(): Envelope
@@ -37,6 +38,11 @@ class CommunicationMail extends Mailable
     /** @return list<Attachment> */
     public function attachments(): array
     {
+        if ($this->attachmentBytes !== null) {
+            return [Attachment::fromData(fn (): string => $this->attachmentBytes, $this->attachmentName ?? 'document.pdf')
+                ->withMime('application/pdf')];
+        }
+
         if ($this->attachmentDisk === null || $this->attachmentPath === null) {
             return [];
         }

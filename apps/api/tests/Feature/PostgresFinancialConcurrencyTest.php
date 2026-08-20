@@ -24,8 +24,10 @@ use App\Models\PaymentAttempt;
 use App\Models\ProviderEvent;
 use App\Models\ProviderRefund;
 use App\Models\Reservation;
+use App\Models\ReservationMilestoneOccurrence;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Communications\ReservationMilestoneScheduler;
 use App\Services\CompleteRefund;
 use App\Services\FolioService;
 use App\Services\Payments\CreateProviderCheckout;
@@ -53,6 +55,27 @@ use Throwable;
 class PostgresFinancialConcurrencyTest extends TestCase
 {
     use CreatesTenant, DatabaseMigrations;
+
+    public function test_concurrent_scheduler_nodes_claim_each_occurrence_once(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => now()->subDays(2),
+            'ends_at' => now()->addDay(),
+        ]);
+        app(ReservationMilestoneScheduler::class)->synchronize($reservation);
+
+        $claim = fn (): string => (string) count(app(ReservationMilestoneScheduler::class)->claimDue(CarbonImmutable::now()));
+        $results = $this->concurrently([$claim, $claim], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->sum(fn (array $result): int => (int) ($result['result'] ?? 0)), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(2, ReservationMilestoneOccurrence::query()->where('reservation_id', $reservation->id)->where('state', 'dispatched')->count());
+        $this->assertSame(2, DB::table('outbox')->where('aggregate_id', $reservation->id)->count());
+    }
 
     public function test_postgres_allows_only_one_reusable_attempt_per_payment_request_under_race(): void
     {

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\PublishOutboxMessage;
+use App\Jobs\SendCommunication;
 use App\Mail\CommunicationMail;
 use App\Models\Communication;
 use App\Models\CommunicationSuppression;
@@ -129,6 +130,10 @@ class CommunicationDeliveryTest extends TestCase
         $claimed = Outbox::withoutGlobalScopes()->findOrFail($outbox->id);
         (new PublishOutboxMessage($tenant->id, $outbox->id, $claimed->claim_token))
             ->handle(app(AutomationEngine::class), app(TenantContext::class));
+
+        Queue::assertPushed(SendCommunication::class, fn (SendCommunication $job): bool => $job->communicationId === $communication->id);
+        (new SendCommunication($tenant->id, $communication->id))
+            ->handle(app(CommunicationDeliveryService::class), app(TenantContext::class));
 
         Mail::assertSent(CommunicationMail::class, 1);
         $this->assertDatabaseHas('communications', ['id' => $communication->id, 'status' => 'sent']);

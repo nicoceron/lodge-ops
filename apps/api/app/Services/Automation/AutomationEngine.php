@@ -2,12 +2,11 @@
 
 namespace App\Services\Automation;
 
+use App\Jobs\SendCommunication;
 use App\Models\AutomationRule;
-use App\Models\Communication;
 use App\Models\Outbox;
 use App\Models\Payment;
 use App\Models\Reservation;
-use App\Services\CommunicationDeliveryService;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 
@@ -17,7 +16,6 @@ class AutomationEngine
         private readonly TenantContext $tenantContext,
         private readonly AutomationConditionMatcher $matcher,
         private readonly AutomationActionExecutor $executor,
-        private readonly CommunicationDeliveryService $delivery,
     ) {}
 
     public function handle(Outbox $message): void
@@ -28,7 +26,7 @@ class AutomationEngine
                 throw new DomainException('Communication delivery events require a communication_id.');
             }
 
-            $this->delivery->deliver(Communication::query()->findOrFail($communicationId));
+            SendCommunication::dispatch($this->tenantContext->id(), $communicationId)->afterCommit();
 
             return;
         }
