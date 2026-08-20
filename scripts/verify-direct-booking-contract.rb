@@ -16,8 +16,8 @@ machine = {
   'held' => { 'payment_pending' => 'payment_orchestrator', 'awaiting_manual_payment' => 'payment_orchestrator', 'expired' => 'scheduler' },
   'payment_pending' => { 'payment_pending' => 'payment_orchestrator', 'paid_pending_confirmation' => 'provider_authoritative_lookup', 'payment_failed' => 'provider_authoritative_lookup', 'paid_needs_review' => 'provider_authoritative_lookup', 'expired' => 'scheduler' },
   'awaiting_manual_payment' => { 'evidence_pending' => 'guest_evidence_service', 'expired' => 'scheduler' },
-  'evidence_pending' => { 'finance_review' => 'evidence_scanner', 'evidence_rejected' => 'evidence_scanner', 'expired' => 'scheduler' },
-  'finance_review' => { 'confirmed' => 'finance_review', 'evidence_rejected' => 'finance_review', 'expired' => 'scheduler' },
+  'evidence_pending' => { 'finance_review' => %w[evidence_scanner scheduler], 'evidence_rejected' => 'evidence_scanner' },
+  'finance_review' => { 'confirmed' => 'finance_review', 'evidence_rejected' => 'finance_review', 'refunded' => 'refund_service' },
   'paid_pending_confirmation' => { 'confirmed' => 'reservation_service', 'paid_needs_review' => 'reservation_service' },
   'payment_failed' => { 'payment_pending' => 'payment_orchestrator', 'expired' => 'scheduler' },
   'evidence_rejected' => { 'awaiting_manual_payment' => 'payment_orchestrator', 'expired' => 'scheduler' },
@@ -66,6 +66,84 @@ manifest = JSON.parse(File.read(File.join(fixtures_path, 'manifest.json')))
 manifest.fetch('screens').each_value do |fixture|
     abort "Missing screen fixture #{fixture}." unless File.file?(File.join(fixtures_path, fixture))
 end
+
+def resolve_schema(root, schema)
+  return schema unless schema.is_a?(Hash) && schema['$ref']&.start_with?('#/components/schemas/')
+
+  root.dig('components', 'schemas', schema['$ref'].split('/').last) || abort("Unknown schema reference #{schema['$ref']}")
+end
+
+def validate_schema!(root, schema, value, path = '$')
+  schema = resolve_schema(root, schema)
+  Array(schema['allOf']).each { |part| validate_schema!(root, part, value, path) }
+  if schema['oneOf']
+    valid = schema['oneOf'].count do |part|
+      begin
+        validate_schema!(root, part, value, path)
+        true
+      rescue RuntimeError
+        false
+      end
+    end
+    raise "#{path} matches #{valid} oneOf branches" unless valid == 1
+  end
+  types = Array(schema['type']).compact
+  unless types.empty?
+    actual = case value
+             when Hash then 'object'
+             when Array then 'array'
+             when String then 'string'
+             when Integer then 'integer'
+             when TrueClass, FalseClass then 'boolean'
+             when NilClass then 'null'
+             end
+    raise "#{path} expected #{types.join(' or ')}, got #{actual}" unless types.include?(actual)
+  end
+  raise "#{path} is not in enum" if schema['enum'] && !schema['enum'].include?(value)
+  raise "#{path} does not equal const" if schema.key?('const') && schema['const'] != value
+  if value.is_a?(Hash)
+    Array(schema['required']).each { |key| raise "#{path}.#{key} is required" unless value.key?(key) }
+    properties = schema['properties'] || {}
+    if schema['additionalProperties'] == false
+      unknown = value.keys - properties.keys
+      raise "#{path} has unknown properties #{unknown.join(', ')}" unless unknown.empty?
+    end
+    value.each { |key, child| validate_schema!(root, properties[key], child, "#{path}.#{key}") if properties[key] }
+  elsif value.is_a?(Array) && schema['items']
+    value.each_with_index { |child, index| validate_schema!(root, schema['items'], child, "#{path}[#{index}]") }
+    raise "#{path} has too few items" if schema['minItems'] && value.length < schema['minItems']
+    raise "#{path} has duplicate items" if schema['uniqueItems'] && value.uniq.length != value.length
+  elsif value.is_a?(String)
+    raise "#{path} is shorter than minLength" if schema['minLength'] && value.length < schema['minLength']
+    raise "#{path} is longer than maxLength" if schema['maxLength'] && value.length > schema['maxLength']
+    raise "#{path} does not match pattern" if schema['pattern'] && !Regexp.new(schema['pattern']).match?(value)
+  elsif value.is_a?(Integer)
+    raise "#{path} is below minimum" if schema['minimum'] && value < schema['minimum']
+  end
+end
+
+fixture_schemas = {
+  'property.json' => 'PropertyEnvelope',
+  'policy.json' => 'PolicyEnvelope',
+  'availability.json' => 'AvailabilityEnvelope',
+  'order-begun.json' => 'OrderBegunEnvelope',
+  'quote.json' => 'QuoteEnvelope',
+  'order-held.json' => 'OrderStatusEnvelope',
+  'checkout.json' => 'CheckoutEnvelope',
+  'evidence-pending.json' => 'OrderStatusEnvelope',
+  'confirmation.json' => 'ConfirmationEnvelope'
+}
+fixture_schemas.each do |fixture, schema_name|
+  validate_schema!(direct, direct.dig('components', 'schemas', schema_name), JSON.parse(File.read(File.join(fixtures_path, fixture))))
+end
+
+begun = direct.dig('components', 'schemas', 'OrderBegunEnvelope', 'properties', 'data', 'properties')
+abort 'session_token must be response-only.' unless begun.dig('session_token', 'readOnly') == true && !begun.dig('session_token', 'writeOnly')
+abort 'Recovery must use its separate credential scheme.' unless main.dig('paths', '/direct-booking/properties/{propertySlug}/orders/{orderReference}/recover', 'post', 'security') == [{ 'directBookingRecovery' => [] }]
+abort 'Turnstile idempotency keys must be UUIDs.' unless main.dig('components', 'parameters', 'DirectBookingIdempotencyKey', 'schema', 'format') == 'uuid'
+mock = File.read(File.join(root, 'contracts/direct-booking/v1/mock-router.php'))
+abort 'Mock must expose the frozen published cache header.' unless mock.include?('public, max-age=60, stale-while-revalidate=300')
+abort 'Mock must expose Content-Language for published content.' unless mock.include?('Content-Language:')
 
 references = File.read(main_path).scan(%r{\./direct-booking/v1/[^'"# ]+})
 references.each do |reference|

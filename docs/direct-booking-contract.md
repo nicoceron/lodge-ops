@@ -34,7 +34,7 @@ The canonical schemas, examples, headers and errors are in [`contracts/openapi.y
 | `POST .../orders/{ref}/recover` | Re-price/recheck expired session and rotate token | no-store | Recovery + commercial/inventory services |
 | `GET .../orders/{ref}/confirmation` | Safe confirmed reservation summary | no-store | Reservation domain only |
 
-Every mutation except the non-mutating availability search requires `Idempotency-Key` (`16..128`, `[A-Za-z0-9._:-]`). The canonical request checksum includes normalized JSON/body facts and the command identity. Same key/same body returns the exact stored status/body with `Idempotency-Replayed: true`; same key/different body returns `idempotency_conflict`. `expected_state_version` is an independent optimistic-concurrency guard.
+Every mutation except the non-mutating availability search requires a canonical UUID `Idempotency-Key`. The canonical request checksum includes normalized JSON/body facts and the command identity. Same key/same body returns the exact stored status/body with `Idempotency-Replayed: true`; same key/different body returns `idempotency_conflict`. `expected_state_version` is an independent optimistic-concurrency guard. The same UUID is sent to Turnstile as its replay-safe verification identity; malformed values fail before any outbound verification request.
 
 `X-Correlation-ID` is accepted only in the safe character/length contract and otherwise replaced. It is returned on every response and must never contain guest/provider data. Published endpoints return `Content-Language`; unsupported locale/currency fails explicitly and never synthesizes policy text or conversion.
 
@@ -49,8 +49,8 @@ Every accepted transition writes one immutable `direct_booking_order_events` fac
 | `held` | `payment_pending` / `awaiting_manual_payment` | payment orchestrator after capability check |
 | `payment_pending` | `paid_pending_confirmation` / `payment_failed` / `paid_needs_review` | authoritative provider lookup |
 | `awaiting_manual_payment` | `evidence_pending` | guest evidence service after private upload acceptance |
-| `evidence_pending` | `finance_review` / `evidence_rejected` | evidence scanner |
-| `finance_review` | `confirmed` / `evidence_rejected` | Finance review; confirmation invokes reservation service |
+| `evidence_pending` | `finance_review` / `evidence_rejected` | evidence scanner; the scheduler may escalate already-accepted evidence to Finance when its inventory hold expires |
+| `finance_review` | `confirmed` / `evidence_rejected` / `refunded` | Finance review or refund service; confirmation invokes reservation service |
 | `paid_pending_confirmation` | `confirmed` / `paid_needs_review` | reservation service after inventory/confirmation checks |
 | `payment_failed` | `payment_pending` | payment orchestrator retry |
 | `evidence_rejected` | `awaiting_manual_payment` | payment orchestrator retry |
@@ -66,22 +66,26 @@ The full machine, including maintenance self-events, is executable in `DirectBoo
 ## Hold, late payment and competing payment policy
 
 - The default initial hold is 30 minutes. Hosted checkout may extend it once by at most 15 minutes; the absolute limit is 45 minutes from `held_at`. The extension is a versioned event, never a browser timer.
-- Checkout creation does not extend a hold automatically. Agent 07 must call the bounded transition only after an app-owned payment request and active hosted checkout exist.
+- Quoted, reservation-hold and checkout expiries are distinct persisted facts. A held order must reference the same-property authoritative quote and held reservation, and its frozen hold expiry must equal `reservations.hold_expires_at`.
+- `IssueDirectBookingPaymentRequest` is the only foundation seam allowed to issue a request for a held direct-booking reservation. Under one row-lock transaction it verifies the immutable quote checksum and deposit policy, creates or validates the quoted deposit schedule, freezes integer amount/currency and authoritative hold expiry in the payment-request snapshot, sets the request expiry to that hold, links it to the order and enters `payment_pending`. The general staff issuance rule remains confirmed/checked-in only.
+- Checkout creation does not extend a hold automatically. A single bounded extension locks and updates the order, held reservation and linked payment request atomically; failures leave all three expiries unchanged.
 - A provider payment found after expiry or after inventory loss becomes `paid_needs_review`. Inn does not silently recreate inventory or auto-confirm it. Finance must confirm a valid recovered reservation or refund through the existing provider path.
 - Only one active app-owned payment request/checkout may compete. Retrying revokes/supersedes the prior open request before replacement. Once one attempt is authoritatively paid, later paid attempts are `paid_needs_review` for reconciliation/refund; they do not double-confirm.
 - Manual evidence and hosted checkout may not both advance confirmation. First authoritative settlement/review wins under the order row lock; later money is review work.
 
 ## Tokens, consent, attribution and retention
 
-- Session tokens are 64-character cryptographic random values returned only at issue/rotation. Only SHA-256 hashes persist. Rotation makes the prior hash unusable; revocation and expiry fail with the same generic authentication/not-found behavior.
+- Session and recovery credentials are separate 64-character cryptographic random values returned only at issue/recovery. Only SHA-256 hashes persist. Session, recovery, quote, reservation-hold and checkout expiry clocks are separate. Ordinary rotation renews only authenticated session access. Recovery remains possible after session expiry until its independent deadline, then rotates both credentials and renews both clocks under a row lock; either previous credential becomes unusable. Explicit revocation and invalid/expired credentials fail with the same generic authentication/not-found behavior.
 - Order reference is an opaque ULID and is not authentication. It is always paired with the property slug and bearer session token.
 - Terms, privacy, cancellation, no-show and marketing are separate versioned sources and separate immutable decisions. Required policies must be accepted; marketing may be declined. Each snapshot freezes kind, version, content checksum, boolean, UTC time and a keyed hash of an IPv4 `/24` or IPv6 `/56` prefix—not a raw IP.
 - Attribution accepts only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `referrer_host` and query-free `landing_path`, with control-character and length rejection. Analytics events use the safe event envelope and never guest contact, raw token, voucher, bank data or provider metadata.
-- The default session-PII retention is 30 days. The singleton maintenance command expires eligible sessions each minute and scrubs token hash, encrypted contact, attribution and IP-prefix hashes after retention while retaining order, consent checksum and immutable transition ledger.
+- The default session-PII retention is 30 days. The singleton maintenance command uses the state-specific session, quote or hold deadline; accepted manual evidence whose hold lapses moves to `finance_review` without restoring inventory, so Finance can confirm recovered inventory or refund. After retention a dedicated `direct_booking.order.pii_scrubbed` maintenance event scrubs session/recovery/contact/checksum/attribution/IP-prefix fields even when the order was already revoked, preserves `confirmed_at`, and cleans an unshared abandoned provisional direct-booking Guest or records an explicit deferral. Consent content checksums and the immutable event ledger remain.
 
 ## Publication and payment readiness
 
-`DirectBookingLaunchReadinessEvaluator` fails closed unless the property is active/enabled and every supported locale has property copy/media/alt text, bookable copy/media, terms, privacy, cancellation, no-show and marketing content. Every supported currency needs an active published rate plan/rule and at least one enabled payment capability. Hosted checkout additionally requires a connected payment integration and secret reference; manual bank transfer requires published instructions for every supported locale. Public media is only a query-free HTTPS asset URL or an opaque `public-media://` reference; storage paths and signed private objects are forbidden.
+`DirectBookingLaunchReadinessEvaluator` fails closed unless the property is active/enabled and every supported locale has effective, nonblank property copy/media/alt text plus exact category/program copy/media and terms, privacy, cancellation, no-show and marketing content. Every supported currency needs an active published rate plan/rule and at least one enabled payment capability. Hosted checkout additionally requires a connected payment integration, secret reference, nonblank provider account, exact charge currency and a provider supported by `PaymentGatewayFactory`; manual bank transfer requires an exact localized, effective instructions publication for every supported locale. The accessible fallback must be a query-free public HTTPS hostname (not credentials, localhost or an IP literal). Public media is only a query-free public HTTPS asset URL or an opaque `public-media://` reference; storage paths and signed private objects are forbidden.
+
+All item/category/program, publication/item, capability/instruction and order/quote/reservation/payment-request associations are protected by tenant-and-property-inclusive database constraints. Model predicates are defense in depth; same-tenant cross-property links are rejected by PostgreSQL composite foreign keys and equivalent SQLite enforcement triggers.
 
 ## Consumer mock
 

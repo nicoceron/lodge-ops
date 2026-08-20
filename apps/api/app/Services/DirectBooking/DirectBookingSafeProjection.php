@@ -4,6 +4,7 @@ namespace App\Services\DirectBooking;
 
 use App\Enums\DirectBookingPublicationKind;
 use App\Enums\DirectBookingPublicationState;
+use App\Models\DirectBookingPaymentCapability;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\DirectBookingPublication;
 use App\Models\DirectBookingPublicItem;
@@ -18,12 +19,28 @@ final class DirectBookingSafeProjection
             ->where('kind', DirectBookingPublicationKind::Property)
             ->where('locale', $locale)
             ->where('state', DirectBookingPublicationState::Published)
+            ->where(fn ($query) => $query->whereNull('effective_at')->orWhere('effective_at', '<=', now()))
             ->firstOrFail();
         $items = DirectBookingPublicItem::query()
             ->where('property_id', $setting->property_id)->where('is_enabled', true)
             ->with(['publications' => fn ($query) => $query
-                ->with('media')->where('locale', $locale)->where('state', DirectBookingPublicationState::Published)])
+                ->with('media')->where('locale', $locale)->where('state', DirectBookingPublicationState::Published)
+                ->where(fn ($published) => $published->whereNull('effective_at')->orWhere('effective_at', '<=', now()))])
             ->orderBy('sort_order')->get();
+        $capabilities = DirectBookingPaymentCapability::query()
+            ->where('property_id', $setting->property_id)
+            ->where('is_enabled', true)
+            ->whereIn('currency', $setting->supported_currencies)
+            ->where(function ($query) use ($locale): void {
+                $query->where('method', 'hosted_checkout')
+                    ->orWhereHas('localizedInstructions', fn ($instructions) => $instructions
+                        ->where('locale', $locale)
+                        ->whereHas('publication', fn ($publication) => $publication
+                            ->where('kind', DirectBookingPublicationKind::BankTransferInstructions)
+                            ->where('locale', $locale)
+                            ->where('state', DirectBookingPublicationState::Published)
+                            ->where(fn ($published) => $published->whereNull('effective_at')->orWhere('effective_at', '<=', now()))));
+            })->orderBy('currency')->orderBy('method')->get();
 
         return [
             'slug' => $setting->public_slug,
@@ -33,6 +50,7 @@ final class DirectBookingSafeProjection
             'timezone' => $setting->property->timezone,
             'supported_locales' => $setting->supported_locales,
             'supported_currencies' => $setting->supported_currencies,
+            'accessible_fallback_url' => $setting->accessible_fallback_url,
             'media' => $this->media($publication->media),
             'bookables' => $items->map(function ($item): array {
                 $copy = $item->publications->first();
@@ -45,23 +63,33 @@ final class DirectBookingSafeProjection
                     'media' => $copy === null ? [] : $this->media($copy->media),
                 ];
             })->values()->all(),
+            'payment_capabilities' => $capabilities->map(fn ($capability): array => [
+                'method' => $capability->method->value,
+                'currency' => $capability->currency,
+            ])->values()->all(),
         ];
     }
 
     /**
-     * @param  array{categories: list<array<string, mixed>>, resources: list<array<string, mixed>>}  $availability
-     * @return list<array{key: string, bookable: bool}>
+     * @param  array{categories: list<array<string, mixed>>, resources?: list<array<string, mixed>>, programs?: list<array<string, mixed>>}  $availability
+     * @return list<array{key: string, kind: string, bookable: bool}>
      */
     public function availability(DirectBookingPropertySetting $setting, array $availability): array
     {
-        $bookability = collect($availability['categories'])->keyBy('id');
+        $categories = collect($availability['categories'])->keyBy('id');
+        $programs = collect($availability['programs'] ?? [])->keyBy('id');
 
         return DirectBookingPublicItem::query()
             ->where('property_id', $setting->property_id)
-            ->where('kind', 'category')->where('is_enabled', true)->get()
+            ->where('is_enabled', true)->orderBy('sort_order')->get()
             ->map(fn ($item): array => [
                 'key' => $item->public_key,
-                'bookable' => (bool) data_get($bookability->get($item->resource_category_id), 'available', false),
+                'kind' => $item->kind,
+                'bookable' => (bool) data_get(
+                    $item->kind === 'category' ? $categories->get($item->resource_category_id) : $programs->get($item->program_id),
+                    'available',
+                    false,
+                ),
             ])->values()->all();
     }
 

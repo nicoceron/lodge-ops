@@ -7,6 +7,7 @@
     "timezone": "America/Argentina/Ushuaia",
     "supported_locales": ["es-AR", "en"],
     "supported_currencies": ["USD", "ARS"],
+    "accessible_fallback_url": "https://rincon-grande.example.test/accessibility",
     "media": [
       {
         "key": "01K3A6J9C8R4G2N7Q5W1X0Y2ZT",

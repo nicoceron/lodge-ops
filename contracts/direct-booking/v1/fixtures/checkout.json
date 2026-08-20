@@ -5,6 +5,7 @@
     "state_version": 4,
     "method": "hosted_checkout",
     "checkout_url": "https://checkout.example.test/opaque-session",
-    "expires_at": "2026-09-01T12:45:00Z"
+    "hold_expires_at": "2026-09-01T12:45:00Z",
+    "checkout_expires_at": "2026-09-01T12:45:00Z"
   }
 }

@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 final class DirectBookingTokenService
 {
-    /** @param array<string, mixed> $attribution @return array{order: DirectBookingOrder, token: string} */
+    /** @param array<string, mixed> $attribution @return array{order: DirectBookingOrder, token: string, recovery_token: string} */
     public function issue(
         DirectBookingPropertySetting $setting,
         string $locale,
@@ -19,19 +19,24 @@ final class DirectBookingTokenService
         ?string $remoteIp = null,
     ): array {
         $token = Str::random(64);
+        $recoveryToken = Str::random(64);
+        $sessionExpiresAt = now()->addMinutes($setting->session_ttl_minutes ?? (int) config('direct-booking.default_session_ttl_minutes', 120));
         $order = DirectBookingOrder::query()->create([
             'property_id' => $setting->property_id,
             'public_reference' => (string) Str::ulid(),
             'token_hash' => self::hash($token),
+            'recovery_token_hash' => self::hash($recoveryToken),
             'locale' => $locale,
             'currency' => strtoupper($currency),
             'attribution' => app(DirectBookingPrivacy::class)->attribution($attribution),
             'ip_prefix_hash' => app(DirectBookingPrivacy::class)->ipPrefixHash($remoteIp),
-            'expires_at' => now()->addMinutes($setting->session_ttl_minutes ?? (int) config('direct-booking.default_session_ttl_minutes', 120)),
+            'expires_at' => $sessionExpiresAt,
+            'session_expires_at' => $sessionExpiresAt,
+            'recovery_expires_at' => now()->addMinutes((int) config('direct-booking.recovery_ttl_minutes', 10080)),
             'retained_until' => now()->addDays($setting->retention_days ?? (int) config('direct-booking.retention_days', 30)),
         ]);
 
-        return ['order' => $order, 'token' => $token];
+        return ['order' => $order, 'token' => $token, 'recovery_token' => $recoveryToken];
     }
 
     public function resolve(string $token, ?string $expectedPropertyId = null): DirectBookingOrder
@@ -41,7 +46,7 @@ final class DirectBookingTokenService
         }
         $order = DirectBookingOrder::withoutGlobalScopes()->where('token_hash', self::hash($token))->first();
         if ($order === null || ($expectedPropertyId !== null && ! hash_equals($expectedPropertyId, $order->property_id))
-            || $order->revoked_at !== null || $order->expires_at->isPast()
+            || $order->revoked_at !== null || $order->session_expires_at->isPast()
             || ! $order->tenant()->where('is_active', true)->exists()) {
             throw new AuthenticationException;
         }
@@ -55,14 +60,51 @@ final class DirectBookingTokenService
         return DB::transaction(function () use ($order): array {
             $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
             $token = Str::random(64);
+            $sessionExpiresAt = now()->addMinutes((int) config('direct-booking.default_session_ttl_minutes', 120));
             $locked->forceFill([
                 'token_hash' => self::hash($token),
+                'expires_at' => $sessionExpiresAt,
+                'session_expires_at' => $sessionExpiresAt,
                 'token_rotated_at' => now(),
                 'revoked_at' => null,
             ])->save();
 
             return ['order' => $locked, 'token' => $token];
         });
+    }
+
+    /** @return array{order: DirectBookingOrder, token: string, recovery_token: string} */
+    public function recover(string $recoveryToken, string $expectedPropertyId): array
+    {
+        if (! preg_match('/^[A-Za-z0-9]{64}$/', $recoveryToken)) {
+            throw new AuthenticationException;
+        }
+
+        return DB::transaction(function () use ($recoveryToken, $expectedPropertyId): array {
+            $locked = DirectBookingOrder::withoutGlobalScopes()
+                ->where('recovery_token_hash', self::hash($recoveryToken))
+                ->lockForUpdate()
+                ->first();
+            if ($locked === null || ! hash_equals($expectedPropertyId, $locked->property_id)
+                || $locked->revoked_at !== null || $locked->recovery_expires_at?->isPast() !== false
+                || ! $locked->tenant()->where('is_active', true)->exists()) {
+                throw new AuthenticationException;
+            }
+
+            $token = Str::random(64);
+            $nextRecoveryToken = Str::random(64);
+            $sessionExpiresAt = now()->addMinutes((int) config('direct-booking.default_session_ttl_minutes', 120));
+            $locked->forceFill([
+                'token_hash' => self::hash($token),
+                'recovery_token_hash' => self::hash($nextRecoveryToken),
+                'expires_at' => $sessionExpiresAt,
+                'session_expires_at' => $sessionExpiresAt,
+                'recovery_expires_at' => now()->addMinutes((int) config('direct-booking.recovery_ttl_minutes', 10080)),
+                'token_rotated_at' => now(),
+            ])->save();
+
+            return ['order' => $locked, 'token' => $token, 'recovery_token' => $nextRecoveryToken];
+        }, 3);
     }
 
     public function revoke(DirectBookingOrder $order): void

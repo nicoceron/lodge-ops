@@ -17,13 +17,18 @@ use LogicException;
  * @property CarbonImmutable|null $actual_start_at
  * @property CarbonImmutable|null $actual_end_at
  * @property CarbonImmutable|null $cancelled_at
+ * @property CarbonImmutable|null $hold_expires_at
  * @property string|null $closure_reason
+ * @property string $id
  * @property string $property_id
+ * @property string|null $booking_quote_id
  * @property string|null $program_id
+ * @property string|null $source
  * @property string $currency
  * @property int $adults
  * @property int $children
  * @property int $total_minor
+ * @property int $revision
  * @property array<string, mixed>|null $price_snapshot
  * @property array<string, mixed>|null $deposit_policy_snapshot
  * @property array<string, mixed>|null $cancellation_policy_snapshot

@@ -8,10 +8,10 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = $_GET['fixture_state'] ?? null;
 
 header('Content-Type: application/json');
-header('Cache-Control: no-store, private');
 header('X-Correlation-ID: direct-booking-mock-0001');
 
 if ($state !== null) {
+    header('Cache-Control: no-store, private');
     $catalog = json_decode((string) file_get_contents($fixtures.'/order-states.json'), true, flags: JSON_THROW_ON_ERROR);
     if (! isset($catalog[$state])) {
         http_response_code(404);
@@ -21,7 +21,10 @@ if ($state !== null) {
     echo json_encode(['data' => array_merge([
         'order_reference' => '01K3A6S2V4T8N9R7W1X0Y3Z5QM',
         'state' => $state,
-        'expires_at' => '2026-09-01T12:45:00Z',
+        'session_expires_at' => '2026-09-01T14:00:00Z',
+        'quote_expires_at' => '2026-09-01T12:20:00Z',
+        'hold_expires_at' => '2026-09-01T12:45:00Z',
+        'checkout_expires_at' => null,
         'payment_capabilities' => [['method' => 'manual_bank_transfer', 'currency' => 'USD']],
         'safe_failure_code' => null,
     ], $catalog[$state])], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -44,9 +47,15 @@ $fixture = match (true) {
 };
 
 if ($fixture === null) {
+    header('Cache-Control: no-store, private');
     http_response_code(404);
     readfile($fixtures.'/error-not-found.json');
     return;
 }
 
+$published = in_array($fixture, ['property.json', 'policy.json'], true);
+header('Cache-Control: '.($published ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store, private'));
+if ($published) {
+    header('Content-Language: '.($_GET['locale'] ?? 'es-AR'));
+}
 readfile($fixtures.'/'.$fixture);

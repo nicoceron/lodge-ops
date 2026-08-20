@@ -3,6 +3,7 @@
 return [
     'api_version' => '2026-08-20',
     'default_session_ttl_minutes' => 120,
+    'recovery_ttl_minutes' => 10080,
     'initial_hold_minutes' => 30,
     'checkout_extension_minutes' => 15,
     'maximum_hold_minutes' => 45,

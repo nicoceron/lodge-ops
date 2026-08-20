@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\DirectBooking\DirectBookingPublicUrl;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
@@ -45,6 +46,10 @@ class DirectBookingPropertySetting extends TenantModel
             }
             if (! in_array($setting->default_currency, $setting->supported_currencies, true)) {
                 throw new LogicException('Direct booking requires the default currency in the supported currency list.');
+            }
+            if ($setting->accessible_fallback_url !== null
+                && ! app(DirectBookingPublicUrl::class)->isSafeHttps($setting->accessible_fallback_url)) {
+                throw new LogicException('The accessible fallback must be a public HTTPS URL without credentials, query, or fragment.');
             }
             if ($setting->initial_hold_minutes > $setting->maximum_hold_minutes
                 || $setting->initial_hold_minutes + $setting->checkout_extension_minutes > $setting->maximum_hold_minutes) {

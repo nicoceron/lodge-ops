@@ -19,8 +19,8 @@ x-state-machine:
   held: { payment_pending: payment_orchestrator, awaiting_manual_payment: payment_orchestrator, expired: scheduler }
   payment_pending: { payment_pending: payment_orchestrator, paid_pending_confirmation: provider_authoritative_lookup, payment_failed: provider_authoritative_lookup, paid_needs_review: provider_authoritative_lookup, expired: scheduler }
   awaiting_manual_payment: { evidence_pending: guest_evidence_service, expired: scheduler }
-  evidence_pending: { finance_review: evidence_scanner, evidence_rejected: evidence_scanner, expired: scheduler }
-  finance_review: { confirmed: finance_review, evidence_rejected: finance_review, expired: scheduler }
+  evidence_pending: { finance_review: [evidence_scanner, scheduler], evidence_rejected: evidence_scanner }
+  finance_review: { confirmed: finance_review, evidence_rejected: finance_review, refunded: refund_service }
   paid_pending_confirmation: { confirmed: reservation_service, paid_needs_review: reservation_service }
   payment_failed: { payment_pending: payment_orchestrator, expired: scheduler }
   evidence_rejected: { awaiting_manual_payment: payment_orchestrator, expired: scheduler }
@@ -47,6 +47,7 @@ x-events:
     - direct_booking.order.evidence_rejected
     - direct_booking.order.canceled
     - direct_booking.order.refunded
+    - direct_booking.order.pii_scrubbed
 x-fixtures:
   manifest: './fixtures/manifest.json'
   state-catalog: './fixtures/order-states.json'
@@ -246,7 +247,7 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [slug, name, summary, locale, timezone, supported_locales, supported_currencies, media, bookables, payment_capabilities]
+          required: [slug, name, summary, locale, timezone, supported_locales, supported_currencies, accessible_fallback_url, media, bookables, payment_capabilities]
           properties:
             slug: { type: string, maxLength: 80 }
             name: { type: string, maxLength: 200 }
@@ -255,6 +256,7 @@ components:
             timezone: { type: string, maxLength: 80 }
             supported_locales: { type: array, minItems: 1, uniqueItems: true, items: { type: string, maxLength: 12 } }
             supported_currencies: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/Currency' } }
+            accessible_fallback_url: { type: string, format: uri, pattern: '^https://[^?#]+$' }
             media: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Media' } }
             bookables: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Bookable' } }
             payment_capabilities: { type: array, minItems: 1, items: { $ref: '#/components/schemas/PaymentCapability' } }
@@ -350,15 +352,17 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [order_reference, session_token, state, state_version, locale, currency, expires_at]
+          required: [order_reference, session_token, recovery_token, state, state_version, locale, currency, session_expires_at, recovery_expires_at]
           properties:
             order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
-            session_token: { type: string, pattern: '^[A-Za-z0-9]{64}$', writeOnly: true }
+            session_token: { type: string, pattern: '^[A-Za-z0-9]{64}$', readOnly: true }
+            recovery_token: { type: string, pattern: '^[A-Za-z0-9]{64}$', readOnly: true }
             state: { $ref: '#/components/schemas/OrderState' }
             state_version: { type: integer, minimum: 1 }
             locale: { type: string, maxLength: 12 }
             currency: { $ref: '#/components/schemas/Currency' }
-            expires_at: { type: string, format: date-time }
+            session_expires_at: { type: string, format: date-time }
+            recovery_expires_at: { type: string, format: date-time }
     QuoteRequest:
       allOf:
         - $ref: '#/components/schemas/AvailabilityRequest'
@@ -376,12 +380,12 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [order_reference, state, state_version, expires_at, arrival_date, departure_date, timezone, total, deposit, lines, policies]
+          required: [order_reference, state, state_version, quote_expires_at, arrival_date, departure_date, timezone, total, deposit, lines, policies]
           properties:
             order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
             state: { type: string, const: quoted }
             state_version: { type: integer, minimum: 2 }
-            expires_at: { type: string, format: date-time }
+            quote_expires_at: { type: string, format: date-time }
             arrival_date: { $ref: '#/components/schemas/LocalDate' }
             departure_date: { $ref: '#/components/schemas/LocalDate' }
             timezone: { type: string, maxLength: 80 }
@@ -452,12 +456,15 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [order_reference, state, state_version, expires_at, payment_capabilities, actions]
+          required: [order_reference, state, state_version, session_expires_at, quote_expires_at, hold_expires_at, checkout_expires_at, payment_capabilities, actions]
           properties:
             order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
             state: { $ref: '#/components/schemas/OrderState' }
             state_version: { type: integer, minimum: 1 }
-            expires_at: { type: string, format: date-time }
+            session_expires_at: { type: string, format: date-time }
+            quote_expires_at: { type: [string, 'null'], format: date-time }
+            hold_expires_at: { type: [string, 'null'], format: date-time }
+            checkout_expires_at: { type: [string, 'null'], format: date-time }
             payment_capabilities: { type: array, items: { $ref: '#/components/schemas/PaymentCapability' } }
             actions: { type: array, uniqueItems: true, items: { type: string, enum: [quote, hold, checkout, submit_manual_evidence, retry_payment, recover, view_confirmation, contact_property] } }
             safe_failure_code: { type: [string, 'null'], enum: [null, unavailable, quote_stale, hold_expired, payment_pending, payment_failed, paid_needs_review] }
@@ -482,14 +489,15 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [order_reference, state, state_version, method, expires_at]
+          required: [order_reference, state, state_version, method, hold_expires_at, checkout_expires_at]
           properties:
             order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
             state: { $ref: '#/components/schemas/OrderState' }
             state_version: { type: integer, minimum: 1 }
             method: { type: string, enum: [hosted_checkout, manual_bank_transfer] }
             checkout_url: { type: [string, 'null'], format: uri, pattern: '^https://' }
-            expires_at: { type: string, format: date-time }
+            hold_expires_at: { type: string, format: date-time }
+            checkout_expires_at: { type: string, format: date-time }
     ManualEvidenceRequest:
       type: object
       additionalProperties: false

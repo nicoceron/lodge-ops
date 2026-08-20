@@ -327,7 +327,21 @@ class FrontDeskTenderTest extends TestCase
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'storage_path' => 'guest-payment-evidence/00000000-0000-4000-8000-000000abcd05/20260000-0000-4000-8000-000000000000/receipt.pdf',
         ]);
-        $this->addToAssertionCount(3);
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'price_snapshot' => json_encode([
+                'quote_id' => '00000000-0000-4000-8000-000000abcd05',
+                'checksum' => str_repeat('4111', 16),
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        $this->addToAssertionCount(4);
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe([
+                'price_snapshot' => json_encode(['guest_note' => '4111 1111 1111 1111'], JSON_THROW_ON_ERROR),
+            ]);
+            $this->fail('Nested JSON guest content must still be scanned for PAN data.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payload.price_snapshot.guest_note', $exception->errors());
+        }
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => '1234567890128']);
             $this->fail('Only a complete SHA-256 digest may bypass PAN detection for a deduplication key.');

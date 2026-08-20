@@ -26,6 +26,7 @@ use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingOrderConsent;
 use App\Models\DirectBookingOrderEvent;
 use App\Models\DirectBookingPaymentCapability;
+use App\Models\DirectBookingPaymentInstruction;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\DirectBookingPublication;
 use App\Models\DirectBookingPublicItem;
@@ -178,6 +179,7 @@ class AppServiceProvider extends ServiceProvider
             DirectBookingOrderConsent::class,
             DirectBookingOrderEvent::class,
             DirectBookingPaymentCapability::class,
+            DirectBookingPaymentInstruction::class,
             DirectBookingPropertySetting::class,
             DirectBookingPublication::class,
             DirectBookingPublicItem::class,

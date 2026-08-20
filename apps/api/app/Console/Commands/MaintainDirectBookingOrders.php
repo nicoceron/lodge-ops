@@ -4,13 +4,15 @@ namespace App\Console\Commands;
 
 use App\Enums\DirectBookingOrderState;
 use App\Enums\DirectBookingTransitionAuthority;
+use App\Enums\ReservationStatus;
 use App\Models\DirectBookingOrder;
+use App\Models\Guest;
+use App\Models\Reservation;
 use App\Models\Tenant;
 use App\Services\DirectBooking\DirectBookingStateMachine;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class MaintainDirectBookingOrders extends Command
 {
@@ -41,25 +43,34 @@ class MaintainDirectBookingOrders extends Command
     {
         $count = 0;
         DirectBookingOrder::query()
-            ->whereIn('state', [
-                DirectBookingOrderState::Started,
-                DirectBookingOrderState::Quoted,
-                DirectBookingOrderState::Held,
-                DirectBookingOrderState::PaymentPending,
-                DirectBookingOrderState::AwaitingManualPayment,
-                DirectBookingOrderState::EvidencePending,
-                DirectBookingOrderState::FinanceReview,
-                DirectBookingOrderState::PaymentFailed,
-                DirectBookingOrderState::EvidenceRejected,
-            ])->where('expires_at', '<=', now())->orderBy('id')->limit((int) $this->option('batch'))->get()
+            ->where(function ($query): void {
+                $query->where(fn ($candidate) => $candidate
+                    ->where('state', DirectBookingOrderState::Started)
+                    ->where('session_expires_at', '<=', now()))
+                    ->orWhere(fn ($candidate) => $candidate
+                        ->where('state', DirectBookingOrderState::Quoted)
+                        ->where('quote_expires_at', '<=', now()))
+                    ->orWhere(fn ($candidate) => $candidate
+                        ->whereIn('state', [
+                            DirectBookingOrderState::Held,
+                            DirectBookingOrderState::PaymentPending,
+                            DirectBookingOrderState::AwaitingManualPayment,
+                            DirectBookingOrderState::PaymentFailed,
+                            DirectBookingOrderState::EvidenceRejected,
+                        ])->where('hold_expires_at', '<=', now()))
+                    ->orWhere(fn ($candidate) => $candidate
+                        ->where('state', DirectBookingOrderState::EvidencePending)
+                        ->where('hold_expires_at', '<=', now()));
+            })->orderBy('id')->limit((int) $this->option('batch'))->get()
             ->each(function (DirectBookingOrder $order) use ($states, &$count): void {
+                $lateManualEvidence = $order->state === DirectBookingOrderState::EvidencePending;
                 $states->transition(
                     $order,
-                    DirectBookingOrderState::Expired,
+                    $lateManualEvidence ? DirectBookingOrderState::FinanceReview : DirectBookingOrderState::Expired,
                     DirectBookingTransitionAuthority::Scheduler,
                     $order->state_version,
                     'expire:'.$order->public_reference.':'.$order->state_version,
-                    ['scheduler_outcome' => 'session_expired'],
+                    ['scheduler_outcome' => $lateManualEvidence ? 'late_manual_evidence_review' : 'lifecycle_expired'],
                 );
                 $count++;
             });
@@ -76,27 +87,15 @@ class MaintainDirectBookingOrders extends Command
                 DirectBookingOrderState::Confirmed,
                 DirectBookingOrderState::Canceled,
                 DirectBookingOrderState::Refunded,
-            ])->where('retained_until', '<=', now())->where(function ($query): void {
-                $query->whereNotNull('guest_contact_encrypted')->orWhereNotNull('attribution')->orWhereNull('revoked_at');
-            })->orderBy('id')->limit((int) $this->option('batch'))->get()
+            ])->where('retained_until', '<=', now())->whereNull('pii_scrubbed_at')
+            ->orderBy('id')->limit((int) $this->option('batch'))->get()
             ->each(function (DirectBookingOrder $order) use ($states, &$count): void {
                 DB::transaction(function () use ($order, $states, &$count): void {
-                    $result = $states->transition(
+                    $this->cleanOrDeferProvisionalGuest($order);
+                    $result = $states->recordPiiScrubbed(
                         $order,
-                        $order->state,
-                        DirectBookingTransitionAuthority::Scheduler,
-                        $order->state_version,
                         'cleanup:'.$order->public_reference.':'.$order->state_version,
-                        ['scheduler_outcome' => 'session_pii_scrubbed'],
                     );
-                    $result->order->forceFill([
-                        'token_hash' => hash('sha256', 'purged:'.Str::random(64)),
-                        'guest_contact_encrypted' => null,
-                        'guest_contact_checksum' => null,
-                        'attribution' => null,
-                        'ip_prefix_hash' => null,
-                        'revoked_at' => now(),
-                    ])->save();
                     DB::table('direct_booking_order_consents')
                         ->where('direct_booking_order_id', $result->order->id)
                         ->update(['ip_prefix_hash' => null, 'updated_at' => now()]);
@@ -105,5 +104,69 @@ class MaintainDirectBookingOrders extends Command
             });
 
         return $count;
+    }
+
+    private function cleanOrDeferProvisionalGuest(DirectBookingOrder $order): void
+    {
+        if ($order->state !== DirectBookingOrderState::Expired || $order->reservation_id === null) {
+            return;
+        }
+        $reservation = $order->reservation()->with('primaryGuest')->lockForUpdate()->first();
+        $guest = $reservation?->primaryGuest;
+        $abandoned = $reservation !== null
+            && $reservation->source === 'direct'
+            && ($reservation->status === ReservationStatus::Draft
+                || ($reservation->status === ReservationStatus::Hold && $reservation->hold_expires_at?->isPast() === true));
+        $shared = $guest !== null && $this->guestHasOtherRecords($guest, $reservation);
+        if (! $abandoned || $guest === null || $shared) {
+            $order->forceFill(['guest_pii_cleanup_deferred_at' => now()])->save();
+
+            return;
+        }
+
+        $guest->forceFill([
+            'first_name' => 'Deleted guest',
+            'last_name' => null,
+            'email' => null,
+            'phone' => null,
+            'document_type' => null,
+            'document_number' => null,
+            'language' => null,
+            'preferences' => null,
+            'marketing_consent' => false,
+        ])->save();
+    }
+
+    private function guestHasOtherRecords(Guest $guest, Reservation $reservation): bool
+    {
+        if ($guest->merged_into_id !== null
+            || Guest::query()->where('merged_into_id', $guest->id)->exists()
+            || $guest->reservations()->whereKeyNot($reservation->id)->exists()
+            || $guest->companionReservations()->whereKeyNot($reservation->id)->exists()) {
+            return true;
+        }
+
+        foreach ([
+            ['communications', 'guest_id'],
+            ['surveys', 'guest_id'],
+            ['opportunities', 'guest_id'],
+            ['crm_activities', 'guest_id'],
+            ['guest_merge_aliases', 'guest_id'],
+            ['generated_documents', 'guest_id'],
+            ['document_generation_requests', 'guest_id'],
+            ['guest_portal_profiles', 'guest_id'],
+            ['guest_portal_access_tokens', 'guest_id'],
+            ['guest_portal_acknowledgements', 'guest_id'],
+            ['guest_payment_evidence', 'guest_id'],
+            ['commercial_promotion_usages', 'guest_id'],
+            ['voucher_redemptions', 'guest_id'],
+            ['proposals', 'primary_guest_id'],
+        ] as [$table, $column]) {
+            if (DB::table($table)->where('tenant_id', $guest->tenant_id)->where($column, $guest->id)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

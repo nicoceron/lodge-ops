@@ -31,6 +31,12 @@ class DirectBookingPublicItem extends TenantModel
             if (! $valid) {
                 throw new LogicException('A public item must reference exactly one category or program matching its kind.');
             }
+            $subject = $item->kind === 'category'
+                ? ResourceCategory::query()->find($item->resource_category_id)
+                : Program::query()->find($item->program_id);
+            if ($subject === null || $subject->property_id !== $item->property_id) {
+                throw new LogicException('A public item subject must belong to the same property and tenant.');
+            }
         });
     }
 

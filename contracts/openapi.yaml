@@ -2148,7 +2148,7 @@ paths:
     post:
       tags: [Direct Booking]
       operationId: recoverDirectBookingOrder
-      security: [{ directBookingSession: [] }]
+      security: [{ directBookingRecovery: [] }]
       parameters:
         - $ref: '#/components/parameters/DirectBookingPropertySlug'
         - $ref: '#/components/parameters/DirectBookingOrderReference'
@@ -2194,6 +2194,11 @@ components:
       scheme: bearer
       bearerFormat: Opaque direct-booking session token
       description: Raw token is returned only when issued or rotated; Inn stores only its SHA-256 hash.
+    directBookingRecovery:
+      type: http
+      scheme: bearer
+      bearerFormat: One-time direct-booking recovery token
+      description: Separate recovery credential that remains usable after session expiry; successful recovery rotates both credentials and renews both expiries.
   parameters:
     TenantId:
       name: X-Tenant-ID
@@ -2212,7 +2217,7 @@ components:
       in: header
       required: true
       description: Stable per-mutation key. Same key and canonical body replay exactly; a different body returns idempotency_conflict.
-      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+      schema: { type: string, format: uuid, pattern: '^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$' }
     DirectBookingCorrelationId:
       name: X-Correlation-ID
       in: header
