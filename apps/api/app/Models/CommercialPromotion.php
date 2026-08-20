@@ -10,6 +10,7 @@ use LogicException;
  * @property string $id
  * @property string $tenant_id
  * @property string|null $property_id
+ * @property string $name
  * @property string $public_label
  * @property int $version
  * @property string $state

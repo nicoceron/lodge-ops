@@ -2,10 +2,24 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
+/**
+ * @property string $id
+ * @property string $booking_quote_id
+ * @property string $commercial_promotion_id
+ * @property string|null $voucher_id
+ * @property string $state
+ * @property string $currency
+ * @property int $discount_minor
+ * @property string|null $superseded_by_id
+ * @property-read CommercialPromotion $promotion
+ * @property-read Voucher|null $voucher
+ * @property-read Collection<int, CommercialPromotionUsageEvent> $events
+ */
 class CommercialPromotionUsage extends TenantModel
 {
     protected static function booted(): void
@@ -30,6 +44,7 @@ class CommercialPromotionUsage extends TenantModel
         return $this->belongsTo(CommercialPromotion::class, 'commercial_promotion_id');
     }
 
+    /** @return BelongsTo<Voucher, $this> */
     public function voucher(): BelongsTo
     {
         return $this->belongsTo(Voucher::class);
@@ -45,6 +60,7 @@ class CommercialPromotionUsage extends TenantModel
         return $this->belongsTo(Reservation::class);
     }
 
+    /** @return HasMany<CommercialPromotionUsageEvent, $this> */
     public function events(): HasMany
     {
         return $this->hasMany(CommercialPromotionUsageEvent::class);

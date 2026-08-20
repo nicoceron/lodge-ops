@@ -27,6 +27,11 @@ class VoucherPolicy extends TenantPolicy
         return false;
     }
 
+    public function manageConfiguration(User $user, Voucher $record): bool
+    {
+        return $this->canManageConfiguration($user, $record);
+    }
+
     public function delete(User $user, Voucher $record): bool
     {
         return false;

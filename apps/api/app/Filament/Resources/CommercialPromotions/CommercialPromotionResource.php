@@ -67,12 +67,14 @@ class CommercialPromotionResource extends TenantResource
         ])->recordActions([
             EditAction::make()->visible(fn (CommercialPromotion $record): bool => $record->state === 'draft'),
             Action::make('publish')->icon('heroicon-o-check-circle')->requiresConfirmation()
+                ->authorize('manageConfiguration')
                 ->visible(fn (CommercialPromotion $record): bool => $record->state === 'draft')
                 ->action(function (CommercialPromotion $record): void {
                     app(CommercialVersionPublisher::class)->publishPromotion($record, auth()->id());
                     Notification::make()->title('Promotion version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')
+                ->authorize('manageConfiguration')
                 ->action(function (CommercialPromotion $record): void {
                     $copy = $record->replicate(['state', 'published_at', 'retired_at']);
                     $copy->version = $record->version + 1;
@@ -82,6 +84,7 @@ class CommercialPromotionResource extends TenantResource
                     Notification::make()->title('Draft promotion version created')->success()->send();
                 }),
             Action::make('retire')->color('danger')->requiresConfirmation()
+                ->authorize('manageConfiguration')
                 ->visible(fn (CommercialPromotion $record): bool => $record->state === 'published')
                 ->action(fn (CommercialPromotion $record) => $record->update(['state' => 'retired', 'retired_at' => now()])),
         ]);

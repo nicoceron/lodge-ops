@@ -8,6 +8,7 @@ use App\Models\CommercialPromotionUsage;
 use App\Models\CommercialPromotionUsageEvent;
 use App\Models\Guest;
 use App\Models\Reservation;
+use App\Models\ReservationChange;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\VoucherRedemptionEvent;
@@ -75,7 +76,8 @@ final class CommercialPromotionService
             }
         }
 
-        $sessionHash = $this->sessionHash($input['promotion_session_id'] ?? null);
+        $sessionHash = $this->trustedSessionHash($input['promotion_session_hash'] ?? null)
+            ?? $this->sessionHash($input['promotion_session_id'] ?? null);
         $selected = $promotions->filter(function (CommercialPromotion $promotion) use ($voucher, $input): bool {
             if ($promotion->requires_code && $voucher?->commercial_promotion_id !== $promotion->id) {
                 return false;
@@ -291,18 +293,47 @@ final class CommercialPromotionService
         }
     }
 
-    private function usageEvent(CommercialPromotionUsage $usage, string $type, array $facts): void
+    public function recordRefundCompletion(Reservation $reservation, ReservationChange $refund, ?int $actorId): void
+    {
+        $closed = in_array($reservation->status->value, ['cancelled', 'no_show'], true);
+        foreach (CommercialPromotionUsage::query()->with('promotion')->where('reservation_id', $reservation->id)->lockForUpdate()->get() as $usage) {
+            $reinstated = $closed && $usage->promotion->reinstate_on_cancel;
+            if ($reinstated && in_array($usage->state, ['reserved', 'confirmed'], true)) {
+                $usage->update(['state' => 'released', 'released_at' => now()]);
+            }
+            $this->usageEvent($usage, $reinstated ? 'refund_reinstated' : 'refund_retained', [
+                'refund_change_id' => $refund->id,
+                'refund_amount_minor' => $refund->amount_minor,
+                'policy' => $reinstated ? 'reinstate_on_cancel' : 'retain',
+            ], $actorId);
+        }
+        foreach (VoucherRedemption::query()->with('voucher.promotion')->where('reservation_id', $reservation->id)->lockForUpdate()->get() as $redemption) {
+            $reinstated = $closed && $redemption->voucher->promotion->reinstate_on_cancel;
+            if ($reinstated && in_array($redemption->state, ['reserved', 'confirmed', 'reinstated'], true)) {
+                $redemption->update(['state' => 'released', 'released_at' => now()]);
+            }
+            $this->event(
+                $redemption,
+                $reinstated ? 'refund_reinstated' : 'refund_retained',
+                $reinstated ? 'Refund completed after eligible cancellation' : 'Refund completed; promotion policy retains use',
+                ['refund_change_id' => $refund->id, 'refund_amount_minor' => $refund->amount_minor],
+                $actorId,
+            );
+        }
+    }
+
+    private function usageEvent(CommercialPromotionUsage $usage, string $type, array $facts, ?int $actorId = null): void
     {
         CommercialPromotionUsageEvent::query()->create([
-            'commercial_promotion_usage_id' => $usage->id, 'actor_id' => auth()->id(),
+            'commercial_promotion_usage_id' => $usage->id, 'actor_id' => $actorId ?? auth()->id(),
             'type' => $type, 'facts' => $facts, 'occurred_at' => now(),
         ]);
     }
 
-    private function event(VoucherRedemption $redemption, string $type, string $reason, array $facts): void
+    private function event(VoucherRedemption $redemption, string $type, string $reason, array $facts, ?int $actorId = null): void
     {
         VoucherRedemptionEvent::query()->create([
-            'voucher_redemption_id' => $redemption->id, 'actor_id' => auth()->id(), 'type' => $type,
+            'voucher_redemption_id' => $redemption->id, 'actor_id' => $actorId ?? auth()->id(), 'type' => $type,
             'policy_reason' => $reason, 'facts' => $facts, 'occurred_at' => now(),
         ]);
     }
@@ -327,6 +358,18 @@ final class CommercialPromotionService
         }
 
         return hash_hmac('sha256', app(TenantContext::class)->id()."\0session\0".$sessionId, $key);
+    }
+
+    private function trustedSessionHash(mixed $sessionHash): ?string
+    {
+        if ($sessionHash === null || $sessionHash === '') {
+            return null;
+        }
+        if (! is_string($sessionHash) || preg_match('/\A[a-f0-9]{64}\z/', $sessionHash) !== 1) {
+            throw $this->genericVoucherError();
+        }
+
+        return $sessionHash;
     }
 
     private function percentage(int $amount, int $basisPoints): int

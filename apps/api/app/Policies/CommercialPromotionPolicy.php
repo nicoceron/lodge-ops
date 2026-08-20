@@ -27,6 +27,11 @@ class CommercialPromotionPolicy extends TenantPolicy
         return $this->canManageConfiguration($user, $record);
     }
 
+    public function manageConfiguration(User $user, CommercialPromotion $record): bool
+    {
+        return $this->canManageConfiguration($user, $record);
+    }
+
     public function delete(User $user, CommercialPromotion $record): bool
     {
         return $this->canManageConfiguration($user, $record);

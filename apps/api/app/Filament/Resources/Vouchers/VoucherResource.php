@@ -57,11 +57,11 @@ class VoucherResource extends TenantResource
             TextColumn::make('state')->badge(), TextColumn::make('redemptions_count')->counts('redemptions')->label('Uses'),
             TextColumn::make('valid_until')->dateTime()->placeholder('No expiry'),
         ])->recordActions([
-            Action::make('suspend')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state === 'active')
+            Action::make('suspend')->requiresConfirmation()->authorize('manageConfiguration')->visible(fn (Voucher $record): bool => $record->state === 'active')
                 ->action(fn (Voucher $record) => $record->update(['state' => 'suspended'])),
-            Action::make('reactivate')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state === 'suspended')
+            Action::make('reactivate')->requiresConfirmation()->authorize('manageConfiguration')->visible(fn (Voucher $record): bool => $record->state === 'suspended')
                 ->action(fn (Voucher $record) => $record->update(['state' => 'active'])),
-            Action::make('retire')->color('danger')->requiresConfirmation()->visible(fn (Voucher $record): bool => $record->state !== 'retired')
+            Action::make('retire')->color('danger')->requiresConfirmation()->authorize('manageConfiguration')->visible(fn (Voucher $record): bool => $record->state !== 'retired')
                 ->action(fn (Voucher $record) => $record->update(['state' => 'retired'])),
         ]);
     }

@@ -2,9 +2,16 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
+/**
+ * @property string $type
+ * @property string|null $policy_reason
+ * @property array<string, mixed> $facts
+ * @property CarbonImmutable $occurred_at
+ */
 class VoucherRedemptionEvent extends TenantModel
 {
     protected static function booted(): void

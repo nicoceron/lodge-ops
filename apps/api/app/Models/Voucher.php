@@ -12,6 +12,7 @@ use LogicException;
  * @property string $commercial_promotion_id
  * @property string|null $property_id
  * @property string $state
+ * @property string $public_label
  * @property int|null $usage_limit
  * @property int|null $per_guest_limit
  * @property int|null $per_session_limit

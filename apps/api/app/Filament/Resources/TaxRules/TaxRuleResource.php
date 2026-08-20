@@ -60,12 +60,14 @@ class TaxRuleResource extends TenantResource
         ])->recordActions([
             EditAction::make()->visible(fn (TaxRule $record): bool => $record->state === 'draft'),
             Action::make('publish')->requiresConfirmation()->icon('heroicon-o-check-circle')
+                ->authorize('manageConfiguration')
                 ->visible(fn (TaxRule $record): bool => $record->state === 'draft')
                 ->action(function (TaxRule $record): void {
                     app(CommercialVersionPublisher::class)->publishTaxRule($record, auth()->id());
                     Notification::make()->title('Tax-input version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')
+                ->authorize('manageConfiguration')
                 ->action(function (TaxRule $record): void {
                     $copy = $record->replicate(['state', 'published_at', 'retired_at']);
                     $copy->version = $record->version + 1;
@@ -76,6 +78,7 @@ class TaxRuleResource extends TenantResource
                     Notification::make()->title('Draft tax-input version created')->success()->send();
                 }),
             Action::make('retire')->color('danger')->requiresConfirmation()
+                ->authorize('manageConfiguration')
                 ->visible(fn (TaxRule $record): bool => $record->state === 'published')
                 ->action(fn (TaxRule $record) => $record->update(['state' => 'retired', 'retired_at' => now(), 'is_active' => false])),
             DeleteAction::make()->visible(fn (TaxRule $record): bool => $record->state === 'draft'),

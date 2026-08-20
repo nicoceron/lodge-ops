@@ -292,10 +292,17 @@ return new class extends Migration
         $versionedFactsExist = DB::table('rate_plans')->where('version', '>', 1)->exists()
             || DB::table('tax_rules')->where('version', '>', 1)->exists()
             || DB::table('commercial_promotions')->exists()
+            || DB::table('rate_plan_services')->exists()
+            || DB::table('booking_quotes')->exists()
+            || DB::table('booking_quote_lines')->exists()
+            || DB::table('reservations')->where('infants', '>', 0)->exists()
+            || DB::table('vouchers')->exists()
+            || DB::table('voucher_redemptions')->exists()
+            || DB::table('commercial_promotion_usages')->exists()
             || DB::table('fiscal_source_snapshots')->exists();
         $testTeardownOverride = app()->runningUnitTests() && getenv('COMMERCIAL_TEST_TEARDOWN') === '1';
         if ($versionedFactsExist && ! $testTeardownOverride) {
-            throw new RuntimeException('Commercial-rules migration cannot be rolled back after versioned pricing, promotion usage, or fiscal-source facts exist. Export/archive those immutable records and execute a reviewed data-collapse migration first.');
+            throw new RuntimeException('Commercial-rules migration cannot be rolled back after booking quote/line snapshots, versioned pricing, promotion usage, voucher lifecycle, reservation-infant, or fiscal-source facts exist. No DDL was changed. Export/archive those immutable records and execute a reviewed data-collapse migration first.');
         }
 
         DB::statement('DROP INDEX IF EXISTS rate_plans_one_published_idx');

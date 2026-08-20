@@ -2,9 +2,15 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
+/**
+ * @property string $type
+ * @property array<string, mixed> $facts
+ * @property CarbonImmutable $occurred_at
+ */
 class CommercialPromotionUsageEvent extends TenantModel
 {
     protected static function booted(): void

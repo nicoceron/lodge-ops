@@ -18,6 +18,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final class BookingQuoteService
@@ -45,6 +46,11 @@ final class BookingQuoteService
     /** @param array<string, mixed> $input */
     public function createAmendment(Reservation $reservation, array $input): BookingQuote
     {
+        $sourceSessionHash = data_get($reservation->bookingQuote()->first()?->calculation_snapshot, 'promotion_session_hash');
+        if (empty($input['promotion_session_id']) && empty($input['promotion_session_hash']) && is_string($sourceSessionHash)) {
+            $input['promotion_session_hash'] = $sourceSessionHash;
+        }
+
         return $this->create([
             ...$input,
             'property_id' => $reservation->property_id,
@@ -233,6 +239,14 @@ final class BookingQuoteService
 
         $baseTotal = (int) collect($lines)->sum('gross_amount_minor');
         $promotionInput = $input + ['night_count' => $nightCount];
+        if (empty($promotionInput['promotion_session_id']) && empty($promotionInput['promotion_session_hash']) && request()->hasSession()) {
+            $sessionId = request()->session()->get('commercial_promotion_session_id');
+            if (! is_string($sessionId) || strlen($sessionId) < 16) {
+                $sessionId = Str::random(64);
+                request()->session()->put('commercial_promotion_session_id', $sessionId);
+            }
+            $promotionInput['promotion_session_id'] = $sessionId;
+        }
         $promotionResult = $this->promotions->calculate(
             $this->promotions->eligible($promotionInput, $plan->currency, $arrivalDate),
             $baseTotal,

@@ -117,12 +117,14 @@ class RatePlanResource extends TenantResource
                 )->implode("\n"))
                 ->modalSubmitActionLabel('Close')->action(fn (): null => null),
             Action::make('publish')->requiresConfirmation()->icon('heroicon-o-check-circle')
+                ->authorize('manageConfiguration')
                 ->visible(fn (RatePlan $record): bool => $record->state === 'draft')
                 ->action(function (RatePlan $record): void {
                     app(CommercialVersionPublisher::class)->publishRatePlan($record, auth()->id());
                     Notification::make()->title('Rate plan version published')->success()->send();
                 }),
             Action::make('copyVersion')->label('Copy new version')->icon('heroicon-o-document-duplicate')
+                ->authorize('manageConfiguration')
                 ->action(function (RatePlan $record): void {
                     $copy = $record->replicate(['state', 'published_at', 'retired_at']);
                     $copy->version = $record->version + 1;
@@ -142,7 +144,7 @@ class RatePlanResource extends TenantResource
                     }
                     Notification::make()->title('Draft rate plan version created')->success()->send();
                 }),
-            Action::make('retire')->color('danger')->requiresConfirmation()->visible(fn (RatePlan $record): bool => $record->state === 'published')
+            Action::make('retire')->color('danger')->requiresConfirmation()->authorize('manageConfiguration')->visible(fn (RatePlan $record): bool => $record->state === 'published')
                 ->action(fn (RatePlan $record) => $record->update(['state' => 'retired', 'retired_at' => now(), 'is_active' => false])),
             DeleteAction::make()->visible(fn (RatePlan $record): bool => $record->state === 'draft'),
         ])->defaultSort('name');

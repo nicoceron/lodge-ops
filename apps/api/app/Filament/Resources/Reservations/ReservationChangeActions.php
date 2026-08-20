@@ -43,6 +43,9 @@ final class ReservationChangeActions
             ->modalDescription(fn (Reservation $record): string => collect(app(QuoteExplanationService::class)->project($record->bookingQuote))
                 ->only(['currency', 'subtotal_minor', 'discount_minor', 'tax_minor', 'total_minor'])
                 ->map(fn ($value, $key): string => str($key)->replace('_', ' ')->title().': '.$value)->implode("\n"))
+            ->modalContent(fn (Reservation $record) => view('filament.reservations.quote-history', [
+                'history' => app(QuoteExplanationService::class)->project($record->bookingQuote),
+            ]))
             ->modalSubmitAction(false)->modalCancelActionLabel('Close');
     }
 

@@ -37,15 +37,15 @@ No jurisdictional tax-authority reference is cited because no jurisdiction or fi
 | Gate | Result | Evidence |
 | --- | --- | --- |
 | PHP syntax | PASS | All application and migration PHP files parsed without syntax errors. |
-| Full SQLite API suite | PASS | 327 passed, 2,460 assertions, 17 skipped; 49.07 s. |
-| Full PostgreSQL API suite | PASS | Fresh `inn_test`: 343 passed, 2,560 assertions, 1 skipped; 74.04 s. |
-| Reviewer regression matrix | PASS | 8 focused SQLite tests, 42 assertions: priority/no-fallback, non-UTC/DST local dates and departure CTD, atomic publication, per-promotion usage, currency-filtered tax, fiscal extras/payments/refunds/reversals, all-role policy and migration backfill/rollback guard. |
+| Full SQLite API suite | PASS | 331 passed, 2,605 assertions, 17 expected PostgreSQL-only skips; 71.16 s. |
+| Full PostgreSQL API suite | PASS | Fresh `inn_test` through `phpunit.pgsql.xml`: 348 tests, 2,705 assertions, 1 expected host-path skip; 106.17 s. |
+| Reviewer regression matrix | PASS | 14 focused SQLite tests, 207 assertions, plus 4 second-review PostgreSQL tests / 145 assertions: governing-rule priority/no-fallback and non-UTC/DST dates; atomic publication; per-promotion/voucher usage; currency-filtered tax; authoritative fiscal-source reconciliation; all-role explanation/configuration policies; pre-DDL rollback guard; stable staff session identity; refund lifecycle/idempotency; complete historical projection. |
 | Commercial rules functional matrix | PASS | Full suites cover restrictions, tax allocation/rounding, components, Unicode/case, guest/session/budget limits, voucher lifecycle, amendment replacement and fiscal reconciliation. |
 | OpenAPI route parity | PASS | 94 paths, 129 operations, 104 resolved references. |
-| PostgreSQL migrate/race | PASS | Reviewer-focused migration/race suite: 9 passed, 48 assertions; full PostgreSQL suite also exercises inventory and promotion/voucher winner/rollback invariants. |
-| Filament/browser UAT | PASS | Refreshed Compose/PostgreSQL: staff created and published a program/category/group-tier rate plan; created and published an automatic promotion with rate-plan/category/program applicability and guest/session/budget limits; created and published a code promotion; issued an opaque voucher, suspended it, then retired it. A quote-backed hold opened `Historical quote explanation` with immutable USD subtotal 346,500, discount 38,500, tax 65,835 and total 412,335 minor units. |
-| Benchmark | PASS | Maximum 14 queries; p95 seasonal 3.64 ms, group 3.05 ms, buyout 3.15 ms. |
-| API/web builds and static analysis | PASS | API Vite build; web Next production build; Pint 740 files; PHPStan no errors; ESLint and TypeScript pass. |
+| PostgreSQL migrate/race | PASS | Fresh production-engine suite exercised PostgreSQL constraints plus inventory, payment, refund, idempotency and promotion/voucher winner/rollback races; all 348 tests passed except one expected host-path skip. |
+| Filament/browser UAT | PASS | Fresh Compose/PostgreSQL staff journey created an automatic per-session promotion and an opaque voucher, priced both into a live quote, committed a hold, amended departure by one night, confirmed, cancelled and observed policy-driven reinstatement. The history workflow exposes both immutable quote versions with nightly bases/running totals, rate-rule and rate-plan version 1, tax-input version 1, deposit/cancellation JSON, and every automatic-promotion and voucher reserved/superseded/confirmed/released event. Database verification found cancelled status, two immutable quotes, the same 64-character session identity on old/replacement usages, four released per-promotion usages and two released voucher redemptions. |
+| Benchmark | PASS | Maximum 14 queries; SQLite p95 seasonal 4.06 ms, group 3.19 ms, buyout 3.24 ms (PostgreSQL p95 9.32/7.34/7.31 ms). |
+| API/web builds and static analysis | PASS | API Vite build with clean Linux dependencies; web Next production build; Pint 741 files; PHPStan no errors; ESLint and TypeScript pass. |
 | Browser regression | PASS | Public web 4/4; isolated client closed-loop 7 passed, 1 provider-gated skip. |
 | Dependency/security scan | PASS | Composer and production npm audits: zero advisories; staged gitleaks and explicit high-risk secret-pattern scans: no findings. |
 
