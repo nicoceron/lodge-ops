@@ -18,16 +18,7 @@ if ($state !== null) {
         readfile($fixtures.'/error-not-found.json');
         return;
     }
-    echo json_encode(['data' => array_merge([
-        'order_reference' => '01K3A6S2V4T8N9R7W1X0Y3Z5QM',
-        'state' => $state,
-        'session_expires_at' => '2026-09-01T14:00:00Z',
-        'quote_expires_at' => '2026-09-01T12:20:00Z',
-        'hold_expires_at' => '2026-09-01T12:45:00Z',
-        'checkout_expires_at' => null,
-        'payment_capabilities' => [['method' => 'manual_bank_transfer', 'currency' => 'USD']],
-        'safe_failure_code' => null,
-    ], $catalog[$state])], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    echo json_encode($catalog[$state], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     return;
 }
 

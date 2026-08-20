@@ -10,13 +10,15 @@ use Throwable;
 
 final class CloudflareTurnstileVerifier implements BotVerifier
 {
+    public function configurationReady(): bool
+    {
+        return $this->secret() !== '' && $this->allowedHostnames() !== [];
+    }
+
     public function verify(string $responseToken, ?string $remoteIp, string $expectedAction, string $idempotencyKey): BotVerificationResult
     {
-        $secret = (string) config('direct-booking.turnstile_secret');
-        $allowedHostnames = array_values(array_filter(
-            config('direct-booking.turnstile_allowed_hostnames', []),
-            fn (mixed $hostname): bool => is_string($hostname) && preg_match('/^[A-Za-z0-9.-]+$/', $hostname) === 1,
-        ));
+        $secret = $this->secret();
+        $allowedHostnames = $this->allowedHostnames();
         if ($secret === '' || $allowedHostnames === []) {
             return new BotVerificationResult(false, null, null, ['missing-configuration']);
         }
@@ -24,15 +26,19 @@ final class CloudflareTurnstileVerifier implements BotVerifier
             return new BotVerificationResult(false, null, null, ['invalid-input']);
         }
 
-        $response = Http::asForm()
-            ->acceptJson()
-            ->timeout((int) config('direct-booking.turnstile_timeout_seconds', 5))
-            ->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', array_filter([
-                'secret' => $secret,
-                'response' => $responseToken,
-                'remoteip' => $remoteIp,
-                'idempotency_key' => $idempotencyKey,
-            ]));
+        try {
+            $response = Http::asForm()
+                ->acceptJson()
+                ->timeout((int) config('direct-booking.turnstile_timeout_seconds', 5))
+                ->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', array_filter([
+                    'secret' => $secret,
+                    'response' => $responseToken,
+                    'remoteip' => $remoteIp,
+                    'idempotency_key' => $idempotencyKey,
+                ]));
+        } catch (Throwable) {
+            return new BotVerificationResult(false, null, null, ['verification-unavailable']);
+        }
         if (! $response->successful()) {
             return new BotVerificationResult(false, null, null, ['verification-unavailable']);
         }
@@ -55,5 +61,24 @@ final class CloudflareTurnstileVerifier implements BotVerifier
             ->filter('is_string')->map(fn (string $code): string => substr($code, 0, 80))->values()->all();
 
         return new BotVerificationResult($valid, is_string($hostname) ? $hostname : null, is_string($action) ? $action : null, $safeCodes);
+    }
+
+    private function secret(): string
+    {
+        return trim((string) config('direct-booking.turnstile_secret'));
+    }
+
+    /** @return list<string> */
+    private function allowedHostnames(): array
+    {
+        return array_values(array_unique(array_filter(
+            array_map(
+                static fn (mixed $hostname): string => is_string($hostname) ? strtolower(trim($hostname)) : '',
+                (array) config('direct-booking.turnstile_allowed_hostnames', []),
+            ),
+            static fn (string $hostname): bool => str_contains($hostname, '.')
+                && filter_var($hostname, FILTER_VALIDATE_IP) === false
+                && preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/', $hostname) === 1,
+        )));
     }
 }

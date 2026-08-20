@@ -40,6 +40,7 @@ use App\Services\Payments\IssuePaymentRequest;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -100,6 +101,13 @@ class DirectBookingContractTest extends TestCase
         $this->assertSame($order->id, app(DirectBookingTokenService::class)->resolve($rotated['token'], $property->id)->id);
         app(DirectBookingTokenService::class)->revoke($rotated['order']);
         try {
+            app(DirectBookingTokenService::class)->rotate($rotated['order']);
+            $this->fail('A stale pre-revocation model must not resurrect a revoked session.');
+        } catch (AuthenticationException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertNotNull($rotated['order']->fresh()->revoked_at);
+        try {
             app(DirectBookingTokenService::class)->resolve($rotated['token'], $property->id);
             $this->fail('A revoked token must fail generically.');
         } catch (AuthenticationException) {
@@ -108,6 +116,12 @@ class DirectBookingContractTest extends TestCase
 
         $fresh = app(DirectBookingTokenService::class)->issue($setting, 'es-AR', 'USD');
         $fresh['order']->forceFill(['expires_at' => now()->subSecond(), 'session_expires_at' => now()->subSecond()])->save();
+        try {
+            app(DirectBookingTokenService::class)->rotate($fresh['order']);
+            $this->fail('An expired session cannot be extended through token rotation.');
+        } catch (AuthenticationException) {
+            $this->addToAssertionCount(1);
+        }
         try {
             app(DirectBookingTokenService::class)->resolve($fresh['token'], $property->id);
             $this->fail('An expired session token must fail while recovery remains available.');
@@ -321,6 +335,12 @@ class DirectBookingContractTest extends TestCase
             ['key' => $programItem->public_key, 'kind' => 'program', 'bookable' => false],
         ], $availability);
         $this->assertSame([['method' => 'hosted_checkout', 'currency' => 'USD']], $projection['payment_capabilities']);
+        $this->assertSame([
+            ['kind' => 'category', 'name' => 'Category'],
+            ['kind' => 'program', 'name' => 'Program'],
+        ], collect($projection['bookables'])->map(fn (array $bookable): array => [
+            'kind' => $bookable['kind'], 'name' => $bookable['name'],
+        ])->values()->all());
         $this->assertSame('https://example.test/contact', $projection['accessible_fallback_url']);
         $this->assertFalse(app(DirectBookingPublicUrl::class)->isSafeHttps('https://127.0.0.1/contact'));
         $this->assertFalse(app(DirectBookingPublicUrl::class)->isSafeHttps('https://localhost/contact'));
@@ -358,26 +378,40 @@ class DirectBookingContractTest extends TestCase
         $missingAllowlist = app(CloudflareTurnstileVerifier::class)->verify('single-use-token', null, 'direct_booking_hold', $idempotency);
         $this->assertFalse($missingAllowlist->valid);
         Http::assertNothingSent();
+
+        config(['direct-booking.turnstile_allowed_hostnames' => ['book.example.test']]);
+        Http::fake(fn () => throw new ConnectionException('simulated timeout'));
+        $unavailable = app(CloudflareTurnstileVerifier::class)->verify('single-use-token', null, 'direct_booking_hold', $idempotency);
+        $this->assertFalse($unavailable->valid);
+        $this->assertSame(['verification-unavailable'], $unavailable->safeErrorCodes);
     }
 
     public function test_launch_readiness_fails_closed_until_content_commercial_payment_and_accessibility_inputs_exist(): void
     {
+        config([
+            'direct-booking.turnstile_secret' => null,
+            'direct-booking.turnstile_allowed_hostnames' => [],
+        ]);
         [, $property] = $this->tenantEnvironment();
         $setting = DirectBookingPropertySetting::query()->create([
             'property_id' => $property->id,
             'public_slug' => 'readiness-property',
             'direct_booking_enabled' => true,
+            'bot_verification_required' => true,
             'default_locale' => 'en',
             'supported_locales' => ['en'],
             'default_currency' => 'USD',
             'supported_currencies' => ['USD'],
             'accessible_fallback_url' => 'https://example.test/contact',
         ]);
+        $this->assertTrue($setting->bot_verification_required);
+        $this->assertFalse(app(CloudflareTurnstileVerifier::class)->configurationReady());
         $blocked = app(DirectBookingLaunchReadinessEvaluator::class)->evaluate($setting);
         $this->assertFalse($blocked->ready);
         $this->assertContains('bookable_projection_missing', $blocked->blockingReasons);
         $this->assertContains('commercial_rules_missing:USD', $blocked->blockingReasons);
         $this->assertContains('payment_capability_missing:USD', $blocked->blockingReasons);
+        $this->assertContains('bot_verification_not_ready', $blocked->blockingReasons);
 
         $category = $this->category($property, 'room');
         $item = DirectBookingPublicItem::query()->create([
@@ -394,16 +428,17 @@ class DirectBookingContractTest extends TestCase
         ] as $kind) {
             $this->publication($property->id, $kind, 'en', withMedia: $kind === DirectBookingPublicationKind::Property);
         }
-        $wrongKind = DirectBookingPublication::query()->create([
-            'property_id' => $property->id, 'public_item_id' => $item->id,
-            'kind' => DirectBookingPublicationKind::Program, 'locale' => 'en', 'version' => 1,
-            'state' => DirectBookingPublicationState::Published, 'title' => 'Wrong kind', 'summary' => 'Wrong kind copy.',
-            'body' => 'Wrong kind.', 'effective_at' => now()->addDay(), 'published_at' => now(),
-        ]);
-        DirectBookingPublicMedia::query()->create([
-            'publication_id' => $wrongKind->id, 'media_reference' => 'public-media://direct-booking/wrong.webp',
-            'mime_type' => 'image/webp', 'alt_text' => 'Wrong future media',
-        ]);
+        try {
+            DirectBookingPublication::query()->create([
+                'property_id' => $property->id, 'public_item_id' => $item->id,
+                'kind' => DirectBookingPublicationKind::Program, 'locale' => 'en', 'version' => 1,
+                'state' => DirectBookingPublicationState::Published, 'title' => 'Wrong kind', 'summary' => 'Wrong kind copy.',
+                'body' => 'Wrong kind.', 'effective_at' => now()->subDay(), 'published_at' => now(),
+            ]);
+            $this->fail('Program copy must not be associated with a category item.');
+        } catch (\LogicException) {
+            $this->addToAssertionCount(1);
+        }
         $exactCopyBlocked = app(DirectBookingLaunchReadinessEvaluator::class)->evaluate($setting->fresh());
         $this->assertContains("item_publication_missing:{$item->public_key}:en", $exactCopyBlocked->blockingReasons);
         $this->publication($property->id, DirectBookingPublicationKind::Category, 'en', $item->id, withMedia: true);
@@ -441,9 +476,20 @@ class DirectBookingContractTest extends TestCase
         $this->assertContains('hosted_checkout_not_ready:USD', $providerBlocked->blockingReasons);
         $hosted->update(['is_enabled' => false]);
 
+        config([
+            'direct-booking.turnstile_secret' => 'launch-secret',
+            'direct-booking.turnstile_allowed_hostnames' => ['book.example.test'],
+        ]);
         $ready = app(DirectBookingLaunchReadinessEvaluator::class)->evaluate($setting->fresh());
         $this->assertTrue($ready->ready, implode(', ', $ready->blockingReasons));
         $this->assertSame([], $ready->blockingReasons);
+
+        config(['direct-booking.turnstile_allowed_hostnames' => ['not a hostname']]);
+        $invalidBotConfiguration = app(DirectBookingLaunchReadinessEvaluator::class)->evaluate($setting->fresh());
+        $this->assertContains('bot_verification_not_ready', $invalidBotConfiguration->blockingReasons);
+        config(['direct-booking.turnstile_allowed_hostnames' => ['127.0.0.1', 'localhost']]);
+        $localBotConfiguration = app(DirectBookingLaunchReadinessEvaluator::class)->evaluate($setting->fresh());
+        $this->assertContains('bot_verification_not_ready', $localBotConfiguration->blockingReasons);
     }
 
     public function test_singleton_maintenance_expires_sessions_and_scrubs_pii_without_deleting_ledger(): void

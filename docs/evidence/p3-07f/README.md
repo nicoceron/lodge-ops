@@ -18,18 +18,18 @@ This is contract and persistence evidence only. It does not claim that public bo
 - Property/currency/localized payment capability boundary and dedicated locked held-reservation payment-request issuance.
 - Independently expiring hash-only session/recovery credentials, immutable separate consent facts, attribution/IP minimization and dedicated PII scrub event/Guest cleanup deferral.
 - Property-inclusive composite associations with same-tenant cross-property negative coverage.
-- Deterministic screen/state/error fixtures plus mock router for Agent 08.
+- Deterministic full-envelope screen/state/error fixtures plus mock router for Agent 08, with public-action parity and distinct status errors.
 - Threat model and same-origin Laravel ADR.
 
 ## Gate receipts
 
-- Direct contract: 12 paths, 15 states, 13 errors, 13 fixtures; exact transition authority checked.
+- Direct contract: 12 paths, 15 full state envelopes, 13 errors, 18 fixtures; exact transition authority and public-action parity checked.
 - Aggregate OpenAPI: 118 paths, 152 operations, 112 resolved references.
-- SQLite direct booking: 15 passed / 133 assertions, plus 2 intentional PostgreSQL skips.
-- PostgreSQL direct booking: 17 passed / 144 assertions, including different-command and same-retry row-lock races.
-- Full SQLite normal Laravel command: 373 passed / 2,980 assertions, plus 24 intentional PostgreSQL skips.
-- Full PostgreSQL: 397 tests / 3,123 assertions, plus one platform-specific migration skip.
-- Commercial migration compatibility: 2 passed / 24 assertions. Payment/tender/commercial/reservation PostgreSQL compatibility: 95 passed / 924 assertions. The schema round-trip is intentionally isolated because its `DatabaseMigrations` teardown dismantles and rebuilds the schema.
+- SQLite direct booking: 17 passed / 160 assertions, plus 3 intentional PostgreSQL skips.
+- PostgreSQL direct booking: 20 passed / 177 assertions, including different-command, same-retry and revoke-versus-rotate row-lock races.
+- Full SQLite normal Laravel command: 375 passed / 3,007 assertions, plus 25 intentional PostgreSQL skips.
+- Full PostgreSQL: 400 tests / 3,156 assertions, plus one platform-specific migration skip.
+- Commercial migration compatibility: 2 passed / 24 assertions. Payment/tender/reservation PostgreSQL compatibility: 84 passed / 836 assertions. The `060002` clean round-trip and guarded rollback run on both engines inside the direct-booking suites.
 - Tender/reservation nested-JSON card-guard regression: 18 passed / 192 assertions on SQLite and PostgreSQL.
 - Pint: 819 files. PHPStan: zero errors. API and Next production builds: pass.
 - Next lint/typecheck: pass. Playwright public marketing checks: 4 passed.

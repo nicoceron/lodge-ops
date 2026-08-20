@@ -9,6 +9,7 @@ use App\Enums\PaymentRequestPurpose;
 use App\Enums\PaymentRequestState;
 use App\Models\BookingQuote;
 use App\Models\DirectBookingPaymentCapability;
+use App\Models\DirectBookingPaymentInstruction;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\DirectBookingPublication;
 use App\Models\DirectBookingPublicItem;
@@ -21,6 +22,7 @@ use App\Services\DirectBooking\DirectBookingTokenService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
@@ -48,6 +50,12 @@ class DirectBookingSchemaTest extends TestCase
         $item = DirectBookingPublicItem::query()->create([
             'property_id' => $property->id, 'kind' => 'category', 'resource_category_id' => $category->id,
         ]);
+        $this->assertRejected(fn () => DB::table('direct_booking_publications')->insert([
+            'id' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'property_id' => $property->id,
+            'public_item_id' => $item->id, 'kind' => 'program', 'locale' => 'en', 'version' => 1,
+            'state' => 'draft', 'title' => 'Wrong kind', 'checksum' => str_repeat('f', 64),
+            'created_at' => now(), 'updated_at' => now(),
+        ]));
         $this->assertRejected(fn () => DB::table('direct_booking_public_items')->insert([
             'id' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'property_id' => $property->id,
             'kind' => 'category', 'resource_category_id' => $category->id, 'program_id' => null,
@@ -158,6 +166,66 @@ class DirectBookingSchemaTest extends TestCase
         foreach (['booking_quote_id' => $quote->id, 'reservation_id' => $reservation->id, 'payment_request_id' => $request->id] as $column => $id) {
             $this->assertRejected(fn () => DB::table('direct_booking_orders')->where('id', $orderB->id)->update([$column => $id]));
         }
+    }
+
+    public function test_hardening_migration_round_trips_without_live_contract_facts(): void
+    {
+        $migration = require database_path('migrations/2026_08_20_060002_harden_direct_booking_contract_boundaries.php');
+
+        $migration->down();
+        $this->assertFalse(Schema::hasTable('direct_booking_payment_instructions'));
+        $this->assertFalse(Schema::hasColumn('direct_booking_order_events', 'event_type'));
+        $this->assertFalse(Schema::hasColumn('direct_booking_orders', 'session_expires_at'));
+
+        $migration->up();
+        $this->assertTrue(Schema::hasTable('direct_booking_payment_instructions'));
+        $this->assertTrue(Schema::hasColumn('direct_booking_order_events', 'event_type'));
+        $this->assertTrue(Schema::hasColumn('direct_booking_orders', 'session_expires_at'));
+    }
+
+    public function test_hardening_rollback_preflights_every_live_fact_before_any_ddl(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment();
+        $setting = DirectBookingPropertySetting::query()->create([
+            'property_id' => $property->id, 'public_slug' => 'rollback-guard', 'default_locale' => 'en',
+            'supported_locales' => ['en'], 'default_currency' => 'USD', 'supported_currencies' => ['USD'],
+        ]);
+        $order = app(DirectBookingTokenService::class)->issue($setting, 'en', 'USD')['order'];
+        $publication = DirectBookingPublication::query()->create([
+            'property_id' => $property->id, 'kind' => DirectBookingPublicationKind::BankTransferInstructions,
+            'locale' => 'en', 'version' => 1, 'state' => DirectBookingPublicationState::Published,
+            'title' => 'Transfer instructions', 'body' => 'Use the quoted reference.',
+        ]);
+        $capability = DirectBookingPaymentCapability::query()->create([
+            'property_id' => $property->id, 'currency' => 'USD', 'method' => 'manual_bank_transfer',
+        ]);
+        DirectBookingPaymentInstruction::query()->create([
+            'property_id' => $property->id, 'direct_booking_payment_capability_id' => $capability->id,
+            'publication_id' => $publication->id, 'locale' => 'en',
+        ]);
+        DB::table('direct_booking_order_events')->insert([
+            'id' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'direct_booking_order_id' => $order->id,
+            'event_type' => 'pii_scrubbed', 'sequence' => 1, 'from_state' => 'started', 'to_state' => 'started',
+            'authority' => 'scheduler', 'retry_identity' => 'rollback-guard-event-0001',
+            'request_checksum' => str_repeat('a', 64), 'state_version' => 2, 'occurred_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $migration = require database_path('migrations/2026_08_20_060002_harden_direct_booking_contract_boundaries.php');
+
+        try {
+            $migration->down();
+            $this->fail('Live direct-booking hardening facts must block rollback.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('localized payment instruction facts', $exception->getMessage());
+            $this->assertStringContainsString('PII-scrub event facts', $exception->getMessage());
+            $this->assertStringContainsString('live order session, recovery, quote, hold, checkout, or retention facts', $exception->getMessage());
+            $this->assertStringContainsString('No DDL was changed', $exception->getMessage());
+        }
+
+        $this->assertTrue(Schema::hasTable('direct_booking_payment_instructions'));
+        $this->assertTrue(Schema::hasColumn('direct_booking_order_events', 'event_type'));
+        $this->assertTrue(Schema::hasColumn('direct_booking_orders', 'session_expires_at'));
+        $this->assertDatabaseHas('direct_booking_order_events', ['id' => DB::table('direct_booking_order_events')->value('id'), 'event_type' => 'pii_scrubbed']);
     }
 
     private function assertRejected(callable $operation): void

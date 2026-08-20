@@ -25,7 +25,9 @@ final class DirectBookingSafeProjection
             ->where('property_id', $setting->property_id)->where('is_enabled', true)
             ->with(['publications' => fn ($query) => $query
                 ->with('media')->where('locale', $locale)->where('state', DirectBookingPublicationState::Published)
-                ->where(fn ($published) => $published->whereNull('effective_at')->orWhere('effective_at', '<=', now()))])
+                ->whereIn('kind', [DirectBookingPublicationKind::Category, DirectBookingPublicationKind::Program])
+                ->where(fn ($published) => $published->whereNull('effective_at')->orWhere('effective_at', '<=', now()))
+                ->orderByDesc('effective_at')->orderByDesc('version')->orderBy('id')])
             ->orderBy('sort_order')->get();
         $capabilities = DirectBookingPaymentCapability::query()
             ->where('property_id', $setting->property_id)
@@ -53,7 +55,12 @@ final class DirectBookingSafeProjection
             'accessible_fallback_url' => $setting->accessible_fallback_url,
             'media' => $this->media($publication->media),
             'bookables' => $items->map(function ($item): array {
-                $copy = $item->publications->first();
+                $expectedKind = $item->kind === 'category'
+                    ? DirectBookingPublicationKind::Category
+                    : DirectBookingPublicationKind::Program;
+                $copy = $item->publications->first(
+                    fn (DirectBookingPublication $candidate): bool => $candidate->kind === $expectedKind,
+                );
 
                 return [
                     'key' => $item->public_key,

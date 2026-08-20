@@ -27,12 +27,47 @@ machine = {
   'canceled' => { 'refunded' => 'refund_service', 'canceled' => 'scheduler' },
   'refunded' => { 'refunded' => 'scheduler' }
 }
+state_actions = {
+  'started' => %w[quote],
+  'quoted' => %w[hold],
+  'held' => %w[checkout],
+  'payment_pending' => %w[contact_property],
+  'awaiting_manual_payment' => %w[submit_manual_evidence],
+  'evidence_pending' => %w[contact_property],
+  'finance_review' => %w[contact_property],
+  'paid_pending_confirmation' => %w[contact_property],
+  'confirmed' => %w[view_confirmation],
+  'expired' => %w[recover],
+  'payment_failed' => %w[retry_payment],
+  'paid_needs_review' => %w[contact_property],
+  'evidence_rejected' => %w[retry_payment contact_property],
+  'canceled' => %w[contact_property],
+  'refunded' => %w[contact_property]
+}
+public_transitions = {
+  'started' => { 'quote' => 'quoted' },
+  'quoted' => { 'hold' => 'held' },
+  'held' => { 'checkout' => %w[payment_pending awaiting_manual_payment] },
+  'awaiting_manual_payment' => { 'submit_manual_evidence' => 'evidence_pending' },
+  'payment_failed' => { 'retry_payment' => 'payment_pending' },
+  'evidence_rejected' => { 'retry_payment' => 'awaiting_manual_payment' },
+  'expired' => { 'recover' => 'started' }
+}
 
 abort 'Direct-booking state catalog drifted.' unless direct.dig('components', 'schemas', 'OrderState', 'enum') == states
 abort 'Direct-booking error catalog drifted.' unless direct.dig('components', 'schemas', 'ErrorCode', 'enum') == errors
 abort 'Direct-booking transition authority drifted.' unless direct['x-state-machine'] == machine
-abort 'Every direct-booking state needs a fixture.' unless JSON.parse(File.read(File.join(fixtures_path, 'order-states.json'))).keys == states
-abort 'Every direct-booking error needs a fixture.' unless JSON.parse(File.read(File.join(fixtures_path, 'errors.json'))).keys == errors
+state_catalog = JSON.parse(File.read(File.join(fixtures_path, 'order-states.json')))
+error_catalog = JSON.parse(File.read(File.join(fixtures_path, 'errors.json')))
+abort 'Every direct-booking state needs a fixture.' unless state_catalog.keys == states
+abort 'Every direct-booking error needs a catalog entry.' unless error_catalog.keys == errors
+public_transitions.each do |from, actions|
+  actions.each do |action, destinations|
+    Array(destinations).each do |to|
+      abort "#{from} action #{action} has no frozen transition to #{to}." unless machine.fetch(from).key?(to)
+    end
+  end
+end
 
 paths = main.fetch('paths').select { |path, _item| path.start_with?('/direct-booking/') }
 abort "Expected 12 frozen direct-booking paths, found #{paths.length}." unless paths.length == 12
@@ -136,6 +171,42 @@ fixture_schemas = {
 fixture_schemas.each do |fixture, schema_name|
   validate_schema!(direct, direct.dig('components', 'schemas', schema_name), JSON.parse(File.read(File.join(fixtures_path, fixture))))
 end
+
+state_schema = direct.dig('components', 'schemas', 'OrderStatusEnvelope')
+state_catalog.each do |state, envelope|
+  validate_schema!(direct, state_schema, envelope)
+  data = envelope.fetch('data')
+  abort "#{state} fixture identifies #{data['state']}." unless data['state'] == state
+  abort "#{state} fixture actions drifted from public transition parity." unless data['actions'] == state_actions.fetch(state)
+end
+%w[order-held.json evidence-pending.json].each do |fixture|
+  envelope = JSON.parse(File.read(File.join(fixtures_path, fixture)))
+  state = envelope.dig('data', 'state')
+  abort "#{fixture} action projection drifted from the state catalog." unless envelope.dig('data', 'actions') == state_catalog.dig(state, 'data', 'actions')
+end
+
+error_examples = {
+  'Error403' => ['error-bot-rejected.json', 403],
+  'Error404' => ['error-not-found.json', 404],
+  'Error409' => ['error-conflict.json', 409],
+  'Error410' => ['error-hold-expired.json', 410],
+  'Error422' => ['error-validation.json', 422],
+  'Error503' => ['error-booking-unavailable.json', 503]
+}
+error_envelopes = error_examples.map do |response_name, (fixture, status)|
+  response = direct.dig('components', 'responses', response_name)
+  examples = response.dig('content', 'application/json', 'examples') || {}
+  abort "#{response_name} must expose exactly one frozen error example." unless examples.length == 1
+  reference = examples.values.first&.fetch('$ref')
+  abort "#{response_name} must reference its distinct #{fixture} envelope." unless reference == "./fixtures/#{fixture}"
+  envelope = JSON.parse(File.read(File.join(fixtures_path, fixture)))
+  validate_schema!(direct, direct.dig('components', 'schemas', 'ErrorEnvelope'), envelope)
+  fact = error_catalog.fetch(envelope.dig('error', 'code'))
+  abort "#{fixture} status does not match the frozen error catalog." unless fact['status'] == status
+  abort "#{fixture} retryability does not match the frozen error catalog." unless fact['retryable'] == envelope.dig('error', 'retryable')
+  JSON.generate(envelope)
+end
+abort 'Every status error example must be a distinct full envelope.' unless error_envelopes.uniq.length == error_envelopes.length
 
 begun = direct.dig('components', 'schemas', 'OrderBegunEnvelope', 'properties', 'data', 'properties')
 abort 'session_token must be response-only.' unless begun.dig('session_token', 'readOnly') == true && !begun.dig('session_token', 'writeOnly')

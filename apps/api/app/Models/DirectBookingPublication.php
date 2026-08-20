@@ -32,11 +32,17 @@ class DirectBookingPublication extends TenantModel
     protected static function booted(): void
     {
         static::saving(function (self $publication): void {
-            if ($publication->public_item_id !== null && ! DirectBookingPublicItem::query()
-                ->whereKey($publication->public_item_id)
-                ->where('property_id', $publication->property_id)
-                ->exists()) {
-                throw new LogicException('Published item copy must belong to the same property and tenant.');
+            if ($publication->public_item_id !== null) {
+                $item = DirectBookingPublicItem::query()
+                    ->whereKey($publication->public_item_id)
+                    ->where('property_id', $publication->property_id)
+                    ->first();
+                $expectedKind = $item?->kind === 'category'
+                    ? DirectBookingPublicationKind::Category
+                    : DirectBookingPublicationKind::Program;
+                if ($item === null || $publication->kind !== $expectedKind) {
+                    throw new LogicException('Published item copy must match the item kind, property, and tenant.');
+                }
             }
             if ($publication->exists && $publication->getOriginal('state') === DirectBookingPublicationState::Published->value) {
                 $allowed = ['state', 'retired_at', 'updated_at'];

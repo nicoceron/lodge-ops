@@ -58,7 +58,11 @@ final class DirectBookingTokenService
     public function rotate(DirectBookingOrder $order): array
     {
         return DB::transaction(function () use ($order): array {
-            $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $locked = DirectBookingOrder::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->first();
+            if ($locked === null || $locked->revoked_at !== null || $locked->session_expires_at->isPast()
+                || ! $locked->tenant()->where('is_active', true)->exists()) {
+                throw new AuthenticationException;
+            }
             $token = Str::random(64);
             $sessionExpiresAt = now()->addMinutes((int) config('direct-booking.default_session_ttl_minutes', 120));
             $locked->forceFill([
@@ -66,11 +70,10 @@ final class DirectBookingTokenService
                 'expires_at' => $sessionExpiresAt,
                 'session_expires_at' => $sessionExpiresAt,
                 'token_rotated_at' => now(),
-                'revoked_at' => null,
             ])->save();
 
             return ['order' => $locked, 'token' => $token];
-        });
+        }, 3);
     }
 
     /** @return array{order: DirectBookingOrder, token: string, recovery_token: string} */
@@ -109,7 +112,12 @@ final class DirectBookingTokenService
 
     public function revoke(DirectBookingOrder $order): void
     {
-        $order->forceFill(['revoked_at' => now()])->save();
+        DB::transaction(function () use ($order): void {
+            $locked = DirectBookingOrder::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($locked->revoked_at === null) {
+                $locked->forceFill(['revoked_at' => now()])->save();
+            }
+        }, 3);
     }
 
     public static function hash(string $token): string

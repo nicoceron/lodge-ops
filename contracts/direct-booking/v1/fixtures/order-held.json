@@ -10,7 +10,7 @@
     "payment_capabilities": [
       {"method": "manual_bank_transfer", "currency": "USD"}
     ],
-    "actions": ["checkout", "submit_manual_evidence", "contact_property"],
+    "actions": ["checkout"],
     "safe_failure_code": null
   }
 }

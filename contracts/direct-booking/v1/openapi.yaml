@@ -183,18 +183,48 @@ components:
         Retry-After: { $ref: '#/components/headers/RetryAfter' }
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
     BookingUnavailable: { $ref: '#/components/responses/Error503' }
-    Error403: &errorResponse
+    Error403:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { bot_rejected: { $ref: './fixtures/error-bot-rejected.json' } }
+    Error404:
       description: Safe direct-booking error.
       headers: *noStoreHeaders
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
           examples: { not_found: { $ref: './fixtures/error-not-found.json' } }
-    Error404: *errorResponse
-    Error409: *errorResponse
-    Error410: *errorResponse
-    Error422: *errorResponse
-    Error503: *errorResponse
+    Error409:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { conflict: { $ref: './fixtures/error-conflict.json' } }
+    Error410:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { hold_expired: { $ref: './fixtures/error-hold-expired.json' } }
+    Error422:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { validation_error: { $ref: './fixtures/error-validation.json' } }
+    Error503:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { booking_unavailable: { $ref: './fixtures/error-booking-unavailable.json' } }
 
   schemas:
     LocalDate:

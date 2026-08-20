@@ -29,6 +29,7 @@ class DirectBookingPropertySetting extends TenantModel
     protected static function booted(): void
     {
         static::saving(function (self $setting): void {
+            $setting->bot_verification_required ??= true;
             $setting->session_ttl_minutes ??= (int) config('direct-booking.default_session_ttl_minutes', 120);
             $setting->initial_hold_minutes ??= (int) config('direct-booking.initial_hold_minutes', 30);
             $setting->checkout_extension_minutes ??= (int) config('direct-booking.checkout_extension_minutes', 15);

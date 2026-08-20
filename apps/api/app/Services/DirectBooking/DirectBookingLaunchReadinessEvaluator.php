@@ -20,6 +20,7 @@ final class DirectBookingLaunchReadinessEvaluator
     public function __construct(
         private readonly PaymentGatewayFactory $gateways,
         private readonly DirectBookingPublicUrl $publicUrls,
+        private readonly CloudflareTurnstileVerifier $turnstile,
     ) {}
 
     public function evaluate(DirectBookingPropertySetting $setting): DirectBookingReadinessReport
@@ -38,6 +39,9 @@ final class DirectBookingLaunchReadinessEvaluator
         if (empty($setting->accessible_fallback_url)
             || ! $this->publicUrls->isSafeHttps($setting->accessible_fallback_url)) {
             $reasons[] = 'accessible_bot_fallback_missing';
+        }
+        if ($setting->bot_verification_required && ! $this->turnstile->configurationReady()) {
+            $reasons[] = 'bot_verification_not_ready';
         }
 
         $requiredKinds = [

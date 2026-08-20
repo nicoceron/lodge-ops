@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "bot_rejected",
+    "message": "Bot verification could not be completed.",
+    "correlation_id": "contract-fixture-40300001",
+    "retryable": true
+  }
+}

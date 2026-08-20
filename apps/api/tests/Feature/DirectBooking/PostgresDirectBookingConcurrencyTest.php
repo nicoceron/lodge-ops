@@ -74,6 +74,37 @@ class PostgresDirectBookingConcurrencyTest extends TestCase
         $this->cleanupContractFixture($order);
     }
 
+    public function test_revoke_wins_against_a_concurrent_stale_rotation_without_session_resurrection(): void
+    {
+        $this->requirePostgres();
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $setting = DirectBookingPropertySetting::query()->create([
+            'property_id' => $property->id, 'public_slug' => 'token-race', 'default_locale' => 'en',
+            'supported_locales' => ['en'], 'default_currency' => 'USD', 'supported_currencies' => ['USD'],
+        ]);
+        $order = $this->orderWithQuote($setting, $property);
+
+        $results = $this->concurrently([
+            function () use ($order): string {
+                app(DirectBookingTokenService::class)->revoke($order);
+
+                return 'revoked';
+            },
+            function () use ($order): string {
+                usleep(150_000);
+
+                return app(DirectBookingTokenService::class)->rotate($order)['token'];
+            },
+        ], $tenant, $membership);
+        app(TenantContext::class)->set($tenant, $membership);
+
+        $this->assertTrue($results[0]['ok'], json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertFalse($results[1]['ok'], json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertStringContainsString('AuthenticationException', $results[1]['error'] ?? '');
+        $this->assertNotNull($order->fresh()->revoked_at);
+        $this->cleanupContractFixture($order);
+    }
+
     /** @param array<int, callable(): string> $operations @return array<int, array{ok: bool, result?: string, error?: string}> */
     private function concurrently(array $operations, Tenant $tenant, Membership $membership): array
     {
