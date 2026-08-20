@@ -7,6 +7,7 @@ use App\Enums\FolioLineType;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Models\Allocation;
+use App\Models\CommunicationPreference;
 use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\GuestPaymentEvidence;
@@ -87,6 +88,27 @@ class GuestPortalTest extends TestCase
         $secondSession = $this->exchange($secondMagic);
         GuestPortalAccessToken::withoutGlobalScopes()->whereNotNull('session_hash')->update(['revoked_at' => now()]);
         $this->portalGet('/api/v1/guest-portal/reservation', $secondSession)->assertUnauthorized();
+    }
+
+    public function test_guest_can_allow_and_withdraw_optional_messages_through_portal_api(): void
+    {
+        [, $property, $guest, , , $magicToken] = $this->portalEnvironment();
+        $session = $this->exchange($magicToken);
+
+        $this->portalJson('PUT', '/api/v1/guest-portal/communication-preferences', $session, [
+            'purpose' => 'survey', 'is_allowed' => true,
+        ])->assertOk()->assertJsonPath('data.is_allowed', true);
+        $this->portalJson('PUT', '/api/v1/guest-portal/communication-preferences', $session, [
+            'purpose' => 'survey', 'is_allowed' => false,
+        ])->assertOk()->assertJsonPath('data.is_allowed', false);
+
+        $this->assertDatabaseHas('communication_preferences', [
+            'property_id' => $property->id, 'guest_id' => $guest->id, 'purpose' => 'survey',
+            'is_allowed' => false, 'source' => 'guest_portal_api', 'policy_version' => '2026-08-20-v1',
+        ]);
+        $this->assertNotNull(CommunicationPreference::withoutGlobalScopes()->firstOrFail()->withdrawn_at);
+        $this->portalGet('/api/v1/guest-portal/communication-preferences', $session)
+            ->assertOk()->assertJsonFragment(['purpose' => 'survey', 'is_allowed' => false]);
     }
 
     public function test_portal_response_is_tenant_safe_and_discloses_only_guest_necessary_data(): void

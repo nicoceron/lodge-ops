@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CommunicationPurpose;
 use App\Enums\FolioStatus;
 use App\Enums\MembershipRole;
 use App\Models\Allocation;
+use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
 use App\Models\Deposit;
 use App\Models\ExchangeRate;
@@ -92,6 +94,11 @@ class DatabaseSeederTest extends TestCase
         $this->assertTrue(Survey::query()->whereNotNull('responded_at')->exists());
         $this->assertTrue(ExchangeRate::query()->where('base_currency', 'ARS')->where('quote_currency', 'USD')->exists());
         $this->assertTrue(Reservation::query()->where('currency', 'ARS')->whereNotNull('actual_end_at')->exists());
+        $arrivalRule = AutomationRule::query()->where('trigger', 'reservation.arrival_approaching')->firstOrFail();
+        $this->assertSame(
+            CommunicationPurpose::PreArrival->value,
+            data_get($arrivalRule->actions, '0.purpose'),
+        );
 
         foreach (Allocation::query()->where('status', 'confirmed')->get() as $allocation) {
             app(AvailabilityService::class)->assertAvailable($allocation);

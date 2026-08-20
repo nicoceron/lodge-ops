@@ -31,6 +31,8 @@ Route::prefix('guest')->name('guest.portal.')->group(function (): void {
         Route::get('folio', [GuestPortalController::class, 'folio'])->name('folio');
         Route::get('survey', [GuestPortalController::class, 'survey'])->name('survey');
         Route::post('survey', [GuestPortalController::class, 'storeSurvey'])->name('survey.store');
+        Route::get('communication-preferences', [GuestPortalController::class, 'communicationPreferences'])->name('communication-preferences');
+        Route::post('communication-preferences', [GuestPortalController::class, 'updateCommunicationPreferences'])->name('communication-preferences.update');
         Route::post('logout', [GuestPortalController::class, 'logout'])->name('logout');
     });
 });

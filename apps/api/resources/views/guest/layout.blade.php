@@ -60,6 +60,7 @@
                 <a href="{{ route('guest.portal.payments') }}" @if(request()->routeIs('guest.portal.payments*')) aria-current="page" @endif>Payment</a>
                 <a href="{{ route('guest.portal.folio') }}" @if(request()->routeIs('guest.portal.folio')) aria-current="page" @endif>Folio</a>
                 <a href="{{ route('guest.portal.survey') }}" @if(request()->routeIs('guest.portal.survey*')) aria-current="page" @endif>Feedback</a>
+                <a href="{{ route('guest.portal.communication-preferences') }}" @if(request()->routeIs('guest.portal.communication-preferences*')) aria-current="page" @endif>Messages</a>
                 <form class="logout" method="post" action="{{ route('guest.portal.logout') }}">@csrf<button type="submit">Sign out</button></form>
             </nav>
         </div>

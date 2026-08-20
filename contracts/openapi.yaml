@@ -32,6 +32,7 @@ tags:
   - name: Integrations
   - name: Documents
   - name: Reports
+  - name: Communications
 
 paths:
   /dashboard:
@@ -1397,6 +1398,27 @@ paths:
       responses:
         '200': { description: Signed notification durably accepted; processing is asynchronous. }
         '401': { description: Invalid or stale provider signature. }
+  /communication-webhooks/{endpointKey}:
+    post:
+      tags: [Communications]
+      operationId: receiveCommunicationDeliveryEvent
+      security: []
+      description: >-
+        Accepts a Resend/Svix-signed raw request. Tenant and provider account
+        are resolved only from the opaque endpoint key; payload identity claims
+        are never authorization input. Processing is asynchronous and duplicate
+        provider event IDs are idempotent.
+      parameters:
+        - { name: endpointKey, in: path, required: true, schema: { type: string, minLength: 32, maxLength: 128 } }
+        - { name: svix-id, in: header, required: true, schema: { type: string } }
+        - { name: svix-timestamp, in: header, required: true, schema: { type: string, pattern: '^[0-9]+$' } }
+        - { name: svix-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '202': { description: Authenticated immutable event accepted for asynchronous processing. }
+        '401': { description: Generic response for unknown, missing, malformed, invalid, or stale signatures. }
   /proposals:
     get:
       tags: [Proposals]
@@ -1740,6 +1762,48 @@ paths:
       responses:
         '201': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /guest-portal/communication-preferences:
+    get:
+      tags: [Guest Portal, Communications]
+      operationId: getGuestCommunicationPreferences
+      security: [{ guestPortalSession: [] }]
+      responses:
+        '200':
+          description: Optional survey and marketing email preferences for the authenticated guest stay.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [purpose, is_allowed]
+                      properties:
+                        purpose: { type: string, enum: [survey, marketing] }
+                        is_allowed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    put:
+      tags: [Guest Portal, Communications]
+      operationId: updateGuestCommunicationPreference
+      security: [{ guestPortalSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, is_allowed]
+              additionalProperties: false
+              properties:
+                purpose: { type: string, enum: [survey, marketing] }
+                is_allowed: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /reservations/{reservation}/document-requests:
     post:
       tags: [Documents]

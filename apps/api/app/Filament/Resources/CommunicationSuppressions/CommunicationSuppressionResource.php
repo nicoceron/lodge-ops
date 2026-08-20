@@ -6,12 +6,15 @@ use App\Filament\Resources\CommunicationSuppressions\Pages\ManageCommunicationSu
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\CommunicationSuppression;
+use App\Models\User;
+use App\Services\Communications\CommunicationOperationsService;
 use BackedEnum;
-use Filament\Actions\DeleteAction;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -55,6 +58,8 @@ class CommunicationSuppressionResource extends TenantResource
                 TextEntry::make('reason')->badge()->formatStateUsing(InnPresentation::label(...)),
                 TextEntry::make('recipient_hash')->label('Recipient SHA-256')->copyable()->columnSpanFull(),
                 TextEntry::make('expires_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Never expires'),
+                TextEntry::make('lifted_at')->dateTime('M j, Y · H:i', timezone: InnPresentation::timezone())->placeholder('Active'),
+                TextEntry::make('lift_reason')->placeholder('Not lifted')->columnSpanFull(),
             ]),
         ]);
     }
@@ -70,7 +75,14 @@ class CommunicationSuppressionResource extends TenantResource
                 TextColumn::make('created_at')->label('Added')->since()->sortable(),
             ])
             ->filters([SelectFilter::make('channel')->options(['email' => 'Email', 'sms' => 'SMS', 'whatsapp' => 'WhatsApp'])])
-            ->recordActions([ViewAction::make(), EditAction::make(), DeleteAction::make()])
+            ->recordActions([
+                ViewAction::make(), EditAction::make(),
+                Action::make('unsuppress')->label('Lift suppression')->color('danger')->requiresConfirmation()
+                    ->visible(fn (CommunicationSuppression $record): bool => $record->lifted_at === null)
+                    ->schema([Textarea::make('reason')->required()->maxLength(1000)])
+                    ->action(fn (CommunicationSuppression $record, array $data) => app(CommunicationOperationsService::class)
+                        ->unsuppress(User::query()->findOrFail(auth()->id()), $record, $data['reason'])),
+            ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No suppressed recipients');
     }

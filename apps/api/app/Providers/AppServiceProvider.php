@@ -13,6 +13,9 @@ use App\Models\CancellationPolicyTier;
 use App\Models\CatalogItem;
 use App\Models\CommissionAccrual;
 use App\Models\Communication;
+use App\Models\CommunicationDeliveryEvent;
+use App\Models\CommunicationPreference;
+use App\Models\CommunicationProviderConnection;
 use App\Models\CommunicationSuppression;
 use App\Models\CostRecord;
 use App\Models\CrmActivity;
@@ -47,6 +50,7 @@ use App\Models\RatePlan;
 use App\Models\RateRule;
 use App\Models\ReportExport;
 use App\Models\Reservation;
+use App\Models\ReservationMilestoneOccurrence;
 use App\Models\ReservationNote;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
@@ -61,6 +65,7 @@ use App\Models\SettlementVarianceAction;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\TaxRule;
+use App\Observers\ReservationMilestoneObserver;
 use App\Observers\TenantAuditObserver;
 use App\Services\Documents\SpatieDocumentRenderer;
 use App\Support\Tenancy\TenantContext;
@@ -100,10 +105,14 @@ class AppServiceProvider extends ServiceProvider
             ->by('payment-request-link:'.$request->ip()));
         RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(240)
             ->by('payment-webhook:'.$request->ip()));
+        RateLimiter::for('communication-webhook', fn (Request $request): Limit => Limit::perMinute(240)
+            ->by('communication-webhook:'.$request->ip()));
 
         ResetPassword::createUrlUsing(
             fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
         );
+
+        Reservation::observe(ReservationMilestoneObserver::class);
 
         foreach ([
             Allocation::class,
@@ -112,6 +121,9 @@ class AppServiceProvider extends ServiceProvider
             CalendarFeed::class,
             CommissionAccrual::class,
             Communication::class,
+            CommunicationDeliveryEvent::class,
+            CommunicationPreference::class,
+            CommunicationProviderConnection::class,
             CommunicationSuppression::class,
             CostRecord::class,
             CancellationPolicy::class,
@@ -153,6 +165,7 @@ class AppServiceProvider extends ServiceProvider
             RateRule::class,
             ReportExport::class,
             Reservation::class,
+            ReservationMilestoneOccurrence::class,
             ReservationNote::class,
             Resource::class,
             ResourceBlock::class,

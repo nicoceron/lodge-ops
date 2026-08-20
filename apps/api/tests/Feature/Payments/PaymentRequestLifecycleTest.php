@@ -12,8 +12,10 @@ use App\Enums\PaymentRequestState;
 use App\Enums\ProviderEventState;
 use App\Enums\ReservationStatus;
 use App\Exceptions\CommercialWorkflowException;
+use App\Models\Communication;
 use App\Models\Deposit;
 use App\Models\ExchangeRate;
+use App\Models\Guest;
 use App\Models\IntegrationConnection;
 use App\Models\Payment;
 use App\Models\PaymentRequest;
@@ -40,8 +42,10 @@ class PaymentRequestLifecycleTest extends TestCase
     public function test_staff_issues_hashed_link_and_rotation_invalidates_the_old_token(): void
     {
         [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Sales);
+        $guest = Guest::factory()->create(['email' => 'payment-request@example.com']);
         $reservation = Reservation::factory()->create([
             'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
             'status' => ReservationStatus::Confirmed,
             'currency' => 'ARS',
             'subtotal_minor' => 100_000,
@@ -66,6 +70,9 @@ class PaymentRequestLifecycleTest extends TestCase
         $this->get('/pay/'.$token)->assertNotFound();
         $this->get('/pay/'.$newToken)->assertOk();
         $this->assertNotSame($token, $newToken);
+        $this->assertSame(2, Communication::query()->where('purpose', 'payment_request')->count());
+        $this->assertTrue(Communication::query()->where('purpose', 'payment_request')->get()
+            ->every(fn (Communication $communication): bool => str_contains($communication->body, '/pay/')));
     }
 
     public function test_connection_charge_currency_can_be_used_without_conversion(): void

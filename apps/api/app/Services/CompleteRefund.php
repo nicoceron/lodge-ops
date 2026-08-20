@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Enums\DepositStatus;
+use App\Enums\DocumentKind;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
 use App\Models\ProviderDispute;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\Documents\RequestDocumentGeneration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,6 +20,7 @@ final class CompleteRefund
         private readonly FolioService $folio,
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
+        private readonly RequestDocumentGeneration $documents,
     ) {}
 
     public function handle(ReservationChange $request, string $reference, ?int $actorId): ReservationChange
@@ -80,6 +83,14 @@ final class CompleteRefund
                 'amount_minor' => $completed->amount_minor,
                 'reference' => $reference,
             ]);
+            $this->documents->handleSystem(
+                $reservation,
+                DocumentKind::RefundReceipt,
+                app()->getLocale(),
+                'refund-receipt:'.$completed->id,
+                $payment,
+                $completed,
+            );
 
             return $completed;
         }, 3);

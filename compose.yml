@@ -26,6 +26,8 @@ x-api-common: &api-common
     MAIL_MAILER: smtp
     MAIL_HOST: mailpit
     MAIL_PORT: 1025
+    # Public deterministic test-origin signing fixture; never use for a deployed provider webhook.
+    COMMUNICATION_UAT_WEBHOOK_SECRET: ${COMMUNICATION_UAT_WEBHOOK_SECRET:-whsec_bG9kZ2Utb3BzLXAzLTA0LXRlc3Qtb3JpZ2luLW9ubHk=}
     DOCUMENT_DISK: ${DOCUMENT_DISK:-documents}
     DOCUMENT_RENDERER: ${DOCUMENT_RENDERER:-dompdf}
     DOCUMENT_PDFINFO_BINARY: ${DOCUMENT_PDFINFO_BINARY:-pdfinfo}

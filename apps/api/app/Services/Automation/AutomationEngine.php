@@ -2,12 +2,12 @@
 
 namespace App\Services\Automation;
 
+use App\Jobs\SendCommunication;
 use App\Models\AutomationRule;
-use App\Models\Communication;
 use App\Models\Outbox;
 use App\Models\Payment;
+use App\Models\Proposal;
 use App\Models\Reservation;
-use App\Services\CommunicationDeliveryService;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 
@@ -17,7 +17,6 @@ class AutomationEngine
         private readonly TenantContext $tenantContext,
         private readonly AutomationConditionMatcher $matcher,
         private readonly AutomationActionExecutor $executor,
-        private readonly CommunicationDeliveryService $delivery,
     ) {}
 
     public function handle(Outbox $message): void
@@ -28,7 +27,7 @@ class AutomationEngine
                 throw new DomainException('Communication delivery events require a communication_id.');
             }
 
-            $this->delivery->deliver(Communication::query()->findOrFail($communicationId));
+            SendCommunication::dispatch($this->tenantContext->id(), $communicationId)->afterCommit();
 
             return;
         }
@@ -60,10 +59,12 @@ class AutomationEngine
     {
         $reservationId = $message->payload['reservation_id'] ?? null;
         $paymentId = $message->payload['payment_id'] ?? null;
+        $proposalId = $message->payload['proposal_id'] ?? null;
         $reservation = is_string($reservationId)
             ? Reservation::query()->with('primaryGuest')->find($reservationId)
             : null;
         $payment = is_string($paymentId) ? Payment::query()->find($paymentId) : null;
+        $proposal = is_string($proposalId) ? Proposal::query()->with('primaryGuest')->find($proposalId) : null;
 
         return [
             'event_type' => $message->event_type,
@@ -76,6 +77,7 @@ class AutomationEngine
             ],
             'reservation' => $reservation?->toArray(),
             'payment' => $payment?->toArray(),
+            'proposal' => $proposal?->toArray(),
         ];
     }
 
