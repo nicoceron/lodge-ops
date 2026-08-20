@@ -44,6 +44,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Tests\Concerns\CreatesTenant;
 use Tests\Fakes\FakePaymentGateway;
@@ -501,7 +502,7 @@ class ProviderClosureTest extends TestCase
         ]);
     }
 
-    public function test_payment_identity_indexes_scope_provider_rows_and_deduplicate_manual_null_scope_rows(): void
+    public function test_payment_identity_indexes_scope_provider_rows_and_reject_manual_provider_identity(): void
     {
         [, $property] = $this->tenantEnvironment();
         $first = $this->reservation($property->id, 10_000);
@@ -514,12 +515,7 @@ class ProviderClosureTest extends TestCase
             ]);
         }
         $this->assertSame(2, Payment::query()->where('provider_reference', 'same-provider-id')->count());
-        Payment::query()->create([
-            'reservation_id' => $first->id, 'status' => 'pending', 'method' => 'manual', 'origin' => 'manual',
-            'provider' => 'bank', 'provider_reference' => 'manual-ref', 'currency' => 'ARS', 'amount_minor' => 10_000,
-        ]);
-
-        $this->expectException(UniqueConstraintViolationException::class);
+        $this->expectException(ValidationException::class);
         Payment::query()->create([
             'reservation_id' => $second->id, 'status' => 'pending', 'method' => 'manual', 'origin' => 'manual',
             'provider' => 'bank', 'provider_reference' => 'manual-ref', 'currency' => 'ARS', 'amount_minor' => 10_000,

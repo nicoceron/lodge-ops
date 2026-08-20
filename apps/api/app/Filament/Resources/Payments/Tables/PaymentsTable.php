@@ -44,11 +44,10 @@ class PaymentsTable
                     ->badge()
                     ->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->sortable(),
-                TextColumn::make('provider_reference')
+                TextColumn::make('receipt_safe_reference')
                     ->label('Reference')
                     ->copyable()
-                    ->placeholder('—')
-                    ->searchable(),
+                    ->placeholder('—'),
             ])
             ->filters([
                 SelectFilter::make('status')

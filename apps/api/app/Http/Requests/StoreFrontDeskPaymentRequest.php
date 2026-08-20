@@ -22,7 +22,6 @@ class StoreFrontDeskPaymentRequest extends TenantRequest
             'card_brand' => ['nullable', 'string', 'max:40'],
             'card_last_four' => ['nullable', 'regex:/^\d{4}$/'],
             'note' => ['nullable', 'string', 'max:500'],
-            'pan_false_positive_confirmed' => ['sometimes', 'boolean'],
             'provider' => ['prohibited'],
             'provider_reference' => ['prohibited'],
             'captured' => ['prohibited'],

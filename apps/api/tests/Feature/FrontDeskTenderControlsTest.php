@@ -3,24 +3,33 @@
 namespace Tests\Feature;
 
 use App\Data\Payments\FrontDeskPaymentInput;
+use App\Enums\CashMovementType;
+use App\Enums\CashShiftState;
 use App\Enums\MembershipRole;
 use App\Enums\PaymentChannel;
 use App\Enums\PaymentEvidenceStatus;
 use App\Enums\ReservationStatus;
 use App\Models\Guest;
 use App\Models\GuestPaymentEvidence;
+use App\Models\IdempotencyKey;
+use App\Models\Membership;
 use App\Models\Reservation;
+use App\Models\User;
 use App\Services\PaymentEvidenceScanner;
+use App\Services\Payments\CloseCashShift;
 use App\Services\Payments\CompleteManualExternalRefund;
 use App\Services\Payments\CorrectRemainingReversibleAmount;
 use App\Services\Payments\OpenCashShift;
+use App\Services\Payments\RecordCashMovement;
 use App\Services\Payments\RecordFrontDeskPayment;
 use App\Services\Payments\RequestManualExternalRefund;
 use App\Services\Payments\ResolveTenderDuplicate;
 use App\Services\Payments\ReviewRefundEvidence;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Concerns\CreatesTenant;
@@ -122,6 +131,41 @@ class FrontDeskTenderControlsTest extends TestCase
         ]);
     }
 
+    public function test_drawer_corrections_cannot_oppose_financial_or_opening_float_movements(): void
+    {
+        [, $property, $admin] = $this->tenantEnvironment(MembershipRole::Administrator);
+        $reservation = $this->reservation($property->id, 1_000);
+        $shift = app(OpenCashShift::class)->handle($admin, $property->id, 'COP', 500, 'restricted-correction-open-01');
+        $detail = app(RecordFrontDeskPayment::class)->handle($admin, new FrontDeskPaymentInput(
+            $reservation->id, PaymentChannel::Cash, 1_000, 'restricted-correction-pay-01',
+        ));
+        $reservation->update(['subtotal_minor' => 500, 'total_minor' => 500]);
+        $refund = app(RequestManualExternalRefund::class)->handle($admin, $detail->payment, 500, 'Correct overpayment', 'restricted-correction-refund-request');
+        app(CompleteManualExternalRefund::class)->handle($admin, $refund, 'drawer-refund-slip', 'restricted-correction-refund-complete', null, $shift);
+
+        foreach ($shift->fresh()->movements()->whereIn('type', ['opening_float', 'payment', 'refund'])->get() as $index => $movement) {
+            try {
+                app(RecordCashMovement::class)->handle(
+                    $admin,
+                    $shift,
+                    CashMovementType::Correction,
+                    abs($movement->amount_minor),
+                    'Attempted drawer correction',
+                    'restricted-correction-'.($index + 1),
+                    $movement,
+                );
+                $this->fail("{$movement->type->value} must use its authoritative financial reversal workflow.");
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('reverses_movement_id', $exception->errors());
+            }
+        }
+
+        $payIn = app(RecordCashMovement::class)->handle($admin, $shift, CashMovementType::PayIn, 200, 'Drawer replenishment', 'allowed-pay-in-01');
+        $correction = app(RecordCashMovement::class)->handle($admin, $shift, CashMovementType::Correction, 200, 'Replenishment entered in error', 'allowed-correction-01', $payIn);
+        $this->assertSame(-200, $correction->amount_minor);
+        $this->assertSame($payIn->id, $correction->reverses_movement_id);
+    }
+
     public function test_remaining_reversible_correction_creates_only_the_available_controlled_request(): void
     {
         [, $property, $finance] = $this->tenantEnvironment(MembershipRole::Finance);
@@ -145,6 +189,64 @@ class FrontDeskTenderControlsTest extends TestCase
         $this->assertSame(1, $reservation->folioLines()->where('type', 'refund')->count(), 'Correction requests external execution; it does not fabricate completion.');
     }
 
+    public function test_http_idempotency_recovers_immediately_from_financial_commit_before_response_persistence(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment(MembershipRole::Finance);
+        $reservation = $this->reservation($property->id, 8_000);
+        $headers = ['X-Tenant-ID' => $tenant->id, 'Idempotency-Key' => 'http-financial-recovery-0001'];
+        $payload = [
+            'channel' => 'bank_transfer',
+            'amount_minor' => 8_000,
+            'transaction_reference' => 'wire-recovery-001',
+        ];
+
+        $first = $this->withHeaders($headers)->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", $payload)->assertCreated();
+        app(TenantContext::class)->set($tenant, $membership);
+        IdempotencyKey::query()->where('key', $headers['Idempotency-Key'])->update(['status_code' => null, 'response_body' => null]);
+        $recovered = $this->withHeaders($headers)->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", $payload)->assertCreated();
+
+        $this->assertSame($first->json('data.id'), $recovered->json('data.id'));
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('folio_lines', 1);
+        $this->assertDatabaseCount('financial_command_records', 1);
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertNotNull(IdempotencyKey::query()->where('key', $headers['Idempotency-Key'])->value('response_body'));
+    }
+
+    public function test_multipart_idempotency_is_boundary_independent_and_recovers_the_committed_evidence(): void
+    {
+        Storage::fake('local');
+        [$tenant, $property, $finance, $membership] = $this->tenantEnvironment(MembershipRole::Finance);
+        $guest = Guest::factory()->create();
+        $reservation = $this->reservation($property->id, 10_000, $guest->id);
+        $detail = app(RecordFrontDeskPayment::class)->handle($finance, new FrontDeskPaymentInput(
+            $reservation->id, PaymentChannel::BankTransfer, 10_000, 'multipart-payment-0001', transactionReference: 'wire-multipart-001',
+        ));
+        $reservation->update(['subtotal_minor' => 6_000, 'total_minor' => 6_000]);
+        $refund = app(RequestManualExternalRefund::class)->handle($finance, $detail->payment, 4_000, 'Guest overpayment', 'multipart-refund-0001');
+        $key = 'multipart-evidence-recovery-0001';
+        $headers = ['X-Tenant-ID' => $tenant->id, 'Idempotency-Key' => $key, 'Accept' => 'application/json'];
+        $uri = "/api/v1/manual-refunds/{$refund->id}/evidence";
+
+        $first = $this->withHeaders($headers)->post($uri, [
+            'evidence' => UploadedFile::fake()->createWithContent('refund-proof.pdf', $this->validPdf()),
+        ])->assertCreated();
+        app(TenantContext::class)->set($tenant, $membership);
+        IdempotencyKey::query()->where('key', $key)->update(['status_code' => null, 'response_body' => null]);
+        $recovered = $this->withHeaders($headers)->post($uri, [
+            'evidence' => UploadedFile::fake()->createWithContent('refund-proof.pdf', $this->validPdf()),
+        ])->assertCreated();
+
+        $this->assertSame($first->json('data.id'), $recovered->json('data.id'));
+        $this->assertDatabaseCount('guest_payment_evidence', 1);
+        $this->assertCount(1, Storage::disk('local')->allFiles());
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->withHeaders($headers)->post($uri, [
+            'evidence' => UploadedFile::fake()->createWithContent('refund-proof.pdf', $this->validPdf()."\nchanged"),
+        ])->assertConflict();
+    }
+
     public function test_shift_business_date_uses_property_timezone_while_audit_instant_stays_utc(): void
     {
         [, $property, $operations] = $this->tenantEnvironment(MembershipRole::Operations);
@@ -157,6 +259,42 @@ class FrontDeskTenderControlsTest extends TestCase
         } finally {
             CarbonImmutable::setTestNow();
         }
+    }
+
+    public function test_force_close_requires_a_reason_and_variance_thresholds_are_currency_specific(): void
+    {
+        [$tenant, $property, $manager, $managerMembership] = $this->tenantEnvironment(MembershipRole::Manager);
+        $cashier = User::factory()->create();
+        $cashierMembership = Membership::factory()->create([
+            'user_id' => $cashier->id,
+            'property_id' => $property->id,
+            'role' => MembershipRole::Operations,
+        ]);
+        app(TenantContext::class)->set($tenant, $cashierMembership);
+        $otherShift = app(OpenCashShift::class)->handle($cashier, $property->id, 'USD', 1_000, 'force-close-open-0001');
+        $cashierMembership->update(['is_active' => false]);
+        app(TenantContext::class)->set($tenant, $managerMembership);
+
+        try {
+            app(CloseCashShift::class)->handle($manager, $otherShift, 1_000, null, 'force-close-no-reason-01', true);
+            $this->fail('A force-close without an operational reason must be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('reason', $exception->errors());
+        }
+        $forced = app(CloseCashShift::class)->handle($manager, $otherShift, 1_000, 'Cashier account disabled after handoff.', 'force-close-with-reason-1', true);
+        $this->assertSame(CashShiftState::Closed, $forced->state);
+
+        $property->update(['settings' => ['cash_variance_threshold_minor_by_currency' => ['USD' => 100, 'COP' => 0]]]);
+        $usd = app(OpenCashShift::class)->handle($manager, $property->id, 'USD', 1_000, 'currency-threshold-usd-open');
+        $this->assertSame(
+            CashShiftState::Closed,
+            app(CloseCashShift::class)->handle($manager, $usd, 950, 'USD count is within tolerance.', 'currency-threshold-usd-close')->state,
+        );
+        $cop = app(OpenCashShift::class)->handle($manager, $property->id, 'COP', 1_000, 'currency-threshold-cop-open');
+        $this->assertSame(
+            CashShiftState::VarianceReview,
+            app(CloseCashShift::class)->handle($manager, $cop, 950, 'COP count requires review.', 'currency-threshold-cop-close')->state,
+        );
     }
 
     public function test_evidence_scanner_fails_closed_for_outage_malware_and_polyglot_content(): void
@@ -174,6 +312,34 @@ class FrontDeskTenderControlsTest extends TestCase
             'receipt.pdf',
             "%PDF-1.4\nEICAR-STANDARD-ANTIVIRUS-TEST-FILE\n",
         ));
+    }
+
+    public function test_evidence_scanner_parses_the_whole_file_and_rejects_late_payload_polyglot_and_malformed_pdf(): void
+    {
+        $scanner = app(PaymentEvidenceScanner::class);
+        $valid = $this->validPdf();
+        $scanner->assertSafe(UploadedFile::fake()->createWithContent('valid.pdf', $valid));
+
+        foreach ([
+            'late.pdf' => str_replace('trailer', str_repeat('A', 5_000)."<script>alert(1)</script>\ntrailer", $valid),
+            'polyglot.pdf' => $valid."<?php echo 'late';",
+            'malformed.pdf' => "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\n%%EOF\n",
+        ] as $name => $content) {
+            try {
+                $scanner->assertSafe(UploadedFile::fake()->createWithContent($name, $content));
+                $this->fail("{$name} must fail closed.");
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('evidence', $exception->errors());
+            }
+        }
+    }
+
+    public function test_evidence_scanner_fails_closed_when_the_real_pdf_parser_is_unavailable(): void
+    {
+        config()->set('front_desk_tenders.evidence_pdf_parser_binary', '/missing/inn-pdf-parser');
+
+        $this->expectException(HttpException::class);
+        app(PaymentEvidenceScanner::class)->assertSafe(UploadedFile::fake()->createWithContent('receipt.pdf', $this->validPdf()));
     }
 
     private function reservation(string $propertyId, int $totalMinor, ?string $guestId = null): Reservation
@@ -210,5 +376,10 @@ class FrontDeskTenderControlsTest extends TestCase
             'submitted_at' => now(),
             'scanned_at' => now(),
         ]);
+    }
+
+    private function validPdf(): string
+    {
+        return "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
     }
 }

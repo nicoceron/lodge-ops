@@ -51,10 +51,17 @@ final class CloseCashShift
             $expected = (int) $movements->sum('amount_minor');
             $variance = $countedCashMinor - $expected;
             $reason = trim((string) $reason);
+            if ($force && $reason === '') {
+                throw ValidationException::withMessages(['reason' => 'A force-close reason is required for the operational audit trail.']);
+            }
             if ($variance !== 0 && $reason === '') {
                 throw ValidationException::withMessages(['reason' => 'A reason is required for a non-zero cash variance.']);
             }
-            $threshold = max(0, (int) data_get($locked->property->settings, 'cash_variance_threshold_minor', 0));
+            $threshold = max(0, (int) data_get(
+                $locked->property->settings,
+                'cash_variance_threshold_minor_by_currency.'.strtoupper($locked->currency),
+                config('front_desk_tenders.cash_variance_review_threshold_minor', 0),
+            ));
             $state = abs($variance) > $threshold ? CashShiftState::VarianceReview : CashShiftState::Closed;
             $calculation = ['shift_id' => $locked->id, 'movement_ids' => $movements->pluck('id')->all(), 'expected_minor' => $expected, 'counted_minor' => $countedCashMinor, 'variance_minor' => $variance];
             $locked->update([

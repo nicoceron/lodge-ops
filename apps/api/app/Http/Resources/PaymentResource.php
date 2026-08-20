@@ -23,6 +23,7 @@ class PaymentResource extends JsonResource
             'origin' => $this->origin->value,
             'provider' => $finance ? $this->provider : null,
             'provider_reference' => $finance ? $this->provider_reference : null,
+            'reference' => $finance ? $this->receipt_safe_reference : null,
             'currency' => $this->currency,
             'amount_minor' => $this->amount_minor,
             'processed_at' => $this->processed_at,

@@ -98,11 +98,11 @@ final class DatabaseReportDefinition implements ReportDefinition
 
     private function paymentRows(string $propertyId, array $filters, string $timezone): iterable
     {
-        $query = Payment::query()->whereHas('reservation', fn ($q) => $q->where('property_id', $propertyId))
+        $query = Payment::query()->with('tenderDetail')->whereHas('reservation', fn ($q) => $q->where('property_id', $propertyId))
             ->where('processed_at', '>=', $filters['from_utc'])->where('processed_at', '<', $filters['to_utc_exclusive'])
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))->orderBy('processed_at')->orderBy('id');
         foreach ($query->cursor() as $payment) {
-            yield ['row_type' => 'payment', 'source_id' => $payment->id, 'reservation_id' => $payment->reservation_id, 'origin' => $payment->origin->value, 'method' => $payment->method, 'channel' => $payment->channel->value, 'entry_mode' => $payment->entry_mode->value, 'status' => $payment->status->value, 'reference' => $payment->provider_reference, 'deposit_due_minor' => null, 'deposit_paid_minor' => null, 'refund_minor' => null, 'amount_minor' => $payment->amount_minor, 'currency' => strtoupper($payment->currency), 'occurred_at' => $payment->processed_at?->setTimezone($timezone)->format('Y-m-d H:i')];
+            yield ['row_type' => 'payment', 'source_id' => $payment->id, 'reservation_id' => $payment->reservation_id, 'origin' => $payment->origin->value, 'method' => $payment->method, 'channel' => $payment->channel->value, 'entry_mode' => $payment->entry_mode->value, 'status' => $payment->status->value, 'reference' => $payment->receipt_safe_reference, 'deposit_due_minor' => null, 'deposit_paid_minor' => null, 'refund_minor' => null, 'amount_minor' => $payment->amount_minor, 'currency' => strtoupper($payment->currency), 'occurred_at' => $payment->processed_at?->setTimezone($timezone)->format('Y-m-d H:i')];
         }
         $deposits = Deposit::query()->whereHas('reservation', fn ($query) => $query->where('property_id', $propertyId))
             ->where(function ($query) use ($filters): void {

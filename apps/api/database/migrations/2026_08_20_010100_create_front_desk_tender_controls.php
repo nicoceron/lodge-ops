@@ -181,29 +181,44 @@ return new class extends Migration
     private function paymentClassificationExceptions(): array
     {
         return DB::table('payments')->where(function ($query): void {
-            $query->whereNotIn('method', ['bank_transfer', 'cash', 'card', 'other', 'manual', 'provider', 'mercado_pago_checkout_pro'])
+            $query->whereNull('origin')
+                ->orWhereNotIn('origin', ['manual', 'provider'])
+                ->orWhereNull('method')
+                ->orWhereNotIn('method', ['bank_transfer', 'cash', 'card', 'other', 'manual', 'provider', 'mercado_pago_checkout_pro'])
                 ->orWhere(function ($provider): void {
                     $provider->where('origin', 'provider')->where(function ($identity): void {
-                        $identity->whereNull('provider')->orWhereNull('provider_reference')->orWhereNull('provider_account')
-                            ->orWhereNotIn('provider', ['mercado_pago'])
+                        $identity->whereNull('provider')->orWhereNull('provider_reference')->orWhereNull('provider_account')->orWhereNull('environment')
                             ->orWhereNotIn('method', ['card', 'provider', 'mercado_pago_checkout_pro']);
                     });
                 })
-                ->orWhere(function ($manualCheckout): void {
-                    $manualCheckout->where('origin', 'manual')->whereIn('method', ['provider', 'mercado_pago_checkout_pro']);
+                ->orWhere(function ($manual): void {
+                    $manual->where('origin', 'manual')->where(function ($contradiction): void {
+                        $contradiction->whereIn('method', ['provider', 'mercado_pago_checkout_pro'])
+                            ->orWhereNotNull('provider')->orWhereNotNull('provider_reference')
+                            ->orWhereNotNull('provider_account')->orWhereNotNull('environment');
+                    });
                 });
         })->orderBy('id')->pluck('id')->all();
     }
 
     private function createChecksAndIndexes(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            $valid = "((NEW.origin = 'manual' AND NEW.entry_mode = 'staff_recorded' AND NEW.provider IS NULL AND NEW.provider_reference IS NULL AND NEW.provider_account IS NULL AND NEW.environment IS NULL AND ((NEW.channel = 'bank_transfer' AND NEW.method = 'bank_transfer') OR (NEW.channel = 'cash' AND NEW.method = 'cash') OR (NEW.channel = 'external_terminal' AND NEW.method = 'card') OR (NEW.channel = 'manual_other' AND NEW.method IN ('other','manual')))) OR (NEW.origin = 'provider' AND NEW.entry_mode = 'provider_reported' AND NEW.provider IS NOT NULL AND NEW.provider_reference IS NOT NULL AND NEW.provider_account IS NOT NULL AND NEW.environment IS NOT NULL AND NEW.method IN ('card','provider','mercado_pago_checkout_pro') AND NEW.channel IN ('online_checkout','integrated_terminal','qr')))";
+            $invalid = "NEW.origin IS NULL OR NEW.method IS NULL OR NEW.channel IS NULL OR NEW.entry_mode IS NULL OR NOT ({$valid})";
+            DB::statement("CREATE TRIGGER payments_classification_insert BEFORE INSERT ON payments WHEN {$invalid} BEGIN SELECT RAISE(ABORT, 'invalid payment classification'); END");
+            DB::statement("CREATE TRIGGER payments_classification_update BEFORE UPDATE OF origin, method, channel, entry_mode, provider, provider_reference, provider_account, environment ON payments WHEN {$invalid} BEGIN SELECT RAISE(ABORT, 'invalid payment classification'); END");
+
+            return;
+        }
         if (DB::getDriverName() !== 'pgsql') {
             return;
         }
         DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_channel_check CHECK (channel IN ('bank_transfer','cash','external_terminal','manual_other','online_checkout','integrated_terminal','qr'))");
         DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_entry_mode_check CHECK (entry_mode IN ('staff_recorded','provider_reported'))");
         DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_channel_origin_check CHECK ((origin = 'manual' AND entry_mode = 'staff_recorded' AND channel IN ('bank_transfer','cash','external_terminal','manual_other')) OR (origin = 'provider' AND entry_mode = 'provider_reported' AND channel IN ('online_checkout','integrated_terminal','qr')))");
-        DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_legacy_method_channel_check CHECK ((channel = 'bank_transfer' AND method = 'bank_transfer') OR (channel = 'cash' AND method = 'cash') OR (channel = 'external_terminal' AND method = 'card') OR (channel = 'manual_other' AND method IN ('other','manual')) OR (channel = 'online_checkout' AND method IN ('card','provider','mercado_pago_checkout_pro')) OR channel IN ('integrated_terminal','qr'))");
+        DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_legacy_method_channel_check CHECK ((channel = 'bank_transfer' AND method = 'bank_transfer') OR (channel = 'cash' AND method = 'cash') OR (channel = 'external_terminal' AND method = 'card') OR (channel = 'manual_other' AND method IN ('other','manual')) OR (channel IN ('online_checkout','integrated_terminal','qr') AND method IN ('card','provider','mercado_pago_checkout_pro')))");
+        DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_provider_identity_check CHECK ((origin = 'manual' AND provider IS NULL AND provider_reference IS NULL AND provider_account IS NULL AND environment IS NULL) OR (origin = 'provider' AND provider IS NOT NULL AND provider_reference IS NOT NULL AND provider_account IS NOT NULL AND environment IS NOT NULL))");
         DB::statement("ALTER TABLE payment_tender_details ADD CONSTRAINT payment_tender_last_four_check CHECK (card_last_four IS NULL OR card_last_four ~ '^[0-9]{4}$')");
         DB::statement("ALTER TABLE payment_tender_details ADD CONSTRAINT payment_tender_posted_identity_check CHECK (state <> 'posted' OR payment_id IS NOT NULL)");
         DB::statement("CREATE UNIQUE INDEX payment_tender_external_identity_unique ON payment_tender_details (tenant_id, property_id, merchant_account_alias, processor_alias, terminal_identifier, transaction_reference) WHERE channel = 'external_terminal' AND state = 'posted' AND transaction_reference IS NOT NULL");
@@ -213,7 +228,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->refuseOperationalFactLoss();
         if (DB::getDriverName() === 'sqlite') {
+            DB::statement('DROP TRIGGER IF EXISTS payments_classification_update');
+            DB::statement('DROP TRIGGER IF EXISTS payments_classification_insert');
             Schema::table('guest_payment_evidence', function (Blueprint $table): void {
                 $table->dropColumn(['refund_change_id', 'tender_detail_id', 'disk', 'storage_key', 'original_name', 'detected_mime', 'scan_state', 'uploaded_by', 'scanned_at']);
             });
@@ -232,6 +250,7 @@ return new class extends Migration
             DB::statement('DROP INDEX IF EXISTS cash_shifts_one_open_unique');
             DB::statement('DROP INDEX IF EXISTS payment_tender_external_identity_unique');
             DB::statement('ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_legacy_method_channel_check');
+            DB::statement('ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_provider_identity_check');
             DB::statement('ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_channel_origin_check');
             DB::statement('ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_entry_mode_check');
             DB::statement('ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_channel_check');
@@ -253,6 +272,24 @@ return new class extends Migration
             $table->dropIndex('payments_channel_status_idx');
             $table->dropColumn(['channel', 'entry_mode']);
         });
+    }
+
+    private function refuseOperationalFactLoss(): void
+    {
+        if ((bool) config('front_desk_tenders.allow_operational_fact_rollback', false)) {
+            return;
+        }
+        foreach (['payment_tender_details', 'cash_shifts', 'cash_shift_movements', 'financial_command_records'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("P3-06B rollback refused: {$table} contains operational facts that cannot be discarded.");
+            }
+        }
+        if (Schema::hasColumn('guest_payment_evidence', 'refund_change_id')
+            && DB::table('guest_payment_evidence')->where(function ($query): void {
+                $query->whereNotNull('refund_change_id')->orWhereNotNull('tender_detail_id')->orWhereNotNull('uploaded_by');
+            })->exists()) {
+            throw new RuntimeException('P3-06B rollback refused: payment evidence contains tender/refund operational facts.');
+        }
     }
 
     private function tenantUuid(Blueprint $table): void

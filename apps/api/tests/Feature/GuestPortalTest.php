@@ -264,7 +264,7 @@ class GuestPortalTest extends TestCase
         Storage::fake('local');
         [, , , $reservation, , $magicToken] = $this->portalEnvironment();
         $session = $this->exchange($magicToken);
-        $content = "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF";
+        $content = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
 
         foreach (['first.pdf', 'retry.pdf'] as $fileName) {
             $upload = UploadedFile::fake()->createWithContent($fileName, $content);

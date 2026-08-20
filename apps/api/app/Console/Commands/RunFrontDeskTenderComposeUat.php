@@ -46,7 +46,10 @@ class RunFrontDeskTenderComposeUat extends Command
         app(TenantContext::class)->set($tenant, $membership);
         $property->update(['settings' => [
             ...($property->settings ?? []),
-            'cash_variance_threshold_minor' => 0,
+            'cash_variance_threshold_minor_by_currency' => [
+                ...((array) data_get($property->settings, 'cash_variance_threshold_minor_by_currency', [])),
+                'USD' => 0,
+            ],
         ]]);
 
         $revokeTokenId = $this->option('revoke-token');

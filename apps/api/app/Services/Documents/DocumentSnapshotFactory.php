@@ -177,7 +177,7 @@ final class DocumentSnapshotFactory
             'wording' => $wording,
             'amount_minor' => $payment->amount_minor,
             'currency' => strtoupper($payment->currency),
-            'reference' => $tender === null ? $payment->provider_reference : $tender->transaction_reference,
+            'reference' => $payment->receipt_safe_reference,
             'card_brand' => $tender?->card_brand,
             'card_last_four' => $tender?->card_last_four,
             'processed_at' => $payment->processed_at ? $this->instant($payment->processed_at, $timezone) : null,

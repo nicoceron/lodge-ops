@@ -46,8 +46,8 @@ final class RecordCashMovement
             $reversalId = null;
             if ($type === CashMovementType::Correction) {
                 $original = CashShiftMovement::query()->lockForUpdate()->findOrFail($reverses?->id);
-                if ($original->cash_shift_id !== $locked->id || $original->type === CashMovementType::Correction) {
-                    throw ValidationException::withMessages(['reverses_movement_id' => 'A correction must reverse a non-correction movement on this shift.']);
+                if ($original->cash_shift_id !== $locked->id || ! in_array($original->type, [CashMovementType::PayIn, CashMovementType::PayOut], true)) {
+                    throw ValidationException::withMessages(['reverses_movement_id' => 'A drawer correction may only oppose a discretionary pay-in or pay-out. Payments, refunds, and opening floats require their authoritative financial reversal workflow.']);
                 }
                 if ($amountMinor !== abs($original->amount_minor)) {
                     throw ValidationException::withMessages(['amount_minor' => 'A correction must exactly oppose the selected movement amount.']);

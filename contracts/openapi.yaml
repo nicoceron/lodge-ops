@@ -3108,12 +3108,13 @@ components:
         id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
         status: { type: string, enum: [pending, succeeded, failed, refunded, reversed] }
-        method: { type: string, enum: [bank_transfer, cash, card, other] }
+        method: { type: string, enum: [bank_transfer, cash, card, other, manual, provider, mercado_pago_checkout_pro] }
         channel: { type: string, enum: [bank_transfer, cash, external_terminal, manual_other, online_checkout, integrated_terminal, qr] }
         entry_mode: { type: string, enum: [staff_recorded, provider_reported] }
         origin: { type: string, enum: [manual, provider], description: Provider-backed origin is reserved for a verified gateway adapter; this endpoint creates manual records only. }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
+        reference: { type: [string, 'null'], description: Receipt-safe provider or manual tender reference visible to authorized Finance users. }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         amount_minor: { type: integer }
         processed_at: { type: [string, 'null'], format: date-time }
@@ -3122,20 +3123,6 @@ components:
         reversal_reason: { type: [string, 'null'] }
         metadata: { type: [object, 'null'], additionalProperties: true }
         created_at: { type: string, format: date-time }
-    PaymentInput:
-      type: object
-      required: [reservation_id, method, amount_minor]
-      properties:
-        reservation_id: { type: string, format: uuid }
-        deposit_id: { type: [string, 'null'], format: uuid }
-        method: { type: string, enum: [bank_transfer, cash, card, other] }
-        amount_minor: { type: integer, minimum: 1 }
-        provider: { type: [string, 'null'] }
-        provider_reference: { type: [string, 'null'] }
-        evidence_url: { type: [string, 'null'], format: uri }
-        evidence_note: { type: [string, 'null'], maxLength: 5000 }
-        captured: { type: boolean, default: false }
-        metadata: { type: [object, 'null'], additionalProperties: true }
     PaymentEnvelope:
       type: object
       required: [data]
@@ -3158,7 +3145,6 @@ components:
         card_brand: { type: [string, 'null'], maxLength: 40 }
         card_last_four: { type: [string, 'null'], pattern: '^\\d{4}$' }
         note: { type: [string, 'null'], maxLength: 500 }
-        pan_false_positive_confirmed: { type: boolean, description: Finance-only documented false-positive override for a legitimate non-card reference; never bypasses CVV, expiry, track, or PIN rejection. }
     TenderDetailEnvelope:
       type: object
       required: [data]

@@ -6,10 +6,14 @@ use App\Enums\DepositStatus;
 use App\Enums\DocumentKind;
 use App\Enums\PaymentOrigin;
 use App\Enums\PaymentStatus;
+use App\Filament\Support\InnPresentation;
+use App\Models\CashShift;
 use App\Models\Deposit;
 use App\Models\Payment;
+use App\Models\ReservationChange;
 use App\Models\User;
 use App\Services\Documents\RequestDocumentGeneration;
+use App\Services\Payments\CompleteManualExternalRefund;
 use App\Services\Payments\CorrectRemainingReversibleAmount;
 use App\Services\Payments\RequestManualExternalRefund;
 use App\Services\PaymentService;
@@ -21,6 +25,30 @@ use Filament\Notifications\Notification;
 
 final class PaymentWorkflowActions
 {
+    public static function recordManual(): Action
+    {
+        return Action::make('record_manual_payment')
+            ->label('Record manual payment')
+            ->icon('heroicon-o-plus')
+            ->authorize('create', Payment::class)
+            ->visible(PaymentResource::canRecordManual(...))
+            ->schema([
+                Select::make('reservation_id')->options(InnPresentation::reservationOptions(...))->searchable()->required(),
+                Select::make('method')->options(['bank_transfer' => 'Bank transfer', 'other' => 'Other'])->required()
+                    ->helperText('Cash and standalone-terminal results use the reservation tender workflow so drawer and receipt controls cannot be bypassed.'),
+                TextInput::make('amount_minor')->label('Amount (minor units)')->integer()->minValue(1)->required(),
+                TextInput::make('provider')->label('External processor')->maxLength(80)
+                    ->helperText('Receipt-safe label only; it is not provider identity or a capture claim.'),
+                TextInput::make('provider_reference')->label('External reference')->maxLength(160),
+                TextInput::make('evidence_url')->url()->maxLength(2000),
+                Textarea::make('evidence_note')->rows(3)->maxLength(5000),
+            ])
+            ->action(function (array $data): void {
+                app(PaymentService::class)->recordManual($data, auth()->id());
+                Notification::make()->success()->title('Pending manual payment recorded for reconciliation')->send();
+            });
+    }
+
     /** @return array<Action> */
     public static function forRecord(): array
     {
@@ -74,6 +102,40 @@ final class PaymentWorkflowActions
                         'filament-remaining-refund-request:'.str()->uuid(),
                     );
                     Notification::make()->success()->title('Remaining reversible amount requested')->send();
+                }),
+            Action::make('complete_cash_refund')
+                ->label('Dispense cash refund')
+                ->icon('heroicon-o-banknotes')
+                ->color('success')
+                ->authorize('reverse')
+                ->visible(fn (Payment $record): bool => PaymentResource::canRunWorkflow($record)
+                    && $record->channel->value === 'cash'
+                    && $record->status === PaymentStatus::Succeeded
+                    && ReservationChange::query()->where('reservation_id', $record->reservation_id)
+                        ->where('type', 'refund_requested')->where('status', 'requested')
+                        ->where('metadata->payment_id', $record->id)->exists())
+                ->schema([
+                    Select::make('refund_request_id')->label('Open cash refund')->options(fn (Payment $record): array => ReservationChange::query()
+                        ->where('reservation_id', $record->reservation_id)->where('type', 'refund_requested')->where('status', 'requested')
+                        ->where('metadata->payment_id', $record->id)->get()
+                        ->mapWithKeys(fn (ReservationChange $change): array => [$change->id => strtoupper((string) $change->currency).' '.number_format($change->amount_minor / 100, 2)])->all())->required(),
+                    Select::make('cash_shift_id')->label('Open cash shift')->options(fn (Payment $record): array => CashShift::query()
+                        ->where('property_id', $record->reservation->property_id)->where('cashier_id', auth()->id())
+                        ->where('currency', $record->currency)->where('state', 'open')->get()
+                        ->mapWithKeys(fn (CashShift $shift): array => [$shift->id => $shift->business_date->toDateString().' · '.strtoupper($shift->currency)])->all())->required(),
+                    TextInput::make('execution_reference')->label('Drawer slip reference')->required()->maxLength(160),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription('Completion posts the refund and its matching negative drawer movement atomically.')
+                ->action(function (Payment $record, array $data): void {
+                    app(CompleteManualExternalRefund::class)->handle(
+                        auth()->user(),
+                        ReservationChange::query()->where('reservation_id', $record->reservation_id)->findOrFail($data['refund_request_id']),
+                        $data['execution_reference'],
+                        'filament-cash-refund-complete:'.str()->uuid(),
+                        cashShift: CashShift::query()->findOrFail($data['cash_shift_id']),
+                    );
+                    Notification::make()->success()->title('Cash refund dispensed with an exact drawer movement')->send();
                 }),
             Action::make('reconcile')
                 ->label('Reconcile')

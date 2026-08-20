@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Validation\ValidationException;
 
 /**
  * @property string $id
@@ -50,6 +51,46 @@ class Payment extends TenantModel
                 default => PaymentChannel::ManualOther,
             };
             $payment->entry_mode = PaymentEntryMode::StaffRecorded;
+        });
+        static::saving(function (Payment $payment): void {
+            if ($payment->getAttribute('origin') === null) {
+                $payment->origin = PaymentOrigin::Manual;
+            }
+            $origin = self::value($payment->origin);
+            if ($payment->getAttribute('channel') === null || $payment->getAttribute('entry_mode') === null) {
+                if ($origin === 'provider') {
+                    $payment->channel = PaymentChannel::OnlineCheckout;
+                    $payment->entry_mode = PaymentEntryMode::ProviderReported;
+                } else {
+                    $payment->channel = match ($payment->method) {
+                        'bank_transfer' => PaymentChannel::BankTransfer,
+                        'cash' => PaymentChannel::Cash,
+                        'card' => PaymentChannel::ExternalTerminal,
+                        default => PaymentChannel::ManualOther,
+                    };
+                    $payment->entry_mode = PaymentEntryMode::StaffRecorded;
+                }
+            }
+            $channel = self::value($payment->channel);
+            $entryMode = self::value($payment->entry_mode);
+            $providerIdentity = [$payment->provider, $payment->provider_reference, $payment->provider_account, $payment->environment];
+            $manualMap = [
+                'bank_transfer' => 'bank_transfer',
+                'cash' => 'cash',
+                'card' => 'external_terminal',
+                'other' => 'manual_other',
+                'manual' => 'manual_other',
+            ];
+            $validManual = $origin === 'manual' && $entryMode === 'staff_recorded'
+                && ($manualMap[$payment->method] ?? null) === $channel
+                && collect($providerIdentity)->every(fn ($value): bool => $value === null);
+            $validProvider = $origin === 'provider' && $entryMode === 'provider_reported'
+                && collect($providerIdentity)->every(fn ($value): bool => is_string($value) && trim($value) !== '')
+                && in_array($payment->method, ['card', 'provider', 'mercado_pago_checkout_pro'], true)
+                && in_array($channel, ['online_checkout', 'integrated_terminal', 'qr'], true);
+            if (! $validManual && ! $validProvider) {
+                throw ValidationException::withMessages(['payment' => 'Payment origin, channel, entry mode, method, and provider identity are contradictory.']);
+            }
         });
     }
 
@@ -128,5 +169,19 @@ class Payment extends TenantModel
     public function reverser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reversed_by');
+    }
+
+    public function getReceiptSafeReferenceAttribute(): ?string
+    {
+        $detail = $this->relationLoaded('tenderDetail') ? $this->getRelation('tenderDetail') : $this->tenderDetail()->first();
+
+        return ($detail instanceof PaymentTenderDetail ? $detail->transaction_reference : null)
+            ?? $this->provider_reference
+            ?? data_get($this->metadata, 'manual_transaction_reference');
+    }
+
+    private static function value(mixed $value): string
+    {
+        return $value instanceof \BackedEnum ? (string) $value->value : (string) $value;
     }
 }

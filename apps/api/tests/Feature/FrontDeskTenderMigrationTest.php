@@ -9,6 +9,7 @@ use App\Models\GuestPaymentEvidence;
 use App\Models\Payment;
 use App\Models\Reservation;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -89,6 +90,87 @@ class FrontDeskTenderMigrationTest extends TestCase
         } finally {
             DB::table('payments')->where('id', $manual->id)->update(['method' => 'cash']);
             $migration->up();
+        }
+    }
+
+    public function test_database_constraints_reject_null_and_contradictory_payment_classification(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $manual = Payment::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'bank_transfer',
+            'currency' => 'COP',
+            'amount_minor' => 1_000,
+        ]);
+
+        foreach ([
+            ['channel' => null],
+            ['provider' => 'bank', 'provider_reference' => 'contradictory-manual-reference'],
+            ['origin' => 'provider', 'channel' => 'online_checkout', 'entry_mode' => 'provider_reported'],
+        ] as $attributes) {
+            try {
+                DB::transaction(fn () => DB::table('payments')->where('id', $manual->id)->update($attributes));
+                $this->fail('The database accepted a null or contradictory payment classification.');
+            } catch (QueryException $exception) {
+                $this->assertNotSame('', $exception->getMessage());
+            }
+            $manual->refresh();
+            $this->assertSame('manual', $manual->origin->value);
+            $this->assertSame('bank_transfer', $manual->channel->value);
+            $this->assertNull($manual->provider);
+        }
+
+    }
+
+    public function test_migration_preflight_rejects_manual_provider_identity_and_down_refuses_operational_facts(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id]);
+        $payment = Payment::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => PaymentStatus::Succeeded,
+            'method' => 'bank_transfer',
+            'currency' => 'COP',
+            'amount_minor' => 1_000,
+        ]);
+        $migration = $this->migration();
+        $migration->down();
+        DB::table('payments')->where('id', $payment->id)->update([
+            'provider' => 'legacy-bank',
+            'provider_reference' => 'legacy-manual-reference',
+        ]);
+        try {
+            $migration->up();
+            $this->fail('Manual payments with provider identity must be explicit migration exceptions.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString($payment->id, $exception->getMessage());
+        } finally {
+            DB::table('payments')->where('id', $payment->id)->update(['provider' => null, 'provider_reference' => null]);
+            $migration->up();
+        }
+
+        DB::table('financial_command_records')->insert([
+            'id' => fake()->uuid(),
+            'tenant_id' => $payment->tenant_id,
+            'command_type' => 'operational-fact-test',
+            'idempotency_key' => 'operational-fact-test-0001',
+            'request_checksum' => hash('sha256', 'request'),
+            'result_model' => Payment::class,
+            'result_id' => $payment->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        config()->set('front_desk_tenders.allow_operational_fact_rollback', false);
+        try {
+            $migration->down();
+            $this->fail('Rollback must refuse to discard financial command facts.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('financial_command_records contains operational facts', $exception->getMessage());
+        } finally {
+            config()->set('front_desk_tenders.allow_operational_fact_rollback', true);
+            DB::table('financial_command_records')->delete();
         }
     }
 

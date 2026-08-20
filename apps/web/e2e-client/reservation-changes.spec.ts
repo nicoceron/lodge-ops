@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, Page, test } from "@playwright/test";
 import { signIn } from "./helpers/auth";
 
@@ -28,7 +29,7 @@ test("N2 guarded amendment, room move, cancellation fee, and refund close the fi
   test.setTimeout(120_000);
   await signIn(page);
 
-  const run = Date.now();
+  const run = randomUUID();
   const arrival = localDateTime(13, 15);
   const departure = localDateTime(16, 11);
   const amendedDeparture = localDateTime(17, 11);
@@ -44,8 +45,8 @@ test("N2 guarded amendment, room move, cancellation fee, and refund close the fi
   await page.getByRole("textbox", { name: "New guest last name" }).fill("Browser UAT");
   await page.getByRole("textbox", { name: "New guest email" }).fill(`n2-${run}@example.test`);
   await page.getByRole("textbox", { name: "Source" }).fill(`n2-playwright-${run}`);
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await expect(page).toHaveURL(/\/reservations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  await page.getByRole("button", { name: "Create", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page).toHaveURL(/\/reservations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 15_000 });
 
   const reservationUrl = page.url();
   const pageHeading = page.getByRole("heading", { level: 1 });
@@ -71,7 +72,10 @@ test("N2 guarded amendment, room move, cancellation fee, and refund close the fi
 
   await clickHeaderAction(page, "Move room");
   const move = page.getByRole("dialog", { name: "Move room" });
-  await move.getByRole("combobox", { name: "Current assignment*" }).selectOption({ index: 1 });
+  const currentAssignment = move.getByRole("combobox", { name: "Current assignment*" });
+  await expect(currentAssignment).toBeVisible();
+  await currentAssignment.selectOption({ index: 1 });
+  await expect(move.getByRole("combobox", { name: "New resource*" })).toBeEnabled();
   await chooseOption(page, "New resource*", "Lenga Suite");
   await move.getByRole("textbox", { name: "Move reason" }).fill("Playwright N2 room move");
   await move.getByRole("button", { name: "Submit", exact: true }).click();

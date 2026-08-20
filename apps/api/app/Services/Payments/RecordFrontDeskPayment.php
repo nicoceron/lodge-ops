@@ -168,7 +168,7 @@ final class RecordFrontDeskPayment
             'authorization_reference' => $input->authorizationReference,
             'batch_reference' => $input->batchReference,
             'note' => $input->note,
-        ], $input->panFalsePositiveConfirmed, $actor);
+        ]);
     }
 
     /** @return array{processor_alias:string, merchant_account_alias:string, terminal_identifier:string, transaction_reference:?string} */

@@ -8,10 +8,12 @@ use App\Data\Payments\ProviderDispute as ProviderDisputeData;
 use App\Data\Payments\ProviderPayment;
 use App\Data\Payments\ProviderRefund as ProviderRefundData;
 use App\Enums\CashShiftState;
+use App\Enums\DepositStatus;
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
 use App\Enums\PaymentChannel;
+use App\Enums\PaymentEvidenceStatus;
 use App\Enums\PaymentRequestPurpose;
 use App\Enums\PaymentStatus;
 use App\Enums\ProviderEventState;
@@ -22,6 +24,9 @@ use App\Enums\ReservationStatus;
 use App\Http\Middleware\EnsureIdempotentCommand;
 use App\Models\CashShift;
 use App\Models\CashShiftMovement;
+use App\Models\Deposit;
+use App\Models\Guest;
+use App\Models\GuestPaymentEvidence;
 use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\Payment;
@@ -46,6 +51,7 @@ use App\Services\Payments\RecoverProviderRefund;
 use App\Services\Payments\RequestManualExternalRefund;
 use App\Services\PaymentService;
 use App\Services\RequestRefund;
+use App\Services\ReviewPaymentEvidence;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -115,6 +121,60 @@ class PostgresFinancialConcurrencyTest extends TestCase
         $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
         $this->assertSame(1, CashShift::query()->where('state', CashShiftState::Open)->count());
         $this->assertDatabaseCount('cash_shift_movements', 1);
+    }
+
+    public function test_evidence_approval_racing_direct_tender_obeys_global_lock_order_and_posts_once(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $guest = Guest::factory()->create();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'currency' => 'USD',
+            'subtotal_minor' => 5_000,
+            'tax_minor' => 0,
+            'total_minor' => 5_000,
+        ]);
+        $deposit = Deposit::query()->create([
+            'reservation_id' => $reservation->id,
+            'status' => DepositStatus::Due,
+            'currency' => 'USD',
+            'amount_minor' => 5_000,
+        ]);
+        $evidence = GuestPaymentEvidence::query()->create([
+            'reservation_id' => $reservation->id,
+            'guest_id' => $guest->id,
+            'file_name' => 'race-receipt.pdf',
+            'content_type' => 'application/pdf',
+            'size_bytes' => 100,
+            'sha256' => hash('sha256', 'race-receipt'),
+            'storage_path' => 'guest-payment-evidence/race-receipt.pdf',
+            'status' => PaymentEvidenceStatus::Pending,
+            'amount_minor' => 5_000,
+            'currency' => 'USD',
+            'scan_status' => 'accepted',
+            'submitted_at' => now(),
+        ]);
+
+        $results = $this->concurrently([
+            fn (): string => app(ReviewPaymentEvidence::class)->approve($evidence, $deposit->id, $user->id, 'Concurrent approval')->id,
+            fn (): string => app(RecordFrontDeskPayment::class)->handle($user, new FrontDeskPaymentInput(
+                $reservation->id,
+                PaymentChannel::BankTransfer,
+                5_000,
+                'pg-evidence-tender-race',
+                depositId: $deposit->id,
+                transactionReference: 'direct-race-transfer',
+            ))->id,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('folio_lines', 1);
+        $this->assertSame(DepositStatus::Paid, $deposit->fresh()->status);
     }
 
     public function test_cash_payment_racing_shift_close_never_posts_without_a_drawer_movement(): void

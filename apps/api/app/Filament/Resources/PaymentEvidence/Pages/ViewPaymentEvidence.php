@@ -14,8 +14,11 @@ class ViewPaymentEvidence extends ViewRecord
         return [
             PaymentEvidenceResource::downloadAction(),
             PaymentEvidenceResource::approveAction(),
+            PaymentEvidenceResource::approveRefundAction(),
+            PaymentEvidenceResource::completeRefundAction(),
             PaymentEvidenceResource::requestInformationAction(),
             PaymentEvidenceResource::rejectAction(),
+            PaymentEvidenceResource::rejectRefundAction(),
         ];
     }
 }

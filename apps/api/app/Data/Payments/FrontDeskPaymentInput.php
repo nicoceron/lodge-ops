@@ -21,7 +21,6 @@ final readonly class FrontDeskPaymentInput
         public ?string $cardBrand = null,
         public ?string $cardLastFour = null,
         public ?string $note = null,
-        public bool $panFalsePositiveConfirmed = false,
     ) {}
 
     /** @return array<string, mixed> */

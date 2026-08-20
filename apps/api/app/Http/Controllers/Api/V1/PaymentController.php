@@ -3,10 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StorePaymentRequest;
 use App\Http\Resources\PaymentResource;
 use App\Models\Payment;
-use App\Models\Reservation;
 use App\Services\PaymentService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
@@ -34,19 +32,6 @@ class PaymentController extends Controller
             ->paginate(min((int) $request->integer('per_page', 50), 100));
 
         return PaymentResource::collection($payments);
-    }
-
-    public function store(StorePaymentRequest $request): PaymentResource
-    {
-        $this->authorize('create', Payment::class);
-        $data = $request->validated();
-        $this->assertReservationProperty($data['reservation_id']);
-
-        $captured = (bool) ($data['captured'] ?? false);
-        unset($data['captured']);
-        $payment = $this->service->recordManual($data, $request->user()->id, $captured);
-
-        return new PaymentResource($payment);
     }
 
     public function show(Payment $payment): PaymentResource
@@ -80,17 +65,5 @@ class PaymentController extends Controller
         $validated = $request->validate(['reason' => ['required', 'string', 'max:5000']]);
 
         return new PaymentResource($this->service->reverse($payment, $validated['reason'], $request->user()->id));
-    }
-
-    private function assertReservationProperty(string $reservationId): void
-    {
-        $propertyId = $this->tenantContext->membership()?->property_id;
-        abort_unless(
-            $propertyId === null || Reservation::query()
-                ->whereKey($reservationId)
-                ->where('property_id', $propertyId)
-                ->exists(),
-            403,
-        );
     }
 }

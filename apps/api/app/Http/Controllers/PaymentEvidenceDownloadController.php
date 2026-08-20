@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PaymentEvidenceStatus;
 use App\Models\GuestPaymentEvidence;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
@@ -16,7 +17,7 @@ class PaymentEvidenceDownloadController extends Controller
         $evidence = GuestPaymentEvidence::query()->findOrFail($evidence);
         $this->authorize('download', $evidence);
         abort_unless(in_array($evidence->scan_state, ['accepted', 'clean'], true)
-            && ! in_array($evidence->status->value, ['review_pending', 'rejected'], true), 409);
+            && in_array($evidence->status, [PaymentEvidenceStatus::Approved, PaymentEvidenceStatus::MoreInformationRequired], true), 409);
         $disk = $evidence->disk ?: 'local';
         $key = $evidence->storage_key ?: $evidence->storage_path;
         abort_unless(Storage::disk($disk)->exists($key), 404);

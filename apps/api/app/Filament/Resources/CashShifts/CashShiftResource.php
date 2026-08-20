@@ -86,6 +86,7 @@ class CashShiftResource extends TenantResource
             Action::make('correct')->label('Opposing correction')->authorize('operate')->schema([
                 Select::make('movement_id')->options(fn (CashShift $record): array => $record->movements()
                     ->where('type', '!=', CashMovementType::Correction->value)
+                    ->whereIn('type', [CashMovementType::PayIn, CashMovementType::PayOut])
                     ->whereDoesntHave('correction')->get()
                     ->mapWithKeys(fn ($movement): array => [$movement->id => $movement->type->value.' · '.$movement->amount_minor.' '.$movement->currency])->all())->required(),
                 Textarea::make('reason')->required()->maxLength(500),

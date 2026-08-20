@@ -204,10 +204,12 @@ final class PaymentService
         return DB::transaction(function () use ($data, $actorId, $capture): Payment {
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($data['reservation_id']);
 
-            if (! empty($data['provider']) && ! empty($data['provider_reference'])) {
+            $manualProcessor = trim((string) ($data['provider'] ?? '')) ?: null;
+            $manualReference = trim((string) ($data['provider_reference'] ?? '')) ?: null;
+            if ($manualProcessor !== null && $manualReference !== null) {
                 $existing = Payment::query()
-                    ->where('provider', $data['provider'])
-                    ->where('provider_reference', $data['provider_reference'])
+                    ->where('metadata->manual_processor_alias', $manualProcessor)
+                    ->where('metadata->manual_transaction_reference', $manualReference)
                     ->first();
                 if ($existing !== null) {
                     return $existing;
@@ -218,12 +220,9 @@ final class PaymentService
                 ...Arr::only($data, [
                     'reservation_id',
                     'method',
-                    'provider',
-                    'provider_reference',
                     'evidence_url',
                     'evidence_note',
                     'amount_minor',
-                    'metadata',
                 ]),
                 'origin' => PaymentOrigin::Manual,
                 'channel' => match ($data['method']) {
@@ -236,6 +235,11 @@ final class PaymentService
                 'currency' => $reservation->currency,
                 'status' => PaymentStatus::Pending,
                 'recorded_by' => $actorId,
+                'metadata' => [
+                    ...((array) ($data['metadata'] ?? [])),
+                    'manual_processor_alias' => $manualProcessor,
+                    'manual_transaction_reference' => $manualReference,
+                ],
             ]);
 
             $this->outbox->record('payment', $payment->id, 'payment.created', [

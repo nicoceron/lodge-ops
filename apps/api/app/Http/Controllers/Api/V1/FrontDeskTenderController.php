@@ -23,6 +23,7 @@ use App\Services\Payments\ApproveCashVariance;
 use App\Services\Payments\CloseCashShift;
 use App\Services\Payments\CompleteManualExternalRefund;
 use App\Services\Payments\CorrectRemainingReversibleAmount;
+use App\Services\Payments\FinancialCommandExecutor;
 use App\Services\Payments\OpenCashShift;
 use App\Services\Payments\RecordCashMovement;
 use App\Services\Payments\RecordFrontDeskPayment;
@@ -59,7 +60,6 @@ class FrontDeskTenderController extends Controller
             cardBrand: $data['card_brand'] ?? null,
             cardLastFour: $data['card_last_four'] ?? null,
             note: $data['note'] ?? null,
-            panFalsePositiveConfirmed: (bool) ($data['pan_false_positive_confirmed'] ?? false),
         ));
 
         return (new PaymentTenderDetailResource($detail))->response()->setStatusCode(201);
@@ -165,7 +165,7 @@ class FrontDeskTenderController extends Controller
         return response()->json(['data' => ['id' => $refund->id, 'payment_id' => $payment->id, 'amount_minor' => $refund->amount_minor, 'status' => $refund->status]], 201);
     }
 
-    public function uploadRefundEvidence(Request $request, ReservationChange $refund, PaymentEvidenceScanner $scanner): JsonResponse
+    public function uploadRefundEvidence(Request $request, ReservationChange $refund, PaymentEvidenceScanner $scanner, FinancialCommandExecutor $commands): JsonResponse
     {
         abort_unless($refund->type === 'refund_requested' && $refund->status === 'requested', 422, 'Evidence may only be attached to an open refund request.');
         $paymentId = (string) data_get($refund->metadata, 'payment_id');
@@ -183,30 +183,45 @@ class FrontDeskTenderController extends Controller
         $extension = match ($mime) {
             'application/pdf' => 'pdf', 'image/jpeg' => 'jpg', 'image/png' => 'png', default => abort(422, 'Unsupported evidence type.')
         };
-        $key = "payment-evidence/{$payment->tenant_id}/refunds/{$refund->id}/".Str::uuid().'.'.$extension;
-        Storage::disk('local')->put($key, file_get_contents($realPath), ['visibility' => 'private']);
+        $fileHash = hash_file('sha256', $realPath);
+        abort_unless(is_string($fileHash), 422, 'Evidence hashing failed.');
+        $commandKey = $this->key($request);
+        $key = "payment-evidence/{$payment->tenant_id}/refunds/{$refund->id}/".hash('sha256', $commandKey).'.'.$extension;
         $guest = $payment->reservation->primary_guest_id;
         abort_if($guest === null, 422, 'A reservation guest is required for evidence linkage.');
-        $evidence = GuestPaymentEvidence::query()->create([
-            'reservation_id' => $payment->reservation_id,
-            'guest_id' => $guest,
-            'refund_change_id' => $refund->id,
-            'file_name' => Str::of($upload->getClientOriginalName())->basename()->limit(255, '')->toString(),
-            'original_name' => Str::of($upload->getClientOriginalName())->basename()->limit(255, '')->toString(),
-            'content_type' => $mime,
+        $originalName = Str::of($upload->getClientOriginalName())->basename()->limit(255, '')->toString();
+        /** @var GuestPaymentEvidence $evidence */
+        $evidence = $commands->run($payment->tenant_id, __METHOD__, $commandKey, [
+            'refund_id' => $refund->id,
+            'payment_id' => $payment->id,
+            'original_name' => $originalName,
             'detected_mime' => $mime,
             'size_bytes' => $size,
-            'sha256' => hash_file('sha256', $realPath),
-            'storage_path' => $key,
-            'disk' => 'local',
-            'storage_key' => $key,
-            'status' => 'review_pending',
-            'scan_status' => 'accepted',
-            'scan_state' => 'accepted',
-            'uploaded_by' => $request->user()->id,
-            'submitted_at' => now(),
-            'scanned_at' => now(),
-        ]);
+            'sha256' => $fileHash,
+        ], function () use ($payment, $refund, $guest, $originalName, $mime, $size, $fileHash, $key, $realPath, $request): GuestPaymentEvidence {
+            abort_unless(Storage::disk('local')->put($key, file_get_contents($realPath), ['visibility' => 'private']), 503, 'Private evidence storage is unavailable.');
+
+            return GuestPaymentEvidence::query()->create([
+                'reservation_id' => $payment->reservation_id,
+                'guest_id' => $guest,
+                'refund_change_id' => $refund->id,
+                'file_name' => $originalName,
+                'original_name' => $originalName,
+                'content_type' => $mime,
+                'detected_mime' => $mime,
+                'size_bytes' => $size,
+                'sha256' => $fileHash,
+                'storage_path' => $key,
+                'disk' => 'local',
+                'storage_key' => $key,
+                'status' => 'review_pending',
+                'scan_status' => 'accepted',
+                'scan_state' => 'accepted',
+                'uploaded_by' => $request->user()->id,
+                'submitted_at' => now(),
+                'scanned_at' => now(),
+            ]);
+        });
 
         return response()->json(['data' => ['id' => $evidence->id, 'scan_state' => $evidence->scan_state, 'size_bytes' => $evidence->size_bytes]], 201);
     }

@@ -10,12 +10,18 @@ use App\Enums\PaymentChannel;
 use App\Enums\PaymentEntryMode;
 use App\Enums\PaymentOrigin;
 use App\Models\CashShift;
+use App\Models\CashShiftMovement;
+use App\Models\FinancialCommandRecord;
+use App\Models\GeneratedDocument;
 use App\Models\GuestPaymentEvidence;
 use App\Models\Membership;
+use App\Models\Outbox;
 use App\Models\Payment;
 use App\Models\PaymentTenderDetail;
 use App\Models\Property;
+use App\Models\ReportExport;
 use App\Models\Reservation;
+use App\Models\ReservationChange;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Payments\ApproveCashVariance;
@@ -23,6 +29,7 @@ use App\Services\Payments\CloseCashShift;
 use App\Services\Payments\OpenCashShift;
 use App\Services\Payments\RecordCashMovement;
 use App\Services\Payments\RecordFrontDeskPayment;
+use App\Services\Payments\SensitivePaymentDataGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -36,7 +43,7 @@ class FrontDeskTenderTest extends TestCase
     public function test_cash_shift_payment_and_variance_are_derived_and_exactly_once(): void
     {
         [, $property, $user] = $this->tenantEnvironment(MembershipRole::Operations);
-        $property->update(['settings' => ['cash_variance_threshold_minor' => 0]]);
+        $property->update(['settings' => ['cash_variance_threshold_minor_by_currency' => ['COP' => 0]]]);
         $reservation = Reservation::factory()->create([
             'property_id' => $property->id,
             'currency' => 'COP',
@@ -134,6 +141,34 @@ class FrontDeskTenderTest extends TestCase
         $this->assertNotNull($first->payment_id);
         $this->expectException(ValidationException::class);
         app(RecordFrontDeskPayment::class)->handle($user, new FrontDeskPaymentInput($reservation->id, PaymentChannel::BankTransfer, 2_000, 'same-command-key-0001', transactionReference: 'transfer-a'));
+    }
+
+    public function test_sensitive_card_data_is_rejected_centrally_from_operational_outbox_document_and_report_storage(): void
+    {
+        $this->tenantEnvironment(MembershipRole::Finance);
+        app(SensitivePaymentDataGuard::class)->assertSafe(['phone' => '+4477009000007']);
+        $this->addToAssertionCount(1);
+        $unsafe = 'Guest supplied PAN 4111 1111 1111 1111 and CVV 123';
+        $ingresses = [
+            [new ReservationChange(['metadata' => ['refund_reason' => $unsafe]]), 'reservation_changes'],
+            [new CashShiftMovement(['reason' => $unsafe]), 'cash_shift_movements'],
+            [new GuestPaymentEvidence(['original_name' => $unsafe.'.pdf']), 'guest_payment_evidence'],
+            [new PaymentTenderDetail(['transaction_reference' => $unsafe]), 'payment_tender_details'],
+            [new FinancialCommandRecord(['idempotency_key' => $unsafe]), 'financial_command_records'],
+            [new Outbox(['payload' => ['reason' => $unsafe]]), 'outbox'],
+            [new GeneratedDocument(['metadata' => ['execution_reference' => $unsafe]]), 'generated_documents'],
+            [new ReportExport(['filters' => ['transfer_reference' => $unsafe]]), 'report_exports'],
+        ];
+
+        foreach ($ingresses as [$model, $table]) {
+            try {
+                $model->save();
+                $this->fail("Sensitive card data reached {$table}.");
+            } catch (ValidationException $exception) {
+                $this->assertNotEmpty($exception->errors());
+            }
+            $this->assertDatabaseCount($table, 0);
+        }
     }
 
     public function test_sales_is_explicitly_denied_every_payment_mutation(): void
