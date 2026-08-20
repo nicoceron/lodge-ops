@@ -93,12 +93,15 @@ final class AmendReservation
                 'ends_at' => $lockedQuote->ends_at,
                 'adults' => $lockedQuote->adults,
                 'children' => $lockedQuote->children,
+                'infants' => $lockedQuote->infants,
                 'subtotal_minor' => $lockedQuote->subtotal_minor,
                 'tax_minor' => $lockedQuote->tax_minor,
                 'total_minor' => $lockedQuote->total_minor,
                 'price_snapshot' => [
                     'quote_id' => $lockedQuote->id,
                     'checksum' => $lockedQuote->checksum,
+                    'calculation' => $lockedQuote->calculation_snapshot,
+                    'discount_minor' => $lockedQuote->discount_minor,
                     'lines' => $lockedQuote->lines->map->only([
                         'type', 'description', 'service_on', 'quantity_thousandths', 'unit_amount_minor',
                         'net_amount_minor', 'tax_amount_minor', 'gross_amount_minor', 'metadata',

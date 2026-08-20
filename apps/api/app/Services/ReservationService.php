@@ -24,6 +24,7 @@ class ReservationService
         private HousekeepingService $housekeeping,
         private CancelReservation $cancelReservation,
         private MarkNoShow $markNoShow,
+        private CommercialPromotionService $promotions,
     ) {}
 
     public function confirm(Reservation $reservation): Reservation
@@ -68,6 +69,7 @@ class ReservationService
             ]);
 
             $this->recordStatus($locked, $previousStatus, ReservationStatus::Confirmed);
+            $this->promotions->confirm($locked);
             $this->provisioner->provision($locked);
 
             $this->outbox->record(
@@ -199,6 +201,7 @@ class ReservationService
                     }
 
                     $held->allocations()->where('status', AllocationStatus::Tentative)->update(['status' => AllocationStatus::Released]);
+                    $this->promotions->release($held, 'Reservation hold expired', false);
                     $held->update([
                         'status' => ReservationStatus::Draft,
                         'hold_expires_at' => null,

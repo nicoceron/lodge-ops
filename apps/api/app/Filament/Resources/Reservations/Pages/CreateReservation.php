@@ -14,6 +14,7 @@ class CreateReservation extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
+        $data['optional_services'] = collect($data['optional_service_ids'] ?? [])->map(fn (string $id): array => ['id' => $id, 'quantity' => 1])->all();
         $quote = app(BookingQuoteService::class)->create($data);
 
         return app(CommitBookingQuote::class)->handle(

@@ -50,6 +50,7 @@ final class ReservationChangeActions
                 'ends_at' => $record->ends_at,
                 'adults' => $record->adults,
                 'children' => $record->children,
+                'infants' => $record->infants,
             ])
             ->schema([
                 Select::make('rate_plan_id')->label('Rate plan')
@@ -68,6 +69,7 @@ final class ReservationChangeActions
                 DateTimePicker::make('ends_at')->label('Departure')->required()->seconds(false)->after('starts_at'),
                 TextInput::make('adults')->integer()->minValue(1)->required(),
                 TextInput::make('children')->integer()->minValue(0)->required(),
+                TextInput::make('infants')->integer()->minValue(0)->required(),
             ])
             ->modalDescription('Submitting creates and commits a fresh server-priced quote. The previous quote, allocation, and folio entries remain in history.')
             ->action(function (Reservation $record, array $data): void {
