@@ -324,7 +324,10 @@ class FrontDeskTenderTest extends TestCase
         $this->tenantEnvironment(MembershipRole::Finance);
         app(SensitivePaymentDataGuard::class)->assertSafe(['phone' => '+4477009000007']);
         app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => hash('sha256', 'safe-machine-key')]);
-        $this->addToAssertionCount(2);
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'storage_path' => 'guest-payment-evidence/00000000-0000-4000-8000-000000abcd05/20260000-0000-4000-8000-000000000000/receipt.pdf',
+        ]);
+        $this->addToAssertionCount(3);
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => '1234567890128']);
             $this->fail('Only a complete SHA-256 digest may bypass PAN detection for a deduplication key.');

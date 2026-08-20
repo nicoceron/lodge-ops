@@ -56,3 +56,28 @@
 - [Cloudflare Turnstile server validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
 - [OWASP API Security Top 10](https://owasp.org/API-Security/)
 - [OpenAPI specification](https://spec.openapis.org/oas/) and [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+
+## Implementation record — 2026-08-20
+
+Implemented on `codex/p3-07f-direct-booking-contract` from post-commercial/tender `main` (`028cde9d1c0235f654385e651121bdac7fa6035f`). The foundation owns only the frozen contract boundary:
+
+- 12 versioned public routes and schemas, 15-state/authority machine, 13 safe errors, cache/header/locale/currency/property-local-date semantics and exact idempotency requirements;
+- migration `2026_08_20_060001` for property publication/readiness, safe public bookable/media sources, payment capabilities, hashed-token orders, separate immutable consent snapshots and transition events;
+- bounded holds, late-payment/recovery/competing-payment decisions, token rotation/revocation, attribution/IP minimization, singleton expiry/retention maintenance and PostgreSQL concurrency tests;
+- deterministic mock router plus screen/state/error fixtures, threat model and same-origin Laravel/Livewire ADR.
+
+The 12 route handlers intentionally return safe `503 booking_unavailable` responses. Agent 07 must connect existing availability, commercial, reservation, payment and evidence services and existing exact-response idempotency persistence before any booking-workflow claim. Agent 08 consumes DTOs/fixtures only and does not calculate inventory, money or state.
+
+### Verified gates
+
+- Direct contract: 12 paths, 15 states, 13 errors, 13 fixtures; exact transition-authority map checked.
+- Aggregate route/OpenAPI parity: 118 paths, 152 operations, 112 resolved references.
+- SQLite focused: 11 passed / 81 assertions; 2 PostgreSQL-only tests skipped intentionally.
+- PostgreSQL focused including two real row-lock races: 13 passed / 92 assertions.
+- PostgreSQL payment/tender/reservation compatibility: 83 passed / 820 assertions.
+- Full SQLite: 369 passed / 2,926 assertions; 24 PostgreSQL-only tests skipped intentionally.
+- Full PostgreSQL: 393 passed / 3,069 assertions; one non-PostgreSQL migration round-trip skipped intentionally.
+- The full-suite investigation also fixed a nondeterministic false positive where adjacent system-generated UUID path segments could resemble `MM/YYYY` to the central card-data guard. The guard now removes valid UUID tokens before pattern inspection, while still scanning guest-controlled filenames and all non-opaque content. The deterministic tender/guest regression subset passes 21 / 262.
+- Pint: 815 files pass. PHPStan: no errors. API build: pass after mounting the existing Composer vendor volume into the Node build container.
+
+Final full-suite, diff/secret scan, commit, PR and CI receipts belong in [`docs/evidence/p3-07f/README.md`](../evidence/p3-07f/README.md). This record does not claim a working public booking journey.

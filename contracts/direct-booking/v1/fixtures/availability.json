@@ -1,0 +1,12 @@
+{
+  "data": {
+    "arrival_date": "2026-09-10",
+    "departure_date": "2026-09-13",
+    "timezone": "America/Argentina/Ushuaia",
+    "currency": "USD",
+    "options": [
+      {"key": "01K3A6M5T4P8V2N9R7W1X0Y3ZQ", "kind": "category", "bookable": true},
+      {"key": "01K3A6P8V4T2N9R7W1X0Y3Z5QM", "kind": "program", "bookable": false}
+    ]
+  }
+}

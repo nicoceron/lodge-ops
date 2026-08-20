@@ -1,0 +1,59 @@
+{
+  "data": {
+    "slug": "rincon-grande",
+    "name": "Rincón Grande",
+    "summary": "A remote Patagonian lodge with stays and guided programs.",
+    "locale": "es-AR",
+    "timezone": "America/Argentina/Ushuaia",
+    "supported_locales": ["es-AR", "en"],
+    "supported_currencies": ["USD", "ARS"],
+    "media": [
+      {
+        "key": "01K3A6J9C8R4G2N7Q5W1X0Y2ZT",
+        "url": "public-media://direct-booking/rincon-grande/hero.webp",
+        "mime_type": "image/webp",
+        "alt": "The lodge beside open Patagonian grassland",
+        "width": 1600,
+        "height": 900
+      }
+    ],
+    "bookables": [
+      {
+        "key": "01K3A6M5T4P8V2N9R7W1X0Y3ZQ",
+        "kind": "category",
+        "name": "Habitación lodge",
+        "summary": "A private lodge room; the exact room is assigned by Inn.",
+        "media": [
+          {
+            "key": "01K3A6N7P2T8V4R9W1X0Y3Z5QM",
+            "url": "public-media://direct-booking/rincon-grande/room.webp",
+            "mime_type": "image/webp",
+            "alt": "Guest room with two beds and a landscape window",
+            "width": 1200,
+            "height": 800
+          }
+        ]
+      },
+      {
+        "key": "01K3A6P8V4T2N9R7W1X0Y3Z5QM",
+        "kind": "program",
+        "name": "Programa ecuestre",
+        "summary": "A guided riding program subject to accommodation and guide availability.",
+        "media": [
+          {
+            "key": "01K3A6Q9T2V4N8R7W1X0Y3Z5PM",
+            "url": "public-media://direct-booking/rincon-grande/riding.webp",
+            "mime_type": "image/webp",
+            "alt": "Two riders following a guide across open grassland",
+            "width": 1200,
+            "height": 800
+          }
+        ]
+      }
+    ],
+    "payment_capabilities": [
+      {"method": "hosted_checkout", "currency": "ARS"},
+      {"method": "manual_bank_transfer", "currency": "USD"}
+    ]
+  }
+}

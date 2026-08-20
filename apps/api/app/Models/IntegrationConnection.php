@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<string, mixed>|null $configuration
  * @property string|null $secret_reference
  * @property string|null $payment_webhook_key
+ * @property string $status
  */
 class IntegrationConnection extends TenantModel
 {

@@ -1,0 +1,17 @@
+{
+  "started": {"state_version": 1, "actions": ["quote"]},
+  "quoted": {"state_version": 2, "actions": ["hold", "quote"]},
+  "held": {"state_version": 3, "actions": ["checkout", "submit_manual_evidence"]},
+  "payment_pending": {"state_version": 4, "actions": ["contact_property"]},
+  "awaiting_manual_payment": {"state_version": 4, "actions": ["submit_manual_evidence"]},
+  "evidence_pending": {"state_version": 5, "actions": ["contact_property"]},
+  "finance_review": {"state_version": 6, "actions": ["contact_property"]},
+  "paid_pending_confirmation": {"state_version": 5, "actions": ["contact_property"]},
+  "confirmed": {"state_version": 7, "actions": ["view_confirmation"]},
+  "expired": {"state_version": 5, "actions": ["recover"]},
+  "payment_failed": {"state_version": 5, "actions": ["retry_payment"], "safe_failure_code": "payment_failed"},
+  "paid_needs_review": {"state_version": 6, "actions": ["contact_property"], "safe_failure_code": "paid_needs_review"},
+  "evidence_rejected": {"state_version": 7, "actions": ["submit_manual_evidence", "contact_property"]},
+  "canceled": {"state_version": 8, "actions": ["contact_property"]},
+  "refunded": {"state_version": 9, "actions": ["contact_property"]}
+}

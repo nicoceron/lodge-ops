@@ -1,0 +1,13 @@
+{
+  "data": {
+    "order_reference": "01K3A6S2V4T8N9R7W1X0Y3Z5QM",
+    "state": "evidence_pending",
+    "state_version": 5,
+    "expires_at": "2026-09-01T12:45:00Z",
+    "payment_capabilities": [
+      {"method": "manual_bank_transfer", "currency": "USD"}
+    ],
+    "actions": ["contact_property"],
+    "safe_failure_code": null
+  }
+}

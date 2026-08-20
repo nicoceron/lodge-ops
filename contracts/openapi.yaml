@@ -32,6 +32,7 @@ tags:
   - name: Integrations
   - name: Documents
   - name: Reports
+  - name: Direct Booking
 
 paths:
   /dashboard:
@@ -1980,6 +1981,202 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '410': { description: Export expired or purged. }
 
+  /direct-booking/properties/{propertySlug}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingProperty
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingLocale'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Property' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/policies/{policyKind}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingPolicy
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingPolicyKind'
+        - $ref: '#/components/parameters/DirectBookingLocale'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Policy' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/availability:
+    post:
+      tags: [Direct Booking]
+      operationId: searchDirectBookingAvailability
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/AvailabilityRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Availability' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders:
+    post:
+      tags: [Direct Booking]
+      operationId: beginDirectBookingOrder
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/BeginOrderRequest' } } } }
+      responses:
+        '201': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderBegun' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingOrderStatus
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderStatus' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/quote:
+    post:
+      tags: [Direct Booking]
+      operationId: quoteDirectBookingOrder
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/QuoteRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Quote' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/hold:
+    post:
+      tags: [Direct Booking]
+      operationId: holdDirectBookingOrder
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/HoldRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Held' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/checkout:
+    post:
+      tags: [Direct Booking]
+      operationId: createDirectBookingCheckout
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/CheckoutRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Checkout' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/payments/retry:
+    post:
+      tags: [Direct Booking]
+      operationId: retryDirectBookingPayment
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/PaymentRetryRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Checkout' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/manual-payment-evidence:
+    post:
+      tags: [Direct Booking]
+      operationId: submitDirectBookingManualPaymentEvidence
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { multipart/form-data: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/ManualEvidenceRequest' } } } }
+      responses:
+        '202': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/EvidencePending' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/recover:
+    post:
+      tags: [Direct Booking]
+      operationId: recoverDirectBookingOrder
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/RecoverRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderRecovered' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/confirmation:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingConfirmation
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Confirmation' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1992,6 +2189,11 @@ components:
       scheme: bearer
       bearerFormat: Opaque guest portal session
       description: Short-lived, revocable guest session obtained by exchanging a single-use magic link.
+    directBookingSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Opaque direct-booking session token
+      description: Raw token is returned only when issued or rotated; Inn stores only its SHA-256 hash.
   parameters:
     TenantId:
       name: X-Tenant-ID
@@ -2005,6 +2207,38 @@ components:
       required: false
       description: Tenant-scoped opaque key for safely retried commands.
       schema: { type: string, minLength: 16, maxLength: 128 }
+    DirectBookingIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable per-mutation key. Same key and canonical body replay exactly; a different body returns idempotency_conflict.
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    DirectBookingCorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    DirectBookingPropertySlug:
+      name: propertySlug
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 80 }
+    DirectBookingOrderReference:
+      name: orderReference
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+    DirectBookingPolicyKind:
+      name: policyKind
+      in: path
+      required: true
+      schema: { type: string, enum: [terms, privacy, cancellation, no_show, marketing_consent] }
+    DirectBookingLocale:
+      name: locale
+      in: query
+      required: false
+      description: BCP 47 locale; unsupported values fail rather than silently synthesizing policy text.
+      schema: { type: string, pattern: '^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$', maxLength: 12 }
     Search:
       name: search
       in: query
