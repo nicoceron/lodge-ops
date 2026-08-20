@@ -6,11 +6,12 @@ use App\Enums\MembershipRole;
 use App\Enums\PaymentRequestPurpose;
 use App\Enums\ReservationStatus;
 use App\Models\Guest;
-use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Tenant;
+use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\EndpointKeyService;
 use App\Services\Payments\CreateProviderCheckout;
 use App\Services\Payments\IssuePaymentRequest;
 use App\Support\Tenancy\TenantContext;
@@ -24,7 +25,7 @@ class RunProviderComposeUat extends Command
 
     protected $description = 'Seed a local deterministic payment for the normal Compose HTTP/worker UAT.';
 
-    public function handle(IssuePaymentRequest $issue, CreateProviderCheckout $checkout): int
+    public function handle(IssuePaymentRequest $issue, CreateProviderCheckout $checkout, IntegrationConnectionService $connections, EndpointKeyService $endpointKeys): int
     {
         if (! app()->environment('local')) {
             $this->error('The provider Compose UAT is restricted to the local environment.');
@@ -47,22 +48,25 @@ class RunProviderComposeUat extends Command
             'total_minor' => 10_000,
             'source' => 'provider-compose-uat',
         ]);
-        $webhookKey = 'compose-uat-'.Str::uuid()->toString();
-        $connection = IntegrationConnection::query()->create([
-            'name' => 'Mercado Pago deterministic Compose UAT '.Str::afterLast($webhookKey, '-'),
-            'type' => 'payment',
-            'configuration' => [
-                'provider' => 'mercado_pago',
-                'environment' => 'sandbox',
-                'provider_account' => 'seller-compose-uat',
+        $connection = $connections->configure(
+            'Mercado Pago deterministic Compose UAT '.Str::lower(Str::random(8)),
+            'payment',
+            [
                 'return_url_base' => config('app.url'),
-                'webhook_key' => $webhookKey,
                 'webhook_secret_reference' => 'env:MP_COMPOSE_UAT_WEBHOOK_SECRET',
                 'transport' => 'deterministic_fixture',
                 'fixture' => ['preference_id' => 'pref-compose-uat'],
             ],
-            'secret_reference' => 'env:MP_COMPOSE_UAT_TOKEN',
-        ]);
+            'env:MP_COMPOSE_UAT_TOKEN',
+            $property->id,
+            'mercado_pago',
+            'checkout_pro',
+            'seller-compose-uat',
+            'sandbox',
+            ['payment.hosted_checkout'],
+        );
+        $connection = $connections->enable($connection, $membership->user_id, 'Enable deterministic Compose UAT connection.');
+        $webhookKey = $endpointKeys->rotate($connection, 0, $membership->user_id, 'Issue deterministic Compose UAT callback key.')['key'];
         $issued = $issue->handle($reservation, PaymentRequestPurpose::FullOutstanding, null, null, $membership->user_id, now()->addHour());
         $attempt = $checkout->handle($issued->request, $connection);
         $providerPaymentId = 'compose-uat-payment-'.substr(str_replace('-', '', $attempt->id), -12);

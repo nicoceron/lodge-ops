@@ -13,7 +13,9 @@ final class DefaultPaymentGatewayFactory implements PaymentGatewayFactory
 
     public function for(IntegrationConnection $connection): PaymentGateway
     {
-        if ($connection->type !== 'payment' || data_get($connection->configuration, 'provider') !== 'mercado_pago') {
+        if ($connection->type !== 'payment' || $connection->provider !== 'mercado_pago' || $connection->product !== 'checkout_pro'
+            || $connection->external_account_id === '' || ! in_array($connection->environment, ['sandbox', 'production'], true)
+            || ! $connection->is_enabled || $connection->revoked_at !== null || $connection->secret_reference === null) {
             throw new RuntimeException('The selected payment connection is not supported.');
         }
 
@@ -26,15 +28,15 @@ final class DefaultPaymentGatewayFactory implements PaymentGatewayFactory
         return new MercadoPagoCheckoutProGateway(
             $transport,
             $this->secrets->resolve(data_get($connection->configuration, 'webhook_secret_reference')),
-            (string) data_get($connection->configuration, 'provider_account'),
-            (string) data_get($connection->configuration, 'environment', 'sandbox'),
+            $connection->external_account_id,
+            $connection->environment,
             is_bool($configuredCheckoutUrlMode) ? $configuredCheckoutUrlMode : null,
         );
     }
 
     private function deterministicTransport(IntegrationConnection $connection): MercadoPagoTransport
     {
-        $providerEnvironment = strtolower(trim((string) data_get($connection->configuration, 'environment')));
+        $providerEnvironment = strtolower(trim($connection->environment));
         if ($providerEnvironment !== 'sandbox' || ! app()->environment(['local', 'testing'])) {
             throw new RuntimeException('The deterministic provider transport is restricted to explicit sandbox provider connections in local and test environments.');
         }

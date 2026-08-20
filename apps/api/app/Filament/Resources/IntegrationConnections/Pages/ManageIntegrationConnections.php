@@ -20,6 +20,12 @@ class ManageIntegrationConnections extends ManageRecords
                     $data['type'],
                     $data['configuration'] ?? [],
                     $data['secret_reference'] ?? null,
+                    $data['property_id'] ?? null,
+                    $data['provider'] ?? null,
+                    $data['product'] ?? null,
+                    $data['external_account_id'] ?? null,
+                    $data['environment'] ?? null,
+                    $data['capabilities'] ?? [],
                 )),
         ];
     }

@@ -13,6 +13,8 @@ use App\Models\PaymentAttempt;
 use App\Models\PaymentRequest;
 use App\Models\Reservation;
 use App\Services\FolioService;
+use App\Services\Integrations\EndpointKeyService;
+use App\Services\Integrations\SafeIntegrationError;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +23,12 @@ use Throwable;
 
 final class CreateProviderCheckout
 {
-    public function __construct(private readonly PaymentGatewayFactory $gateways, private readonly FolioService $folio) {}
+    public function __construct(
+        private readonly PaymentGatewayFactory $gateways,
+        private readonly FolioService $folio,
+        private readonly EndpointKeyService $endpointKeys,
+        private readonly PaymentConnectionResolver $connections,
+    ) {}
 
     public function handle(PaymentRequest $request, IntegrationConnection $connection, bool $conversionAccepted = false, ?string $acceptedRateId = null): PaymentAttempt
     {
@@ -31,15 +38,10 @@ final class CreateProviderCheckout
             if (! in_array($lockedRequest->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true) || $lockedRequest->expires_at->isPast()) {
                 throw new DomainException('This payment request is no longer payable.');
             }
-            if ($connection->type !== 'payment' || $connection->tenant_id !== $lockedRequest->tenant_id) {
-                throw new DomainException('The payment connection is not available for this request.');
-            }
-            $provider = (string) data_get($connection->configuration, 'provider');
-            $environment = (string) data_get($connection->configuration, 'environment', 'sandbox');
-            $providerAccount = (string) data_get($connection->configuration, 'provider_account');
-            if ($provider !== 'mercado_pago' || $providerAccount === '') {
-                throw new DomainException('The Mercado Pago account is not configured.');
-            }
+            $this->connections->assertAvailable($connection, $lockedRequest->tenant_id, $lockedRequest->property_id);
+            $provider = $connection->provider;
+            $environment = $connection->environment;
+            $providerAccount = $connection->external_account_id;
             $existing = PaymentAttempt::query()
                 ->where('payment_request_id', $lockedRequest->id)
                 ->whereIn('state', [PaymentAttemptState::Creating, PaymentAttemptState::CheckoutReady, PaymentAttemptState::Pending])
@@ -97,10 +99,7 @@ final class CreateProviderCheckout
         try {
             $configuration = $connection->configuration ?? [];
             $base = rtrim((string) data_get($configuration, 'return_url_base', config('app.url')), '/');
-            $webhookKey = (string) data_get($configuration, 'webhook_key');
-            if ($webhookKey === '') {
-                throw new DomainException('The payment webhook key is not configured.');
-            }
+            $webhookKey = $this->endpointKeys->rawForOutbound($connection);
             $hosted = $this->gateways->for($connection)->createHostedCheckout(new CheckoutRequest(
                 $attempt->external_reference,
                 $attempt->idempotency_key,
@@ -125,7 +124,7 @@ final class CreateProviderCheckout
             $attempt->update([
                 'attempt_count' => $attempt->attempt_count + 1,
                 'error_count' => $attempt->error_count + 1,
-                'last_error' => Str::limit($exception->getMessage(), 500),
+                'last_error' => SafeIntegrationError::from($exception),
             ]);
             throw $exception;
         }

@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-class IntegrationConnectionPolicy extends TenantResourcePolicy
+class IntegrationConnectionPolicy extends IntegrationResourcePolicy
 {
     protected ?string $viewCapability = 'canManageConfiguration';
 
