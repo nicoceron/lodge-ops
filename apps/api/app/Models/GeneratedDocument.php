@@ -37,6 +37,7 @@ use LogicException;
  * @property-read Guest|null $guest
  * @property-read Payment|null $payment
  * @property-read ReservationChange|null $reservationChange
+ * @property-read DocumentGenerationRequest|null $generationRequest
  */
 class GeneratedDocument extends TenantModel
 {
@@ -53,6 +54,7 @@ class GeneratedDocument extends TenantModel
         ];
     }
 
+    /** @return BelongsTo<DocumentGenerationRequest, $this> */
     public function generationRequest(): BelongsTo
     {
         return $this->belongsTo(DocumentGenerationRequest::class, 'document_generation_request_id');

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $tenant_id
  * @property string $reservation_id
  * @property-read Reservation $reservation
+ * @property-read Guest $guest
  */
 class GuestPortalAccessToken extends TenantModel
 {

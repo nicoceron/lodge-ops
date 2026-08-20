@@ -2,8 +2,16 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property string $property_id
+ * @property string $processing_state
+ * @property CarbonImmutable $occurred_at
+ * @property CarbonImmutable $received_at
+ * @property CarbonImmutable|null $processed_at
+ */
 class CommunicationDeliveryEvent extends TenantModel
 {
     protected static function booted(): void
@@ -30,6 +38,11 @@ class CommunicationDeliveryEvent extends TenantModel
     public function connection(): BelongsTo
     {
         return $this->belongsTo(CommunicationProviderConnection::class, 'communication_provider_connection_id');
+    }
+
+    public function property(): BelongsTo
+    {
+        return $this->belongsTo(Property::class);
     }
 
     public function deliveryAttempt(): BelongsTo

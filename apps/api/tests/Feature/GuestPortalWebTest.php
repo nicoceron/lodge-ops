@@ -56,6 +56,7 @@ class GuestPortalWebTest extends TestCase
         $this->get('/guest/stay/payments')->assertOk()->assertSee('Payment');
         $this->get('/guest/stay/folio')->assertOk()->assertSee('Folio');
         $this->get('/guest/stay/survey')->assertOk()->assertSee('Feedback');
+        $this->get('/guest/stay/communication-preferences')->assertOk()->assertSee('Message preferences');
 
         $this->get('/guest/access/'.$magicToken)->assertRedirect('/guest/unavailable');
     }

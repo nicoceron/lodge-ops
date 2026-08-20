@@ -24,6 +24,12 @@ Schedule::command('reservation-milestones:dispatch')
     ->withoutOverlapping(10)
     ->onOneServer();
 
+Schedule::command('communications:sweep-delivery-events --batch=100')
+    ->name('communications:sweep-delivery-events')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer();
+
 Schedule::command('horizon:snapshot')
     ->name('horizon:snapshot')
     ->everyFiveMinutes()

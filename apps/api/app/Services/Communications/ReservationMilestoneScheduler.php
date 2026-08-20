@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 final class ReservationMilestoneScheduler
 {
@@ -111,12 +112,16 @@ final class ReservationMilestoneScheduler
 
         $claimed = DB::transaction(function () use ($at, $limit) {
             $token = (string) Str::uuid();
+            $staleBefore = now()->subMinutes(
+                (int) config('communications.milestones.claim_stale_minutes', 10),
+            );
             $query = ReservationMilestoneOccurrence::withoutGlobalScopes()
-                ->where('state', 'pending')->where('target_at', '<=', $at)
-                ->where(function (Builder $query): void {
-                    $query->whereNull('claimed_at')->orWhere('claimed_at', '<=', now()->subMinutes(
-                        (int) config('communications.milestones.claim_stale_minutes', 10),
-                    ));
+                ->where('target_at', '<=', $at)
+                ->where(function (Builder $query) use ($staleBefore): void {
+                    $query->where('state', 'pending')
+                        ->orWhere(function (Builder $claimed) use ($staleBefore): void {
+                            $claimed->where('state', 'claimed')->where('claimed_at', '<=', $staleBefore);
+                        });
                 })
                 ->orderBy('target_at')->limit($limit);
             $rows = DB::connection()->getDriverName() === 'pgsql'
@@ -126,18 +131,30 @@ final class ReservationMilestoneScheduler
                 return collect();
             }
             ReservationMilestoneOccurrence::withoutGlobalScopes()->whereIn('id', $rows->pluck('id'))
-                ->where('state', 'pending')->update(['state' => 'claimed', 'claim_token' => $token, 'claimed_at' => now()]);
+                ->update(['state' => 'claimed', 'claim_token' => $token, 'claimed_at' => now()]);
 
             return $rows->map(fn ($row): array => ['id' => $row->id, 'tenant_id' => $row->tenant_id, 'claim_token' => $token]);
         }, 3);
 
         $items = $claimed->values()->all();
-        DB::afterCommit(function () use ($items): void {
-            foreach ($items as $item) {
+        foreach ($items as $item) {
+            try {
                 DispatchReservationMilestoneOccurrence::dispatch($item['tenant_id'], $item['id'], $item['claim_token'])
                     ->onQueue('automations');
+            } catch (Throwable $exception) {
+                ReservationMilestoneOccurrence::withoutGlobalScopes()
+                    ->where('tenant_id', $item['tenant_id'])->whereKey($item['id'])
+                    ->where('state', 'claimed')->where('claim_token', $item['claim_token'])
+                    ->update([
+                        'state' => 'pending',
+                        'claim_token' => null,
+                        'claimed_at' => null,
+                        'last_error' => 'Milestone job enqueue failed; pending durable replay.',
+                    ]);
+
+                report($exception);
             }
-        });
+        }
 
         return $items;
     }

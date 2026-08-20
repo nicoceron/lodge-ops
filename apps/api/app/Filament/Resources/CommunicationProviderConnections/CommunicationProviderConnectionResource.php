@@ -6,7 +6,10 @@ use App\Filament\Resources\CommunicationProviderConnections\Pages\ManageCommunic
 use App\Filament\Resources\TenantResource;
 use App\Models\CommunicationProviderConnection;
 use App\Models\Property;
+use App\Models\User;
+use App\Services\Communications\CommunicationProviderVerificationService;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
@@ -14,6 +17,7 @@ use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
@@ -52,7 +56,8 @@ class CommunicationProviderConnectionResource extends TenantResource
                 TextInput::make('from_name')->required()->maxLength(160),
                 TextInput::make('reply_to_email')->email()->maxLength(254),
                 TagsInput::make('allowed_sender_domains')->required(),
-                Toggle::make('is_enabled')->helperText('Enable only after the sender domain and secret references are verified.'),
+                Toggle::make('is_enabled')->helperText('Available only after the provider verification action succeeds.')
+                    ->disabled(fn (?CommunicationProviderConnection $record): bool => $record?->verified_at === null),
             ]),
         ]);
     }
@@ -73,7 +78,17 @@ class CommunicationProviderConnectionResource extends TenantResource
             TextColumn::make('property.name')->searchable(), TextColumn::make('provider')->badge(),
             TextColumn::make('from_email')->searchable(), TextColumn::make('account_id')->limit(24),
             IconColumn::make('is_enabled')->boolean(), TextColumn::make('verified_at')->since()->placeholder('Not verified'),
-        ])->recordActions([ViewAction::make(), EditAction::make()])->defaultSort('created_at', 'desc');
+        ])->recordActions([
+            ViewAction::make(),
+            EditAction::make(),
+            Action::make('verify_provider')->label('Verify sender')->icon('heroicon-o-shield-check')
+                ->requiresConfirmation()
+                ->action(function (CommunicationProviderConnection $record): void {
+                    app(CommunicationProviderVerificationService::class)
+                        ->verify(User::query()->findOrFail(auth()->id()), $record);
+                    Notification::make()->success()->title('Provider sender domain verified')->send();
+                }),
+        ])->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

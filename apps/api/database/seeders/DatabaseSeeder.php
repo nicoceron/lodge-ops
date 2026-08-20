@@ -955,12 +955,34 @@ class DatabaseSeeder extends Seeder
     private function seedAutomation(): void
     {
         $rules = [
-            ['name' => 'Reservation confirmation and private portal', 'trigger' => 'reservation.confirmed', 'actions' => [[
-                'type' => 'guest_portal_invitation',
-                'template_key' => 'confirmation',
-                'purpose' => 'pre_arrival',
-                'subject' => 'Your reservation {{reservation.confirmation_number}} is confirmed',
-                'body' => 'Your reservation is confirmed. Complete your travel details, documents, and payment evidence here: {{guest_portal.url}}',
+            ['name' => 'Reservation confirmation and private portal', 'trigger' => 'reservation.confirmed', 'actions' => [
+                [
+                    'type' => 'guest_portal_invitation',
+                    'template_key' => 'confirmation',
+                    'purpose' => 'reservation_confirmation',
+                    'subject' => 'Your reservation {{reservation.confirmation_number}} is confirmed',
+                    'body' => 'Your reservation is confirmed. Complete your travel details, documents, and payment evidence here: {{guest_portal.url}}',
+                ],
+                [
+                    'type' => 'queue_internal_communications', 'roles' => ['guide'], 'purpose' => 'internal_guide',
+                    'subject' => 'New confirmed stay {{reservation.confirmation_number}}',
+                    'body' => 'Prepare guide coverage for {{reservation.starts_at}} through {{reservation.ends_at}}.',
+                ],
+                [
+                    'type' => 'queue_internal_communications', 'roles' => ['kitchen'], 'purpose' => 'internal_kitchen',
+                    'subject' => 'Guest count for {{reservation.confirmation_number}}',
+                    'body' => 'Plan meals for {{reservation.adults}} adult(s) and {{reservation.children}} child(ren) from {{reservation.starts_at}}.',
+                ],
+                [
+                    'type' => 'queue_internal_communications', 'roles' => ['operations'], 'purpose' => 'internal_host',
+                    'subject' => 'Host preparation {{reservation.confirmation_number}}',
+                    'body' => 'Prepare arrival and stay operations for {{reservation.starts_at}} through {{reservation.ends_at}}.',
+                ],
+            ]],
+            ['name' => 'Proposal delivery', 'trigger' => 'proposal.sent', 'actions' => [[
+                'type' => 'queue_communication', 'purpose' => 'proposal',
+                'subject' => 'Your proposal {{proposal.reference}}',
+                'body' => 'Your {{proposal.currency}} proposal total is {{proposal.total_minor}} and is ready for review.',
             ]]],
             ['name' => 'Arrival preparation reminder', 'trigger' => 'reservation.arrival_approaching', 'actions' => [[
                 'type' => 'queue_communication',
@@ -974,12 +996,25 @@ class DatabaseSeeder extends Seeder
                 'subject' => 'Reservation payment reminder',
                 'body' => 'A payment of {{deposit.amount_minor}} {{deposit.currency}} is overdue. Please reply with your bank transfer confirmation.',
             ]]],
-            ['name' => 'Post-stay survey invitation', 'trigger' => 'reservation.checkout_completed', 'actions' => [[
-                'type' => 'guest_portal_invitation',
-                'template_key' => 'survey',
-                'purpose' => 'survey',
-                'subject' => 'How was your stay?',
-                'body' => 'Thank you for staying with us. Share your experience through your private reservation center: {{guest_portal.url}}',
+            ['name' => 'Post-stay folio and survey', 'trigger' => 'reservation.checkout_completed', 'actions' => [
+                [
+                    'type' => 'guest_portal_invitation',
+                    'purpose' => 'checkout_folio',
+                    'subject' => 'Your stay folio is ready',
+                    'body' => 'Review your completed stay and folio through your private reservation center: {{guest_portal.url}}',
+                ],
+                [
+                    'type' => 'guest_portal_invitation',
+                    'template_key' => 'survey',
+                    'purpose' => 'survey',
+                    'subject' => 'How was your stay?',
+                    'body' => 'Thank you for staying with us. Share your experience through your private reservation center: {{guest_portal.url}}',
+                ],
+            ]],
+            ['name' => 'Finance payment notice', 'trigger' => 'payment.succeeded', 'actions' => [[
+                'type' => 'queue_internal_communications', 'roles' => ['finance'], 'purpose' => 'internal_finance',
+                'subject' => 'Payment recorded for {{reservation.confirmation_number}}',
+                'body' => 'A payment of {{payment.amount_minor}} {{payment.currency}} was recorded for reconciliation.',
             ]]],
         ];
 

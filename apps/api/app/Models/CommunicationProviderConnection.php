@@ -21,6 +21,26 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class CommunicationProviderConnection extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $connection): void {
+            if ($connection->isDirty(['provider', 'account_id', 'secret_ref', 'from_email', 'allowed_sender_domains'])) {
+                $connection->verified_at = null;
+                $connection->verified_by = null;
+                $connection->verification_reference = null;
+                $connection->is_enabled = false;
+            }
+            if ($connection->is_enabled && $connection->verified_at === null) {
+                throw new \DomainException('An unverified provider connection cannot be enabled.');
+            }
+        });
+        static::creating(function (self $connection): void {
+            if ($connection->is_enabled && $connection->verified_at === null) {
+                throw new \DomainException('An unverified provider connection cannot be enabled.');
+            }
+        });
+    }
+
     public function setEndpointKeyAttribute(string $value): void
     {
         $this->attributes['endpoint_key_hash'] = hash('sha256', trim($value));
@@ -33,6 +53,7 @@ class CommunicationProviderConnection extends TenantModel
             'allowed_sender_domains' => 'array',
             'is_enabled' => 'boolean',
             'verified_at' => 'immutable_datetime',
+            'verification_checked_at' => 'immutable_datetime',
             'revoked_at' => 'immutable_datetime',
         ];
     }

@@ -3,8 +3,21 @@ import { readFileSync } from "node:fs";
 import { BrowserContext, expect, Locator, Page, test } from "@playwright/test";
 import { signIn } from "./helpers/auth";
 
-const DEMO_GUEST_TOKEN = "g_7JvK2pQ9xR4mN8tW3cD6hF1sB5yE0uA";
 const EMPTY_STORAGE_STATE = { cookies: [], origins: [] };
+
+function issueGuestToken(): string {
+  const composeArgs = process.env.INN_COMPOSE_PROJECT
+    ? ["compose", "-p", process.env.INN_COMPOSE_PROJECT]
+    : ["compose"];
+  const output = execFileSync(
+    "docker",
+    [...composeArgs, "exec", "-T", "api", "php", "artisan", "uat:issue-guest-token", "RSV-DEMO-001"],
+    { cwd: "../..", encoding: "utf8" },
+  );
+  const token = output.trim().split("\n").at(-1)?.trim();
+  if (!token || token.length < 32) throw new Error("UAT guest token command returned no usable token.");
+  return token;
+}
 
 async function chooseOption(page: Page, label: RegExp, option: string): Promise<void> {
   const select = page.getByRole("combobox", { name: label });
@@ -104,7 +117,7 @@ test("P3-03 generates and opens private PDF, CSV, XLSX, and guest artifacts", as
     const guestContext = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, storageState: EMPTY_STORAGE_STATE });
     openedContexts.push(guestContext);
     const guestPage = await guestContext.newPage();
-    await guestPage.goto(`/guest/access/${DEMO_GUEST_TOKEN}`);
+    await guestPage.goto(`/guest/access/${issueGuestToken()}`);
     await guestPage.getByRole("navigation", { name: "Guest portal" }).getByRole("link", { name: "Documents", exact: true }).click();
     await expect(guestPage.getByRole("heading", { name: "Generated stay documents" })).toBeVisible();
     expect(await guestPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

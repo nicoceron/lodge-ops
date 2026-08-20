@@ -13,7 +13,9 @@ use App\Services\CommunicationDeliveryService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -88,7 +90,7 @@ class ProductionCommunicationTest extends TestCase
 
     public function test_invalid_missing_stale_and_malformed_signatures_are_generic_and_persist_nothing(): void
     {
-        [, $property] = $this->tenantEnvironment(authenticate: false);
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
         $this->connection($property->id);
         app(TenantContext::class)->clear();
         $raw = '{"type":"email.sent","data":{"email_id":"email_1"}}';
@@ -129,6 +131,7 @@ class ProductionCommunicationTest extends TestCase
         $delivered = $this->event('email.delivered', 'email_complaint', ['complaint@example.com']);
         $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $this->headers($delivered, 'evt_same'), $delivered)->assertAccepted();
         $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $this->headers($delivered, 'evt_same'), $delivered)->assertAccepted();
+        Queue::assertPushed(ProcessCommunicationDeliveryEvent::class, 2);
         $first = CommunicationDeliveryEvent::withoutGlobalScopes()->firstOrFail();
         (new ProcessCommunicationDeliveryEvent($tenant->id, $first->id))->handle(app(TenantContext::class));
 
@@ -148,6 +151,91 @@ class ProductionCommunicationTest extends TestCase
             'recipient_hash' => hash('sha256', 'complaint@example.com'), 'reason' => 'complaint', 'source' => 'provider_event',
         ]);
         $this->assertSame(1, CommunicationSuppression::withoutGlobalScopes()->count());
+    }
+
+    public function test_sweeper_reenqueues_pending_and_failed_events_after_queue_outage(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $this->connection($property->id);
+        Queue::fake();
+        app(TenantContext::class)->clear();
+        $raw = $this->event('email.sent', 'email_stranded', ['stranded@example.com']);
+        $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $this->headers($raw, 'evt_stranded'), $raw)
+            ->assertAccepted();
+        $event = CommunicationDeliveryEvent::withoutGlobalScopes()->firstOrFail();
+        app(TenantContext::class)->set($tenant);
+        $event->forceFill(['processing_state' => 'failed', 'processing_error' => 'Queue unavailable.'])->save();
+        app(TenantContext::class)->clear();
+        Queue::fake();
+
+        $this->artisan('communications:sweep-delivery-events')->assertSuccessful();
+
+        Queue::assertPushed(ProcessCommunicationDeliveryEvent::class, 1);
+        $this->assertNull($event->fresh()->processed_at);
+    }
+
+    public function test_persisted_event_survives_queue_failure_and_provider_redelivery_reenqueues_it(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $this->connection($property->id);
+        app(TenantContext::class)->clear();
+        Log::spy();
+        Queue::shouldReceive('connection')->andThrow(new RuntimeException('queue unavailable'));
+        $raw = $this->event('email.sent', 'email_queue_failure', ['stranded@example.com']);
+        $headers = $this->headers($raw, 'evt_queue_failure');
+
+        $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $headers, $raw)
+            ->assertAccepted();
+
+        $event = CommunicationDeliveryEvent::withoutGlobalScopes()->sole();
+        $this->assertSame('pending', $event->processing_state);
+        $this->assertNull($event->processed_at);
+
+        Queue::fake();
+        $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $headers, $raw)
+            ->assertAccepted();
+
+        $this->assertSame(1, CommunicationDeliveryEvent::withoutGlobalScopes()->count());
+        Queue::assertPushed(ProcessCommunicationDeliveryEvent::class, 1);
+    }
+
+    public function test_status_reducer_never_regresses_on_later_lower_precedence_or_older_terminal_events(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $connection = $this->connection($property->id);
+        $communication = Communication::query()->create([
+            'property_id' => $property->id, 'channel' => 'email', 'direction' => 'outbound',
+            'purpose' => 'transactional', 'status' => 'provider_accepted', 'subject' => 'Status', 'body' => 'Status',
+        ]);
+        DeliveryAttempt::query()->create([
+            'communication_id' => $communication->id,
+            'communication_provider_connection_id' => $connection->id,
+            'provider' => 'resend', 'provider_account_id' => 'account_1', 'provider_message_id' => 'email_ordered',
+            'status' => 'provider_accepted', 'kind' => 'initial', 'idempotency_key' => 'communication:'.$communication->id,
+            'attempt' => 1, 'attempted_at' => now(),
+        ]);
+        Queue::fake();
+        app(TenantContext::class)->clear();
+        foreach ([
+            ['email.delivered', 'evt_order_delivered', '2026-08-20T15:00:00Z'],
+            ['email.delivery_delayed', 'evt_order_delayed', '2026-08-20T16:00:00Z'],
+            ['email.failed', 'evt_order_rejected', '2026-08-20T16:30:00Z'],
+            ['email.complained', 'evt_order_complained', '2026-08-20T17:00:00Z'],
+            ['email.bounced', 'evt_order_old_bounce', '2026-08-20T14:00:00Z'],
+            ['email.sent', 'evt_order_late_sent', '2026-08-20T18:00:00Z'],
+        ] as [$type, $eventId, $occurredAt]) {
+            $raw = $this->event($type, 'email_ordered', ['ordered@example.com'], $occurredAt);
+            $this->call('POST', '/api/v1/communication-webhooks/'.$this->endpointKey, [], [], [], $this->headers($raw, $eventId), $raw)
+                ->assertAccepted();
+            $event = CommunicationDeliveryEvent::withoutGlobalScopes()->where('provider_event_id', $eventId)->firstOrFail();
+            (new ProcessCommunicationDeliveryEvent($tenant->id, $event->id))->handle(app(TenantContext::class));
+        }
+
+        $communication->refresh();
+        $this->assertSame('complained', $communication->status);
+        $this->assertSame('2026-08-20T17:00:00+00:00', $communication->status_occurred_at->toIso8601String());
+        $this->assertSame(80, $communication->status_precedence);
+        $this->assertNotNull($communication->delivered_at);
     }
 
     private function connection(string $propertyId): CommunicationProviderConnection
@@ -184,11 +272,11 @@ class ProductionCommunicationTest extends TestCase
     }
 
     /** @param list<string> $recipients */
-    private function event(string $type, string $messageId, array $recipients): string
+    private function event(string $type, string $messageId, array $recipients, string $occurredAt = '2026-08-20T15:00:00Z'): string
     {
         return json_encode([
             'type' => $type,
-            'created_at' => '2026-08-20T15:00:00Z',
+            'created_at' => $occurredAt,
             'data' => ['email_id' => $messageId, 'to' => $recipients],
         ], JSON_THROW_ON_ERROR);
     }

@@ -4,6 +4,13 @@ namespace App\Models;
 
 class CommunicationSuppression extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::saving(function (self $suppression): void {
+            $suppression->scope_key = $suppression->property_id ?: '*';
+        });
+    }
+
     protected function casts(): array
     {
         return [

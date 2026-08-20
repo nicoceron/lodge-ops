@@ -13,7 +13,9 @@ use App\Services\Communications\ReservationMilestoneScheduler;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Tests\Concerns\CreatesTenant;
 use Tests\TestCase;
 
@@ -138,5 +140,60 @@ class ReservationMilestoneTest extends TestCase
         $property->update(['timezone' => 'UTC']);
         $this->assertSame('America/New_York', $first->fresh()->timezone);
         $this->assertSame('2026-03-08 03:30:00', $first->fresh()->getRawOriginal('target_local'));
+    }
+
+    public function test_stale_claim_is_recovered_with_a_new_token_and_replayed_exactly_once(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => now()->addDays(6),
+            'ends_at' => now()->addDays(9),
+        ]);
+        $scheduler = app(ReservationMilestoneScheduler::class);
+        $scheduler->synchronize($reservation);
+        $occurrence = ReservationMilestoneOccurrence::query()->where('key', 'arrival_7_day')->firstOrFail();
+        $occurrence->forceFill([
+            'state' => 'claimed',
+            'claim_token' => '11111111-1111-4111-8111-111111111111',
+            'claimed_at' => now()->subMinutes(11),
+        ])->save();
+        Queue::fake();
+
+        $claims = $scheduler->claimDue(now()->toImmutable());
+
+        $this->assertCount(1, $claims);
+        $this->assertNotSame('11111111-1111-4111-8111-111111111111', $claims[0]['claim_token']);
+        (new DispatchReservationMilestoneOccurrence($tenant->id, $occurrence->id, $claims[0]['claim_token']))
+            ->handle(app(TenantContext::class), app(OutboxRecorder::class));
+        (new DispatchReservationMilestoneOccurrence($tenant->id, $occurrence->id, $claims[0]['claim_token']))
+            ->handle(app(TenantContext::class), app(OutboxRecorder::class));
+        $this->assertSame(1, Outbox::withoutGlobalScopes()->count());
+        $this->assertSame('dispatched', $occurrence->fresh()->state);
+    }
+
+    public function test_enqueue_failure_returns_claim_to_durable_pending_for_restart_replay(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'status' => ReservationStatus::Confirmed,
+            'starts_at' => now()->addDays(6),
+            'ends_at' => now()->addDays(9),
+        ]);
+        $scheduler = app(ReservationMilestoneScheduler::class);
+        $scheduler->synchronize($reservation);
+        Bus::shouldReceive('dispatch')->once()->andThrow(new RuntimeException('queue unavailable'));
+
+        $scheduler->claimDue(now()->toImmutable());
+
+        $occurrence = ReservationMilestoneOccurrence::query()->where('key', 'arrival_7_day')->firstOrFail();
+        $this->assertSame('pending', $occurrence->state);
+        $this->assertNull($occurrence->claim_token);
+        $this->assertStringContainsString('durable replay', $occurrence->last_error);
+        Bus::fake();
+        $this->assertCount(1, $scheduler->claimDue(now()->toImmutable()));
+        Bus::assertDispatched(DispatchReservationMilestoneOccurrence::class);
     }
 }

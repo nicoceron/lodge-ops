@@ -12,8 +12,9 @@ class AutomationTemplateRenderer
         'reservation.status', 'reservation.currency', 'reservation.total_minor', 'reservation.adults', 'reservation.children',
         'reservation.code', 'reservation.primary_guest.first_name', 'guest.first_name',
         'payment.id', 'payment.status', 'payment.amount_minor', 'payment.currency',
+        'proposal.id', 'proposal.reference', 'proposal.starts_at', 'proposal.ends_at', 'proposal.currency', 'proposal.total_minor',
         'deposit.id', 'deposit.amount_minor', 'deposit.currency', 'deposit.due_at',
-        'payload.reservation_id', 'payload.deposit_id', 'payload.days_before',
+        'payload.reservation_id', 'payload.deposit_id', 'payload.days_before', 'payload.amount_minor', 'payload.currency',
         'guest_portal.url', 'event_type',
     ];
 

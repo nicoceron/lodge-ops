@@ -42,17 +42,21 @@ final class ResendCommunicationProvider implements CommunicationProvider
             return new CommunicationProviderResult($messageId);
         }
 
+        $providerError = is_string($response->json('name')) ? $response->json('name') : null;
         $code = match (true) {
             $response->status() === 429 => 'rate_limited',
             $response->status() >= 500 => 'provider_unavailable',
+            $response->status() === 409 && $providerError === 'concurrent_idempotent_requests' => 'concurrent_idempotent_requests',
+            $response->status() === 409 && $providerError === 'invalid_idempotent_request' => 'invalid_idempotent_request',
             $response->status() === 409 => 'idempotency_conflict',
             default => 'provider_rejected',
         };
-        $retryable = $response->status() === 429 || $response->status() >= 500;
+        $concurrentRequest = $code === 'concurrent_idempotent_requests';
+        $retryable = $response->status() === 429 || $response->status() >= 500 || $concurrentRequest;
         $safeMessage = is_string($response->json('message'))
             ? mb_substr(strip_tags($response->json('message')), 0, 500)
             : "Provider returned HTTP {$response->status()}.";
 
-        throw new CommunicationProviderException($safeMessage, $code, $retryable);
+        throw new CommunicationProviderException($safeMessage, $code, $retryable, $concurrentRequest);
     }
 }

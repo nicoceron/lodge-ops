@@ -1,5 +1,14 @@
 <x-filament-widgets::widget wire:poll.30s wire:loading.class="opacity-70">
     <div class="relative space-y-6">
+        @if ($communicationHealth['scheduler_stale'] || $communicationHealth['stranded_events'] > 0 || $communicationHealth['expired_uncertain'] > 0)
+            <x-filament::section heading="Communication operations need attention" icon="heroicon-o-exclamation-triangle" icon-color="danger">
+                <div class="flex flex-wrap gap-2">
+                    @if ($communicationHealth['scheduler_stale'])<x-filament::badge color="danger">Scheduler heartbeat stale or missing</x-filament::badge>@endif
+                    @if ($communicationHealth['stranded_events'] > 0)<x-filament::badge color="danger">{{ $communicationHealth['stranded_events'] }} stranded provider event(s)</x-filament::badge>@endif
+                    @if ($communicationHealth['expired_uncertain'] > 0)<x-filament::badge color="danger">{{ $communicationHealth['expired_uncertain'] }} delivery outcome(s) need reconciliation</x-filament::badge>@endif
+                </div>
+            </x-filament::section>
+        @endif
         <div
             wire:loading.flex
             class="absolute right-0 top-0 z-10 hidden items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-1.5 text-xs text-gray-500 shadow-sm dark:bg-white/5"

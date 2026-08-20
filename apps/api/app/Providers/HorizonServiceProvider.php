@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Enums\MembershipRole;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Horizon\Horizon;
@@ -29,8 +28,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
-        Gate::define('viewHorizon', fn (?User $user): bool => $user !== null
-            && $user->memberships()->withoutGlobalScopes()
-                ->where('role', MembershipRole::Administrator)->where('is_active', true)->exists());
+        Gate::define('viewHorizon', fn (?User $user): bool => (bool) config('horizon.dashboard_enabled', false)
+            && $user?->is_system_admin === true);
     }
 }

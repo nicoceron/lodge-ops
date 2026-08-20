@@ -13,6 +13,7 @@ use LogicException;
 
 /**
  * @property CarbonImmutable $starts_at
+ * @property string $tenant_id
  * @property CarbonImmutable $ends_at
  * @property CarbonImmutable|null $actual_start_at
  * @property CarbonImmutable|null $actual_end_at

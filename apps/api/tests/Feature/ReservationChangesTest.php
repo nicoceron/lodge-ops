@@ -11,6 +11,7 @@ use App\Enums\ReservationStatus;
 use App\Exceptions\CommercialWorkflowException;
 use App\Models\CancellationPolicy;
 use App\Models\CancellationPolicyTier;
+use App\Models\DocumentGenerationRequest;
 use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\Property;
@@ -297,6 +298,8 @@ class ReservationChangesTest extends TestCase
         $this->assertSame(1, $reservation->folioLines()->where('type', 'refund')->count());
         $this->assertSame(0, app(FolioService::class)->summary($cancelled)['balance_minor']);
         $this->assertSame(PaymentStatus::Succeeded, $payment->fresh()->status);
+        $this->assertSame(1, DocumentGenerationRequest::query()
+            ->where('reservation_change_id', $completed->id)->where('kind', 'refund_receipt')->count());
 
         try {
             app(PaymentService::class)->reverse($payment, 'Legacy full reversal after partial refund', auth()->id());

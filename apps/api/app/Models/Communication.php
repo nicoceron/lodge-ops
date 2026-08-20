@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $accepted_at
  * @property CarbonImmutable|null $delivered_at
  * @property CarbonImmutable|null $failed_at
+ * @property CarbonImmutable|null $status_occurred_at
  * @property-read Guest|null $guest
  * @property-read Reservation|null $reservation
  */
@@ -35,6 +36,8 @@ class Communication extends TenantModel
             'accepted_at' => 'immutable_datetime',
             'delivered_at' => 'immutable_datetime',
             'failed_at' => 'immutable_datetime',
+            'status_occurred_at' => 'immutable_datetime',
+            'status_precedence' => 'integer',
             'metadata' => 'array',
         ];
     }

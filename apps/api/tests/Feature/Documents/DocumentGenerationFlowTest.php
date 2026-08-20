@@ -5,25 +5,34 @@ namespace Tests\Feature\Documents;
 use App\Contracts\Documents\DocumentRenderer;
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
+use App\Enums\MembershipRole;
 use App\Enums\PaymentOrigin;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Jobs\GenerateDocument;
+use App\Models\Communication;
+use App\Models\DocumentGenerationRequest;
 use App\Models\DocumentTemplate;
 use App\Models\Guest;
 use App\Models\GuestPortalAcknowledgement;
 use App\Models\GuestPortalDocument;
+use App\Models\Membership;
 use App\Models\Payment;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
+use App\Services\CommunicationDeliveryService;
 use App\Services\Documents\CanonicalJson;
 use App\Services\Documents\DocumentArtifactStore;
 use App\Services\Documents\DocumentSnapshotFactory;
+use App\Services\Documents\QueueGeneratedDocumentEmail;
 use App\Services\Documents\RequestDocumentGeneration;
 use App\Services\Documents\RetryDocumentGeneration;
+use App\Services\PaymentService;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -270,5 +279,79 @@ class DocumentGenerationFlowTest extends TestCase
 
         $this->expectException(\LogicException::class);
         $document->forceFill(['body' => 'Mutated terms.'])->save();
+    }
+
+    public function test_payment_success_generates_and_queues_automatic_receipt_through_common_delivery_pipeline(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        Queue::fake();
+        Storage::fake('documents');
+        $guest = Guest::factory()->create(['email' => 'receipt-flow@example.com']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'status' => ReservationStatus::Confirmed,
+            'subtotal_minor' => 10000,
+            'tax_minor' => 0,
+            'total_minor' => 10000,
+        ]);
+
+        app(PaymentService::class)->recordManual([
+            'reservation_id' => $reservation->id,
+            'method' => 'cash',
+            'amount_minor' => 10000,
+        ], auth()->id(), true);
+        $request = DocumentGenerationRequest::query()->where('kind', DocumentKind::PaymentReceipt)->firstOrFail();
+        app()->call([new GenerateDocument($request->id), 'handle']);
+
+        $communication = Communication::query()->where('purpose', 'payment_receipt')->firstOrFail();
+        $this->assertSame($request->generatedDocument->id, data_get($communication->metadata, 'generated_document_id'));
+        $this->assertTrue(data_get($communication->metadata, 'system_generated_receipt'));
+        $this->assertDatabaseHas('outbox', ['event_type' => 'communication.queued', 'aggregate_id' => $communication->id]);
+    }
+
+    public function test_attachment_delivery_reauthorizes_generated_document_email_after_role_revocation(): void
+    {
+        [, $property, $actor] = $this->tenantEnvironment();
+        Queue::fake();
+        Storage::fake('documents');
+        $guest = Guest::factory()->create(['email' => 'attachment-auth@example.com']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'status' => ReservationStatus::Confirmed,
+        ]);
+        DocumentTemplate::query()->create([
+            'name' => 'Confirmation', 'kind' => DocumentKind::ReservationConfirmation->value,
+            'version' => 1, 'definition' => [], 'is_active' => true,
+        ]);
+        $request = app(RequestDocumentGeneration::class)->handle(
+            $actor, $reservation, DocumentKind::ReservationConfirmation, 'en', 'attachment-reauthorization',
+        );
+        app()->call([new GenerateDocument($request->id), 'handle']);
+        $authorized = app(QueueGeneratedDocumentEmail::class)->handle(
+            $actor, $request->fresh()->generatedDocument, 'attachment-email-authorized',
+        );
+        $revoked = app(QueueGeneratedDocumentEmail::class)->handle(
+            $actor, $request->fresh()->generatedDocument, 'attachment-email-revoked',
+        );
+        $tenant = app(TenantContext::class)->tenant();
+        app(TenantContext::class)->set($tenant);
+        Mail::fake();
+
+        app(CommunicationDeliveryService::class)->deliver($authorized);
+        $this->assertSame('sent', $authorized->fresh()->status);
+
+        Membership::query()->where('user_id', $actor->id)->update(['role' => MembershipRole::Viewer->value]);
+        app(TenantContext::class)->set($tenant);
+
+        try {
+            app(CommunicationDeliveryService::class)->deliver($revoked);
+            $this->fail('Revoked document email permission must be rechecked at delivery.');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('no longer authorized', $exception->getMessage());
+        }
+        Mail::assertSentCount(1);
+        $this->assertDatabaseCount('delivery_attempts', 1);
     }
 }

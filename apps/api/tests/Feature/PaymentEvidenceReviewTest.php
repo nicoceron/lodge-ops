@@ -53,11 +53,16 @@ class PaymentEvidenceReviewTest extends TestCase
             'status' => PaymentEvidenceStatus::Approved->value,
             'payment_id' => $first->id,
         ]);
-        $this->assertDatabaseCount('communications', 1);
+        $this->assertDatabaseCount('communications', 2);
         $this->assertDatabaseHas('communications', [
             'guest_id' => $guest->id,
             'reservation_id' => $reservation->id,
             'automation_key' => "payment-evidence:{$evidence->id}:approved",
+        ]);
+        $this->assertDatabaseHas('communications', [
+            'guest_id' => $guest->id,
+            'reservation_id' => $reservation->id,
+            'purpose' => 'payment_receipt',
         ]);
     }
 

@@ -7,12 +7,16 @@ use App\Enums\PaymentRequestState;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\PaymentRequest;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\Communications\QueuePaymentRequestCommunication;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class RotateOrResendPaymentRequest
 {
-    public function __construct(private readonly OutboxRecorder $outbox) {}
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+        private readonly QueuePaymentRequestCommunication $communications,
+    ) {}
 
     public function handle(PaymentRequest $request, bool $rotate, ?int $actorId): IssuedPaymentRequest
     {
@@ -30,6 +34,7 @@ final class RotateOrResendPaymentRequest
                 'payment_request_id' => $locked->id,
                 'actor_id' => $actorId,
             ]);
+            $this->communications->handle($locked, $token, $actorId);
 
             return new IssuedPaymentRequest($locked->fresh(), $token);
         }, 3);

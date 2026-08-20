@@ -8,9 +8,13 @@ use App\Models\Communication;
 use App\Models\DeliveryAttempt;
 use App\Models\GeneratedDocument;
 use App\Models\Guest;
+use App\Models\Membership;
+use App\Models\User;
 use App\Services\Communications\CommunicationConsentService;
 use App\Services\Communications\CommunicationProviderResolver;
+use App\Services\Communications\CommunicationPurposePolicyService;
 use App\Services\Documents\DocumentArtifactStore;
+use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -22,6 +26,8 @@ class CommunicationDeliveryService
         private readonly CommunicationConsentService $consent,
         private readonly CommunicationProviderResolver $providers,
         private readonly DocumentArtifactStore $documents,
+        private readonly CommunicationPurposePolicyService $purposePolicies,
+        private readonly TenantContext $tenantContext,
     ) {}
 
     public function deliver(Communication $communication): void
@@ -36,6 +42,7 @@ class CommunicationDeliveryService
             if ($locked->channel !== 'email') {
                 throw new DomainException("No delivery adapter is configured for channel [{$locked->channel}].");
             }
+            $this->purposePolicies->approved($locked->purpose ?: 'transactional');
 
             $recipient = data_get($locked->metadata, 'recipient', $locked->guest?->email);
             if (! is_string($recipient) || trim($recipient) === '') {
@@ -44,8 +51,9 @@ class CommunicationDeliveryService
             $recipient = mb_strtolower(trim($recipient));
             $propertyId = $locked->property_id ?? $locked->reservation?->property_id;
             $guest = $locked->guest;
-            if ($guest instanceof Guest && (! $this->consent->allows($locked, $guest, $propertyId)
-                || $this->templates->isSuppressed($guest, $locked->channel, $propertyId))) {
+            $suppressed = $this->templates->isRecipientSuppressed($recipient, $locked->channel, $propertyId);
+            $consentDenied = $guest instanceof Guest && ! $this->consent->allows($locked, $guest, $propertyId);
+            if ($suppressed || $consentDenied) {
                 $locked->forceFill([
                     'status' => 'suppressed',
                     'metadata' => [
@@ -69,8 +77,9 @@ class CommunicationDeliveryService
             if ($existing !== null && $existing->status === 'sending' && $existing->attempted_at->isAfter(now()->subMinute())) {
                 return null;
             }
-            if ($existing !== null && $existing->status === 'sending'
-                && $existing->attempted_at->isBefore(now()->subHours((int) config('communications.provider.idempotency_window_hours', 24)))) {
+            if ($existing !== null && in_array($existing->status, ['sending', 'outcome_uncertain'], true)
+                && (($existing->reconcile_after !== null && $existing->reconcile_after->isPast())
+                    || $existing->attempted_at->isBefore(now()->subHours((int) config('communications.provider.idempotency_window_hours', 24))))) {
                 $existing->forceFill([
                     'status' => 'reconciliation_required',
                     'retry_state' => 'reconciliation_required',
@@ -169,7 +178,8 @@ class CommunicationDeliveryService
                 'error_code' => $exception->safeCode,
                 'safe_error' => mb_substr($exception->getMessage(), 0, 500),
                 'failed_at' => $exception->outcomeUncertain ? null : now(),
-                'reconcile_after' => $exception->outcomeUncertain ? now()->addHours(24) : null,
+                'reconcile_after' => $exception->outcomeUncertain
+                    ? now()->addHours((int) config('communications.provider.idempotency_window_hours', 24)) : null,
             ]);
             Communication::query()->whereKey($prepared['communication_id'])->update([
                 'status' => $status,
@@ -187,6 +197,16 @@ class CommunicationDeliveryService
         }
 
         $document = GeneratedDocument::query()->whereKey($documentId)->firstOrFail();
+        $queuedBy = data_get($communication->metadata, 'queued_by');
+        $actor = is_numeric($queuedBy) ? User::query()->find((int) $queuedBy) : null;
+        $systemReceipt = data_get($communication->metadata, 'system_generated_receipt') === true;
+        $document->loadMissing('generationRequest');
+        $authorizedSystemReceipt = $systemReceipt
+            && in_array($document->kind, ['payment_receipt', 'refund_receipt'], true)
+            && $document->generationRequest?->requested_by === null;
+        if (! $authorizedSystemReceipt && ($actor === null || ! $this->canEmailDocument($actor, $document))) {
+            throw new DomainException('The document email is no longer authorized for delivery.');
+        }
         if ($document->purged_at !== null || ($document->expires_at !== null && $document->expires_at->isPast())) {
             throw new DomainException('The communication attachment is unavailable or expired.');
         }
@@ -197,6 +217,39 @@ class CommunicationDeliveryService
         $bytes = $this->documents->verifiedBytes($document->storage_disk, $document->storage_path, $document->checksum);
 
         return ['filename' => $document->file_name, 'content' => base64_encode($bytes), 'content_type' => $document->mime_type];
+    }
+
+    private function canEmailDocument(User $actor, GeneratedDocument $document): bool
+    {
+        if (! $this->tenantContext->check() || $this->tenantContext->id() !== $document->tenant_id) {
+            return false;
+        }
+
+        $propertyId = $document->reservation?->property_id;
+        $membership = Membership::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('user_id', $actor->id)
+            ->where('is_active', true)
+            ->when(
+                $propertyId,
+                fn ($query) => $query->where(fn ($scope) => $scope->whereNull('property_id')->orWhere('property_id', $propertyId)),
+                fn ($query) => $query->whereNull('property_id'),
+            )
+            ->orderByRaw('property_id is null')
+            ->first();
+        if ($membership === null) {
+            return false;
+        }
+
+        $tenant = $this->tenantContext->tenant();
+        $previousMembership = $this->tenantContext->membership();
+        $this->tenantContext->set($tenant, $membership);
+
+        try {
+            return $actor->can('email', $document);
+        } finally {
+            $this->tenantContext->set($tenant, $previousMembership);
+        }
     }
 
     private function requestChecksum(Communication $communication, string $recipient, string $from): string

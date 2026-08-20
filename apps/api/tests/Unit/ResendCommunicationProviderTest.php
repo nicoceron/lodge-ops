@@ -23,9 +23,9 @@ class ResendCommunicationProviderTest extends TestCase
     }
 
     #[DataProvider('failureFixtures')]
-    public function test_provider_failures_are_safely_classified(int $status, string $code, bool $retryable): void
+    public function test_provider_failures_are_safely_classified(int $status, array $body, string $code, bool $retryable, bool $uncertain): void
     {
-        Http::fake(['api.resend.com/emails' => Http::response(['message' => 'safe provider message'], $status)]);
+        Http::fake(['api.resend.com/emails' => Http::response(['message' => 'safe provider message', ...$body], $status)]);
 
         try {
             app(ResendCommunicationProvider::class)->send($this->request());
@@ -33,18 +33,20 @@ class ResendCommunicationProviderTest extends TestCase
         } catch (CommunicationProviderException $exception) {
             $this->assertSame($code, $exception->safeCode);
             $this->assertSame($retryable, $exception->retryable);
-            $this->assertFalse($exception->outcomeUncertain);
+            $this->assertSame($uncertain, $exception->outcomeUncertain);
             $this->assertStringNotContainsString('re_test', $exception->getMessage());
         }
     }
 
-    /** @return iterable<string, array{int,string,bool}> */
+    /** @return iterable<string, array{int,array<string,string>,string,bool,bool}> */
     public static function failureFixtures(): iterable
     {
-        yield 'rate limit' => [429, 'rate_limited', true];
-        yield 'server failure' => [503, 'provider_unavailable', true];
-        yield 'idempotency conflict' => [409, 'idempotency_conflict', false];
-        yield 'rejected request' => [422, 'provider_rejected', false];
+        yield 'rate limit' => [429, [], 'rate_limited', true, false];
+        yield 'server failure' => [503, [], 'provider_unavailable', true, false];
+        yield 'concurrent idempotent request' => [409, ['name' => 'concurrent_idempotent_requests'], 'concurrent_idempotent_requests', true, true];
+        yield 'same key with different payload' => [409, ['name' => 'invalid_idempotent_request'], 'invalid_idempotent_request', false, false];
+        yield 'unknown idempotency conflict fails closed' => [409, [], 'idempotency_conflict', false, false];
+        yield 'rejected request' => [422, [], 'provider_rejected', false, false];
     }
 
     public function test_network_timeout_is_retryable_but_outcome_uncertain(): void

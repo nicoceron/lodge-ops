@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $idempotency_key
  * @property int $attempt
  * @property CarbonImmutable $attempted_at
+ * @property CarbonImmutable|null $reconcile_after
+ * @property CarbonImmutable|null $status_occurred_at
+ * @property int $status_precedence
  */
 class DeliveryAttempt extends TenantModel
 {
@@ -25,6 +28,8 @@ class DeliveryAttempt extends TenantModel
             'delivered_at' => 'immutable_datetime',
             'failed_at' => 'immutable_datetime',
             'reconcile_after' => 'immutable_datetime',
+            'status_occurred_at' => 'immutable_datetime',
+            'status_precedence' => 'integer',
         ];
     }
 

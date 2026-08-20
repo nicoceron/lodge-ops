@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+/** @property array<string, mixed> $payload @property string $event_type */
 class Outbox extends TenantModel
 {
     protected $table = 'outbox';

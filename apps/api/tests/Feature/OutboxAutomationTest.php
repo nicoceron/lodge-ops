@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Services\Automation\AutomationEngine;
 use App\Services\Automation\InternalStaffNotificationService;
 use App\Services\Automation\OutboxBatchPublisher;
+use App\Services\ProposalService;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -373,6 +374,129 @@ class OutboxAutomationTest extends TestCase
             'status' => 'suppressed',
         ]);
         $this->assertSame(0, Outbox::withoutGlobalScopes()->where('event_type', 'communication.queued')->count());
+    }
+
+    public function test_role_minimized_internal_communications_use_the_common_outbox_delivery_pipeline(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment(authenticate: false);
+        $otherProperty = Property::factory()->create();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'confirmation_number' => 'ROLE-100',
+        ]);
+        foreach ([
+            MembershipRole::Guide,
+            MembershipRole::Kitchen,
+            MembershipRole::Operations,
+            MembershipRole::Finance,
+        ] as $role) {
+            Membership::factory()->create([
+                'user_id' => User::factory()->create(['email' => $role->value.'@example.com'])->id,
+                'property_id' => $property->id,
+                'role' => $role,
+            ]);
+        }
+        $other = User::factory()->create(['email' => 'other-guide@example.com']);
+        Membership::factory()->create([
+            'user_id' => $other->id, 'property_id' => $otherProperty->id, 'role' => MembershipRole::Guide,
+        ]);
+        app(TenantContext::class)->set($tenant, $membership);
+        AutomationRule::query()->create([
+            'name' => 'Role-minimized messages', 'trigger' => 'reservation.confirmed',
+            'actions' => [
+                ['type' => 'queue_internal_communications', 'roles' => ['guide'], 'purpose' => 'internal_guide', 'body' => 'Guide dates only'],
+                ['type' => 'queue_internal_communications', 'roles' => ['kitchen'], 'purpose' => 'internal_kitchen', 'body' => 'Kitchen headcount only'],
+                ['type' => 'queue_internal_communications', 'roles' => ['operations'], 'purpose' => 'internal_host', 'body' => 'Host arrival only'],
+                ['type' => 'queue_internal_communications', 'roles' => ['finance'], 'purpose' => 'internal_finance', 'body' => 'Finance reconciliation only'],
+            ],
+        ]);
+        $message = $this->outbox($reservation, 'reservation.confirmed', ['reservation_id' => $reservation->id]);
+        Queue::fake();
+        app(TenantContext::class)->clear();
+
+        $this->process($tenant->id, $message->id);
+
+        $communications = Communication::withoutGlobalScopes()->where('tenant_id', $tenant->id)->get();
+        $this->assertCount(4, $communications);
+        $this->assertEqualsCanonicalizing(
+            ['internal_guide', 'internal_kitchen', 'internal_host', 'internal_finance'],
+            $communications->pluck('purpose')->all(),
+        );
+        $this->assertFalse($communications->contains(fn (Communication $communication): bool => data_get($communication->metadata, 'recipient') === 'other-guide@example.com'));
+        $this->assertSame(4, Outbox::withoutGlobalScopes()->where('event_type', 'communication.queued')->count());
+    }
+
+    public function test_sent_proposal_real_flow_queues_fixed_purpose_guest_communication(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create(['email' => 'proposal-flow@example.com']);
+        AutomationRule::query()->create([
+            'name' => 'Proposal common pipeline', 'trigger' => 'proposal.sent',
+            'actions' => [[
+                'type' => 'queue_communication', 'purpose' => 'proposal',
+                'subject' => 'Proposal {{proposal.reference}}',
+                'body' => 'Proposal total {{proposal.total_minor}} {{proposal.currency}}',
+            ]],
+        ]);
+        $proposal = app(ProposalService::class)->createDraft([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'starts_at' => now()->addMonth(),
+            'ends_at' => now()->addMonth()->addDays(3),
+            'adults' => 2,
+            'children' => 0,
+            'currency' => 'USD',
+            'lines' => [[
+                'description' => 'Three nights', 'quantity_thousandths' => 3000, 'unit_amount_minor' => 10000,
+            ]],
+        ], null);
+        Queue::fake();
+        app(ProposalService::class)->send($proposal);
+        $message = Outbox::query()->where('event_type', 'proposal.sent')->firstOrFail();
+        app(TenantContext::class)->clear();
+
+        (new PublishOutboxMessage($tenant->id, $message->id, $message->claim_token))
+            ->handle(app(AutomationEngine::class), app(TenantContext::class));
+
+        $this->assertDatabaseHas('communications', [
+            'property_id' => $property->id,
+            'guest_id' => $guest->id,
+            'purpose' => 'proposal',
+            'status' => 'queued',
+        ]);
+        $this->assertStringContainsString($proposal->reference, Communication::withoutGlobalScopes()->firstOrFail()->subject);
+        app(TenantContext::class)->set($tenant);
+        $legacyRollbackReservation = Reservation::factory()->create([
+            'property_id' => $property->id, 'primary_guest_id' => $guest->id,
+        ]);
+        DB::table('proposals')->where('id', $proposal->id)->update(['reservation_id' => $legacyRollbackReservation->id]);
+    }
+
+    public function test_checkout_milestone_queues_folio_link_through_common_pipeline(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(authenticate: false);
+        $guest = Guest::factory()->create(['email' => 'folio-flow@example.com']);
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'primary_guest_id' => $guest->id,
+            'confirmation_number' => 'FOLIO-100',
+        ]);
+        AutomationRule::query()->create([
+            'name' => 'Checkout folio common pipeline', 'trigger' => 'reservation.checkout_completed',
+            'actions' => [[
+                'type' => 'guest_portal_invitation', 'purpose' => 'checkout_folio',
+                'subject' => 'Your folio is ready', 'body' => 'Review your folio: {{guest_portal.url}}',
+            ]],
+        ]);
+        $message = $this->outbox($reservation, 'reservation.checkout_completed', ['reservation_id' => $reservation->id]);
+        Queue::fake();
+        app(TenantContext::class)->clear();
+
+        $this->process($tenant->id, $message->id);
+
+        $communication = Communication::withoutGlobalScopes()->where('purpose', 'checkout_folio')->firstOrFail();
+        $this->assertStringContainsString('/guest/access/', $communication->body);
+        $this->assertDatabaseHas('outbox', ['aggregate_id' => $communication->id, 'event_type' => 'communication.queued']);
     }
 
     /** @param array<string, mixed> $payload */

@@ -18,7 +18,7 @@ class SendCommunication implements ShouldQueue
 
     public int $tries = 5;
 
-    public int $timeout = 45;
+    public int $timeout = 60;
 
     public function __construct(public readonly string $tenantId, public readonly string $communicationId)
     {

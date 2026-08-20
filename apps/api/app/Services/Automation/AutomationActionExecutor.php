@@ -2,11 +2,13 @@
 
 namespace App\Services\Automation;
 
+use App\Enums\CommunicationPurpose;
 use App\Enums\DepositStatus;
 use App\Models\AutomationRule;
 use App\Models\Communication;
 use App\Models\Deposit;
 use App\Models\Guest;
+use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\OperationalTask;
 use App\Models\Outbox;
@@ -14,6 +16,7 @@ use App\Models\Reservation;
 use App\Services\GuestPortalTokenService;
 use App\Services\MessageTemplateService;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 
 class AutomationActionExecutor
 {
@@ -44,6 +47,7 @@ class AutomationActionExecutor
             'deposit_reminder', 'send_deposit_reminder' => $this->queueDepositReminders($message, $rule, $actionIndex, $action, $context),
             'guest_portal_invitation', 'queue_guest_portal_invitation' => $this->queueGuestPortalInvitation($message, $rule, $actionIndex, $action, $context),
             'internal_notify' => $this->internalStaffNotifications->deliver($message, $rule, $actionIndex, $action, $context),
+            'queue_internal_communications' => $this->queueInternalCommunications($message, $rule, $actionIndex, $action, $context),
             default => throw new DomainException("Unsupported automation action [{$type}]."),
         };
     }
@@ -56,7 +60,7 @@ class AutomationActionExecutor
         array $action,
         array $context,
     ): void {
-        $propertyId = data_get($context, 'reservation.property_id') ?? ($action['property_id'] ?? null);
+        $propertyId = $this->propertyId($context) ?? ($action['property_id'] ?? null);
 
         if (! is_string($propertyId) || $propertyId === '') {
             throw new DomainException('Task automations require a reservation or property_id.');
@@ -95,8 +99,9 @@ class AutomationActionExecutor
 
         $guest = $this->guestForContext($context);
         $channel = (string) ($action['channel'] ?? 'email');
-        if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel)) {
-            $this->recordSuppressed($automationKey, $guest, data_get($context, 'reservation.id'), $channel, $message, $rule, $actionIndex, 'communication');
+        $propertyId = $this->propertyId($context);
+        if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel, $propertyId)) {
+            $this->recordSuppressed($automationKey, $guest, data_get($context, 'reservation.id'), $channel, $message, $rule, $actionIndex, 'communication', $this->purpose($action));
 
             return;
         }
@@ -104,12 +109,12 @@ class AutomationActionExecutor
         $communication = Communication::query()->firstOrCreate(
             ['automation_key' => $automationKey],
             [
-                'property_id' => data_get($context, 'reservation.property_id'),
-                'guest_id' => data_get($context, 'reservation.primary_guest_id'),
+                'property_id' => $propertyId,
+                'guest_id' => $guest?->id,
                 'reservation_id' => data_get($context, 'reservation.id'),
                 'channel' => $channel,
                 'direction' => 'outbound',
-                'purpose' => (string) ($action['purpose'] ?? 'transactional'),
+                'purpose' => $this->purpose($action)->value,
                 'status' => 'queued',
                 'subject' => $this->renderer->render($action['subject'] ?? null, $context),
                 'body' => $this->renderer->render($action['body'] ?? 'A reservation update is ready.', $context),
@@ -163,8 +168,8 @@ class AutomationActionExecutor
 
             $guest = $this->guestForContext($context);
             $channel = (string) ($action['channel'] ?? 'email');
-            if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel)) {
-                $this->recordSuppressed($automationKey, $guest, $reservationId, $channel, $message, $rule, $actionIndex, 'deposit_reminder', [
+            if ($guest !== null && $this->messageTemplates->isSuppressed($guest, $channel, $this->propertyId($context))) {
+                $this->recordSuppressed($automationKey, $guest, $reservationId, $channel, $message, $rule, $actionIndex, 'deposit_reminder', $this->purpose($action), [
                     'deposit_id' => $deposit->id,
                 ]);
 
@@ -179,7 +184,7 @@ class AutomationActionExecutor
                     'reservation_id' => $reservationId,
                     'channel' => $channel,
                     'direction' => 'outbound',
-                    'purpose' => (string) ($action['purpose'] ?? 'transactional'),
+                    'purpose' => $this->purpose($action)->value,
                     'status' => 'queued',
                     'subject' => $this->renderer->render($action['subject'] ?? 'Deposit reminder', $depositContext),
                     'body' => $this->renderer->render(
@@ -229,7 +234,7 @@ class AutomationActionExecutor
         if ($reservation->primaryGuest === null || ! $reservation->primaryGuest->email) {
             throw new DomainException('Guest portal invitations require a primary guest email address.');
         }
-        if ($this->messageTemplates->isSuppressed($reservation->primaryGuest, 'email')) {
+        if ($this->messageTemplates->isSuppressed($reservation->primaryGuest, 'email', $reservation->property_id)) {
             $this->recordSuppressed(
                 $automationKey,
                 $reservation->primaryGuest,
@@ -239,6 +244,7 @@ class AutomationActionExecutor
                 $rule,
                 $actionIndex,
                 'guest_portal_invitation',
+                $this->purpose($action),
             );
 
             return;
@@ -267,7 +273,7 @@ class AutomationActionExecutor
             'reservation_id' => $reservation->id,
             'channel' => 'email',
             'direction' => 'outbound',
-            'purpose' => (string) ($action['purpose'] ?? 'transactional'),
+            'purpose' => $this->purpose($action)->value,
             'status' => 'queued',
             'subject' => $this->renderer->render($action['subject'] ?? 'Your private lodge stay link', $invitationContext),
             'body' => $this->renderer->render(
@@ -327,6 +333,7 @@ class AutomationActionExecutor
         $reservation = is_string($reservationId) ? Reservation::query()->find($reservationId) : null;
 
         try {
+            $context = [...$context, 'communication_purpose' => $this->purpose($action)->value];
             $communication = $this->messageTemplates->queue(
                 $template,
                 $guest,
@@ -339,7 +346,7 @@ class AutomationActionExecutor
             if ($exception->getMessage() !== 'Communication to this recipient is suppressed.') {
                 throw $exception;
             }
-            $this->recordSuppressed($automationKey, $guest, $reservation?->id, $channel, $message, $rule, $actionIndex, $type, $extraMetadata);
+            $this->recordSuppressed($automationKey, $guest, $reservation?->id, $channel, $message, $rule, $actionIndex, $type, $this->purpose($action), $extraMetadata);
 
             return true;
         }
@@ -356,9 +363,70 @@ class AutomationActionExecutor
     /** @param array<string, mixed> $context */
     private function guestForContext(array $context): ?Guest
     {
-        $guestId = data_get($context, 'reservation.primary_guest_id');
+        $guestId = data_get($context, 'reservation.primary_guest_id') ?? data_get($context, 'proposal.primary_guest_id');
 
         return is_string($guestId) ? Guest::query()->find($guestId) : null;
+    }
+
+    /** @param array<string, mixed> $context */
+    private function propertyId(array $context): ?string
+    {
+        $propertyId = data_get($context, 'reservation.property_id')
+            ?? data_get($context, 'proposal.property_id')
+            ?? data_get($context, 'payload.property_id');
+
+        return is_string($propertyId) && $propertyId !== '' ? $propertyId : null;
+    }
+
+    /** @param array<string, mixed> $action @param array<string, mixed> $context */
+    private function queueInternalCommunications(
+        Outbox $message,
+        AutomationRule $rule,
+        int $actionIndex,
+        array $action,
+        array $context,
+    ): void {
+        $propertyId = $this->propertyId($context);
+        $roles = array_values(array_filter((array) ($action['roles'] ?? []), 'is_string'));
+        $purpose = $this->purpose($action);
+        if ($propertyId === null || $roles === [] || ! str_starts_with($purpose->value, 'internal_')) {
+            throw new DomainException('Internal communications require property scope, roles, and an internal purpose.');
+        }
+
+        Membership::query()->with('user')->where('is_active', true)->whereIn('role', $roles)
+            ->where(fn (Builder $query) => $query->whereNull('property_id')->orWhere('property_id', $propertyId))
+            ->get()->each(function (Membership $membership) use ($message, $rule, $actionIndex, $action, $context, $propertyId, $purpose): void {
+                $recipient = mb_strtolower(trim((string) $membership->user->email));
+                if ($recipient === '') {
+                    return;
+                }
+                $automationKey = $this->automationKey($message, $rule, $actionIndex, 'internal-'.$membership->user_id);
+                $communication = Communication::query()->firstOrCreate(
+                    ['automation_key' => $automationKey],
+                    [
+                        'property_id' => $propertyId,
+                        'reservation_id' => data_get($context, 'reservation.id'),
+                        'channel' => 'email',
+                        'direction' => 'outbound',
+                        'purpose' => $purpose->value,
+                        'status' => 'queued',
+                        'subject' => $this->renderer->render($action['subject'] ?? 'Lodge operations update', $context),
+                        'body' => $this->renderer->render($action['body'] ?? 'A role-scoped operational update is ready.', $context),
+                        'metadata' => [
+                            ...$this->metadata($message, $rule, $actionIndex, 'internal_communication'),
+                            'recipient' => $recipient,
+                            'recipient_user_id' => $membership->user_id,
+                            'recipient_role' => $membership->role->value,
+                        ],
+                    ],
+                );
+                if ($communication->wasRecentlyCreated) {
+                    $this->outbox->record('communication', $communication->id, 'communication.queued', [
+                        'communication_id' => $communication->id,
+                        'channel' => 'email',
+                    ]);
+                }
+            });
     }
 
     /** @param array<string, mixed> $extraMetadata */
@@ -371,6 +439,7 @@ class AutomationActionExecutor
         AutomationRule $rule,
         int $actionIndex,
         string $type,
+        CommunicationPurpose $purpose,
         array $extraMetadata = [],
     ): void {
         Communication::query()->firstOrCreate(
@@ -378,8 +447,10 @@ class AutomationActionExecutor
             [
                 'guest_id' => $guest->id,
                 'reservation_id' => $reservationId,
+                'property_id' => $reservationId === null ? null : Reservation::query()->whereKey($reservationId)->value('property_id'),
                 'channel' => $channel,
                 'direction' => 'outbound',
+                'purpose' => $purpose->value,
                 'status' => 'suppressed',
                 'subject' => null,
                 'body' => '',
@@ -393,5 +464,16 @@ class AutomationActionExecutor
                 ],
             ],
         );
+    }
+
+    /** @param array<string, mixed> $action */
+    private function purpose(array $action): CommunicationPurpose
+    {
+        $purpose = CommunicationPurpose::tryFrom((string) ($action['purpose'] ?? CommunicationPurpose::Transactional->value));
+        if ($purpose === null) {
+            throw new DomainException('Automation communication purpose is not an approved fixed purpose.');
+        }
+
+        return $purpose;
     }
 }

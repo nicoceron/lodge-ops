@@ -10,7 +10,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
+use Throwable;
 
 final class ReceiveCommunicationWebhook
 {
@@ -58,6 +58,7 @@ final class ReceiveCommunicationWebhook
             $normalized = $this->normalize($payload);
             try {
                 $event = CommunicationDeliveryEvent::query()->create([
+                    'property_id' => $connection->property_id,
                     'communication_provider_connection_id' => $connection->id,
                     'provider' => $connection->provider,
                     'provider_account_id' => $connection->account_id,
@@ -70,14 +71,16 @@ final class ReceiveCommunicationWebhook
                     'normalized_payload' => $normalized['payload'],
                     'processing_state' => 'pending',
                 ]);
-            } catch (QueryException) {
-                return CommunicationDeliveryEvent::query()
+            } catch (QueryException $exception) {
+                $event = CommunicationDeliveryEvent::query()
                     ->where('communication_provider_connection_id', $connection->id)
-                    ->where('provider_event_id', $providerEventId)->firstOrFail();
+                    ->where('provider_event_id', $providerEventId)->first();
+                if ($event === null) {
+                    throw $exception;
+                }
             }
 
-            DB::afterCommit(fn () => ProcessCommunicationDeliveryEvent::dispatch($event->tenant_id, $event->id)
-                ->onQueue((string) config('communications.provider.event_queue', 'provider-events')));
+            $this->enqueue($event);
 
             return $event;
         } finally {
@@ -85,6 +88,24 @@ final class ReceiveCommunicationWebhook
             if ($previousTenant !== null) {
                 $tenantContext->set($previousTenant, $previousMembership);
             }
+        }
+    }
+
+    private function enqueue(CommunicationDeliveryEvent $event): void
+    {
+        if ($event->processed_at !== null || ! in_array($event->processing_state, ['pending', 'failed'], true)) {
+            return;
+        }
+        if ($event->processing_state === 'failed') {
+            $event->forceFill(['processing_state' => 'pending', 'processing_error' => null])->save();
+        }
+
+        try {
+            ProcessCommunicationDeliveryEvent::dispatch($event->tenant_id, $event->id)
+                ->onQueue((string) config('communications.provider.event_queue', 'provider-events'));
+        } catch (Throwable $exception) {
+            // The immutable event remains pending for the scheduled sweeper or a provider redelivery.
+            report($exception);
         }
     }
 

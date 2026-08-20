@@ -4,6 +4,8 @@ use Illuminate\Support\Str;
 
 return [
 
+    'dashboard_enabled' => (bool) env('HORIZON_DASHBOARD_ENABLED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Horizon Name
@@ -225,7 +227,7 @@ return [
         'notifications' => [
             'connection' => 'redis', 'queue' => ['notifications'], 'balance' => 'auto',
             'autoScalingStrategy' => 'time', 'maxProcesses' => 3, 'maxTime' => 0, 'maxJobs' => 250,
-            'memory' => 128, 'tries' => 5, 'timeout' => 45, 'nice' => 0,
+            'memory' => 128, 'tries' => 5, 'timeout' => 90, 'nice' => 0,
         ],
         'automations' => [
             'connection' => 'redis', 'queue' => ['automations'], 'balance' => 'auto',

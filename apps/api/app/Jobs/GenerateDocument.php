@@ -9,6 +9,7 @@ use App\Models\GeneratedDocument;
 use App\Models\Tenant;
 use App\Services\Automation\OutboxRecorder;
 use App\Services\Documents\DocumentArtifactStore;
+use App\Services\Documents\QueueGeneratedDocumentEmail;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -55,8 +56,13 @@ final class GenerateDocument implements ShouldBeEncrypted, ShouldQueue
         return [(new WithoutOverlapping('document:'.$this->requestId))->expireAfter((int) config('documents.jobs.documents.overlap_expire_after'))];
     }
 
-    public function handle(DocumentRenderer $renderer, DocumentArtifactStore $artifacts, OutboxRecorder $outbox, TenantContext $context): void
-    {
+    public function handle(
+        DocumentRenderer $renderer,
+        DocumentArtifactStore $artifacts,
+        OutboxRecorder $outbox,
+        TenantContext $context,
+        QueueGeneratedDocumentEmail $emails,
+    ): void {
         $unscoped = DocumentGenerationRequest::withoutGlobalScopes()->findOrFail($this->requestId);
         $tenant = Tenant::query()->findOrFail($unscoped->tenant_id);
         $previous = $context->check() ? [$context->tenant(), $context->membership()] : null;
@@ -81,6 +87,11 @@ final class GenerateDocument implements ShouldBeEncrypted, ShouldQueue
                 return $request;
             }, 3);
             if ($request->status === DocumentGenerationStatus::Generated) {
+                $document = $request->generatedDocument()->first();
+                if ($document !== null && in_array($document->kind, ['payment_receipt', 'refund_receipt'], true)) {
+                    $emails->handleSystemReceipt($document);
+                }
+
                 return;
             }
 
@@ -88,12 +99,13 @@ final class GenerateDocument implements ShouldBeEncrypted, ShouldQueue
             $confirmation = data_get($request->source_snapshot, 'payload.reservation.confirmation', 'reservation');
             $stored = $artifacts->put($request->tenant_id, $request->id, $bytes, $request->kind->value.'-'.$confirmation.'.pdf');
 
-            DB::transaction(function () use ($request, $stored, $renderer, $outbox): void {
+            $document = DB::transaction(function () use ($request, $stored, $renderer, $outbox): GeneratedDocument {
                 $locked = DocumentGenerationRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
-                if ($locked->generatedDocument()->exists()) {
+                $existing = $locked->generatedDocument()->first();
+                if ($existing !== null) {
                     $locked->forceFill(['status' => DocumentGenerationStatus::Generated, 'completed_at' => now()])->save();
 
-                    return;
+                    return $existing;
                 }
                 $document = GeneratedDocument::query()->create([
                     'document_generation_request_id' => $locked->id,
@@ -124,7 +136,12 @@ final class GenerateDocument implements ShouldBeEncrypted, ShouldQueue
                 $outbox->record('generated_document', $document->id, 'document.generated', [
                     'document_id' => $document->id, 'request_id' => $locked->id, 'kind' => $locked->kind->value,
                 ]);
+
+                return $document;
             }, 3);
+            if (in_array($document->kind, ['payment_receipt', 'refund_receipt'], true)) {
+                $emails->handleSystemReceipt($document);
+            }
         } catch (Throwable $exception) {
             if (is_array($stored)) {
                 $artifacts->delete($stored['disk'], $stored['path']);

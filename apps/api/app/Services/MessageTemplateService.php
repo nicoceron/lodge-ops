@@ -124,12 +124,19 @@ class MessageTemplateService
             return false;
         }
 
+        return $this->isRecipientSuppressed($recipient, $channel, $propertyId);
+    }
+
+    public function isRecipientSuppressed(string $recipient, string $channel, ?string $propertyId = null): bool
+    {
+        $scopes = $propertyId === null ? ['*'] : ['*', $propertyId];
+
         return CommunicationSuppression::query()
             ->where('channel', $channel)
             ->where('recipient_hash', $this->recipientHash($recipient))
+            ->whereIn('scope_key', $scopes)
             ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
             ->whereNull('lifted_at')
-            ->when($propertyId, fn ($query) => $query->where(fn ($scope) => $scope->whereNull('property_id')->orWhere('property_id', $propertyId)))
             ->exists();
     }
 

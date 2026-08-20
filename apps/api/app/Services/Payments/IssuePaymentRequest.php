@@ -12,13 +12,18 @@ use App\Models\Deposit;
 use App\Models\PaymentRequest;
 use App\Models\Reservation;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\Communications\QueuePaymentRequestCommunication;
 use App\Services\FolioService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class IssuePaymentRequest
 {
-    public function __construct(private readonly FolioService $folio, private readonly OutboxRecorder $outbox) {}
+    public function __construct(
+        private readonly FolioService $folio,
+        private readonly OutboxRecorder $outbox,
+        private readonly QueuePaymentRequestCommunication $communications,
+    ) {}
 
     public function handle(
         Reservation $reservation,
@@ -86,6 +91,7 @@ final class IssuePaymentRequest
                 'amount_minor' => $amount,
                 'currency' => $locked->currency,
             ]);
+            $this->communications->handle($request, $token, $actorId);
 
             return new IssuedPaymentRequest($request, $token);
         }, 3);

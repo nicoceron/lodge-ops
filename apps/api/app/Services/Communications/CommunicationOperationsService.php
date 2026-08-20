@@ -4,6 +4,7 @@ namespace App\Services\Communications;
 
 use App\Models\Communication;
 use App\Models\CommunicationSuppression;
+use App\Models\DeliveryAttempt;
 use App\Models\Property;
 use App\Models\User;
 use App\Services\Automation\OutboxRecorder;
@@ -17,12 +18,27 @@ final class CommunicationOperationsService
 
     public function retry(User $actor, Communication $communication): Communication
     {
+        $actor->can('retry', $communication) || abort(403);
         if (! in_array($communication->status, ['failed', 'retry_pending', 'outcome_uncertain'], true)) {
             throw new DomainException('Only failed or uncertain deliveries may be retried.');
         }
 
-        return DB::transaction(function () use ($actor, $communication): Communication {
+        $result = DB::transaction(function () use ($actor, $communication): array {
             $locked = Communication::query()->whereKey($communication->id)->lockForUpdate()->firstOrFail();
+            $attempt = DeliveryAttempt::query()->where('communication_id', $locked->id)
+                ->orderByDesc('attempt')->lockForUpdate()->first();
+            if ($attempt?->status === 'outcome_uncertain'
+                && (($attempt->reconcile_after !== null && $attempt->reconcile_after->isPast())
+                    || $attempt->attempted_at->isBefore(now()->subHours((int) config('communications.provider.idempotency_window_hours', 24))))) {
+                $attempt->forceFill([
+                    'status' => 'reconciliation_required',
+                    'retry_state' => 'reconciliation_required',
+                    'safe_error' => 'Provider outcome remained uncertain beyond the idempotency window.',
+                ])->save();
+                $locked->forceFill(['status' => 'reconciliation_required'])->save();
+
+                return ['communication' => $locked, 'reconciliation_required' => true];
+            }
             $locked->forceFill([
                 'status' => 'queued',
                 'failed_at' => null,
@@ -39,12 +55,19 @@ final class CommunicationOperationsService
                 'actor_id' => $actor->id,
             ]);
 
-            return $locked;
+            return ['communication' => $locked, 'reconciliation_required' => false];
         }, 3);
+        if ($result['reconciliation_required']) {
+            throw new DomainException('The provider outcome is past the idempotency window and requires reconciliation.');
+        }
+
+        return $result['communication'];
     }
 
     public function newResend(User $actor, Communication $original): Communication
     {
+        $actor->can('newResend', $original) || abort(403);
+
         return DB::transaction(function () use ($actor, $original): Communication {
             $copy = Communication::query()->create([
                 'property_id' => $original->property_id,
@@ -81,12 +104,14 @@ final class CommunicationOperationsService
 
     public function testSend(User $actor, Property $property, string $recipient, string $subject, string $body): Communication
     {
+        $actor->can('testSend', [Communication::class, $property]) || abort(403);
+
         return DB::transaction(function () use ($actor, $property, $recipient, $subject, $body): Communication {
             $communication = Communication::query()->create([
                 'property_id' => $property->id,
                 'channel' => 'email',
                 'direction' => 'outbound',
-                'purpose' => 'transactional',
+                'purpose' => 'test',
                 'status' => 'queued',
                 'subject' => '[TEST] '.trim($subject),
                 'body' => "TEST MESSAGE — NOT A GUEST COMMUNICATION\n\n".$body,

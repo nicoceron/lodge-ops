@@ -60,6 +60,8 @@ Route::prefix('v1/guest-portal')->group(function (): void {
         Route::post('payment-evidence', [GuestPortalController::class, 'storePaymentEvidence']);
         Route::get('folio', [GuestPortalController::class, 'folio']);
         Route::post('survey', [GuestPortalController::class, 'storeSurvey']);
+        Route::get('communication-preferences', [GuestPortalController::class, 'communicationPreferences']);
+        Route::put('communication-preferences', [GuestPortalController::class, 'updateCommunicationPreference']);
         Route::get('generated-documents/{generatedDocument}/download', GuestGeneratedDocumentDownloadController::class);
     });
 });

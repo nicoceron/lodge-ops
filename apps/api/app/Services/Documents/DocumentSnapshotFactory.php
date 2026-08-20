@@ -59,7 +59,8 @@ final class DocumentSnapshotFactory
 
     private function assertSubject(DocumentKind $kind, Reservation $reservation, ?Payment $payment, ?ReservationChange $change, ?GuestPortalAcknowledgement $ack): void
     {
-        if (! in_array($reservation->status, [ReservationStatus::Confirmed, ReservationStatus::CheckedIn, ReservationStatus::CheckedOut], true)) {
+        if (! in_array($reservation->status, [ReservationStatus::Confirmed, ReservationStatus::CheckedIn, ReservationStatus::CheckedOut], true)
+            && ! in_array($kind, [DocumentKind::PaymentReceipt, DocumentKind::RefundReceipt], true)) {
             throw new DomainException('Documents require a confirmed or completed reservation.');
         }
         if ($kind === DocumentKind::PaymentReceipt && ($payment === null || $payment->reservation_id !== $reservation->id || ! in_array($payment->status, [PaymentStatus::Succeeded, PaymentStatus::Refunded], true))) {

@@ -79,6 +79,7 @@ class DocumentGenerationRequest extends TenantModel
         return $this->belongsTo(ReservationChange::class);
     }
 
+    /** @return HasOne<GeneratedDocument, $this> */
     public function generatedDocument(): HasOne
     {
         return $this->hasOne(GeneratedDocument::class);

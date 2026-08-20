@@ -237,6 +237,7 @@ final class PaymentService
                 'deposit_id' => $deposit?->id,
                 'amount_minor' => $locked->amount_minor,
             ]);
+            $this->requestProviderReceipt($reservation, $locked);
 
             return $locked->fresh(['reservation', 'deposits']);
         }, 3);

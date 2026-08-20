@@ -100,30 +100,52 @@ class ProcessCommunicationDeliveryEvent implements ShouldQueue
             return;
         }
 
-        $terminal = ['complained', 'suppressed', 'hard_bounced'];
-        $rank = ['queued' => 0, 'sending' => 1, 'provider_accepted' => 2, 'sent' => 3, 'delayed' => 3, 'soft_bounced' => 3, 'delivered' => 4, 'rejected' => 4, 'hard_bounced' => 5, 'suppressed' => 5, 'complained' => 6];
-        $current = (string) $communication->status;
-        if (! in_array($status, $terminal, true) && ($rank[$status] ?? 0) < ($rank[$current] ?? 0)) {
-            return;
+        $occurredAt = $event->occurred_at;
+        $precedence = $this->precedence($status);
+        $facts = [];
+        if ($status === 'sent') {
+            $facts['sent_at'] = $communication->sent_at === null || $occurredAt->isBefore($communication->sent_at)
+                ? $occurredAt : $communication->sent_at;
+        } elseif ($status === 'delivered') {
+            $facts['sent_at'] = $communication->sent_at ?? $occurredAt;
+            $facts['delivered_at'] = $communication->delivered_at === null || $occurredAt->isBefore($communication->delivered_at)
+                ? $occurredAt : $communication->delivered_at;
+        } elseif (in_array($status, ['rejected', 'hard_bounced'], true)) {
+            $facts['failed_at'] = $communication->failed_at === null || $occurredAt->isBefore($communication->failed_at)
+                ? $occurredAt : $communication->failed_at;
         }
 
-        $occurredAt = $event->occurred_at;
-        $fields = ['status' => $status];
-        if ($status === 'sent') {
-            $fields['sent_at'] = $occurredAt;
-        } elseif ($status === 'delivered') {
-            $fields['sent_at'] = $communication->sent_at ?? $occurredAt;
-            $fields['delivered_at'] = $occurredAt;
-        } elseif (in_array($status, ['rejected', 'hard_bounced'], true)) {
-            $fields['failed_at'] = $occurredAt;
+        if ($facts !== []) {
+            $attempt->forceFill($facts)->save();
+            $communication->forceFill($facts)->save();
         }
-        $attempt->forceFill($fields)->save();
-        $communication->forceFill($fields)->save();
+
+        $currentOccurredAt = $communication->status_occurred_at;
+        $currentPrecedence = max(
+            (int) $communication->status_precedence,
+            $this->precedence((string) $communication->status),
+        );
+        $mayAdvance = $currentOccurredAt === null
+            || $occurredAt->isAfter($currentOccurredAt)
+            || ($occurredAt->equalTo($currentOccurredAt) && $precedence > $currentPrecedence);
+        if ($mayAdvance && $precedence >= $currentPrecedence) {
+            $fields = [
+                'status' => $status,
+                'status_occurred_at' => $occurredAt,
+                'status_precedence' => $precedence,
+            ];
+            $attempt->forceFill($fields)->save();
+            $communication->forceFill($fields)->save();
+        }
 
         if (in_array($status, ['hard_bounced', 'complained', 'suppressed'], true)) {
             foreach (data_get($event->normalized_payload, 'recipient_hashes', []) as $recipientHash) {
                 CommunicationSuppression::query()->updateOrCreate(
-                    ['channel' => 'email', 'recipient_hash' => $recipientHash],
+                    [
+                        'scope_key' => $communication->property_id ?: '*',
+                        'channel' => 'email',
+                        'recipient_hash' => $recipientHash,
+                    ],
                     [
                         'property_id' => $communication->property_id,
                         'reason' => $status === 'hard_bounced' ? 'bounce' : ($status === 'complained' ? 'complaint' : 'provider_suppression'),
@@ -136,6 +158,24 @@ class ProcessCommunicationDeliveryEvent implements ShouldQueue
                 );
             }
         }
+    }
+
+    private function precedence(string $status): int
+    {
+        return match ($status) {
+            'queued' => 0,
+            'sending' => 5,
+            'provider_accepted' => 8,
+            'sent' => 10,
+            'delayed' => 20,
+            'soft_bounced' => 30,
+            'rejected' => 35,
+            'delivered' => 40,
+            'hard_bounced' => 60,
+            'suppressed' => 70,
+            'complained' => 80,
+            default => 0,
+        };
     }
 
     public function failed(?Throwable $exception): void
