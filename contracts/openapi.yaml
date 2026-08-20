@@ -1521,6 +1521,23 @@ paths:
       responses:
         '200': { description: Signed notification durably accepted; processing is asynchronous. }
         '401': { description: Invalid or stale provider signature. }
+  /integration-webhooks/{endpointKey}:
+    post:
+      tags: [Integrations]
+      operationId: receiveStandardIntegrationWebhook
+      security: []
+      description: Verifies the Standard Webhooks signature over the exact raw body, records one immutable safe receipt, and queues capability-specific processing.
+      parameters:
+        - { name: endpointKey, in: path, required: true, schema: { type: string, minLength: 48, maxLength: 128 } }
+        - { name: webhook-id, in: header, required: true, schema: { type: string } }
+        - { name: webhook-timestamp, in: header, required: true, schema: { type: string, pattern: '^\d{10}$' } }
+        - { name: webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '202': { description: Verified event receipt accepted; duplicates return the original receipt identity. }
+        '401': { description: Endpoint, capability, signing secret, or signature was invalid or stale. }
   /proposals:
     get:
       tags: [Proposals]
@@ -1710,10 +1727,183 @@ paths:
       operationId: configureIntegration
       parameters:
         - $ref: '#/components/parameters/TenantId'
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IntegrationConnectionInput' }
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationConnectionHealth
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      responses:
+        '200': { description: Safe connection identity, health, lag, backlog, latency, circuit and scheduler-heartbeat projection. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/{connection}/test:
+    post:
+      tags: [Integrations]
+      operationId: testIntegrationConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [capability], properties: { capability: { $ref: '#/components/schemas/IntegrationCapability' } } } } }
+      responses:
+        '200': { description: Capability-specific connection test result. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}/state:
+    post:
+      tags: [Integrations]
+      operationId: changeIntegrationConnectionState
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [action, reason], properties: { action: { type: string, enum: [enable, disable, revoke] }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: Connection state changed and audited. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/{connection}/rotate-secret:
+    post:
+      tags: [Integrations]
+      operationId: rotateIntegrationSecretReference
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [secret_reference, reason], properties: { secret_reference: { type: string, maxLength: 500 }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: Secret-manager reference rotated; plaintext is never accepted. }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}/rotate-endpoint:
+    post:
+      tags: [Integrations]
+      operationId: rotateIntegrationEndpointKey
+      description: Returns the new opaque raw endpoint key exactly once. The response is deliberately excluded from durable response replay storage.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [reason], properties: { overlap_minutes: { type: integer, minimum: 0, maximum: 1440, default: 15 }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: New endpoint key issued once with version and overlap end. }
+        '409': { description: Idempotency identity already completed; its raw key is not retained. }
+  /integrations/{connection}/runs:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationRunsForConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Paginated sync runs and safe item outcomes. }
+    post:
+      tags: [Integrations]
+      operationId: startIntegrationRun
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/IntegrationRunInput' } } }
+      responses:
+        '202': { description: Capability-specific run queued from its committed cursor. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integration-runs:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationRuns
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Property-authorized paginated integration runs. }
+  /integrations/{connection}/events:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationEvents
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Immutable event facts with safe normalized snapshots and dispositions. }
+  /integration-events/{event}/replay:
+    post:
+      tags: [Integrations]
+      operationId: replayIntegrationEvent
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: Terminal event replay queued and audited. }
+        '409': { description: Original event is still active. }
+  /integrations/{connection}/dead-letters:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationDeadLetters
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Poison and retry-exhausted facts with safe errors and replay history. }
+  /integration-dead-letters/{deadLetter}/replay:
+    post:
+      tags: [Integrations]
+      operationId: replayIntegrationDeadLetter
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: deadLetter, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: Terminal item or event replay queued and audited. }
+        '409': { description: Original processing remains active. }
+  /integrations/{connection}/mappings:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationMappings
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Versioned mapping facts, validity and conflict state. }
+  /integrations/{connection}/reconcile:
+    post:
+      tags: [Integrations]
+      operationId: reconcileIntegrationConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '200': { description: Open dead letters projected into owned reconciliation work and operation audited. }
   /organizations:
     get:
       tags: [CRM]
@@ -2005,6 +2195,17 @@ components:
       required: false
       description: Tenant-scoped opaque key for safely retried commands.
       schema: { type: string, minLength: 16, maxLength: 128 }
+    IntegrationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Required tenant-scoped opaque identity for every externally retried integration command.
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    IntegrationConnectionId:
+      name: connection
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     Search:
       name: search
       in: query
@@ -2051,6 +2252,15 @@ components:
           schema:
             type: object
             additionalProperties: true
+    OperationalReason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 3, maxLength: 500 }
   responses:
     GenericSuccess:
       description: Command completed successfully.
@@ -2092,6 +2302,39 @@ components:
                       type: array
                       items: { type: string }
   schemas:
+    IntegrationCapability:
+      type: string
+      enum: [payment.hosted_checkout, reservations.import, accounting.journal_export, webhook.inbound, webhook.outbound]
+    IntegrationConnectionInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string, maxLength: 160 }
+        type: { type: string, enum: [email, calendar, accounting, payment, signature, webhook] }
+        property_id: { type: [string, 'null'], format: uuid }
+        provider: { type: string, maxLength: 80 }
+        product: { type: string, maxLength: 80 }
+        external_account_id: { type: string, maxLength: 160 }
+        environment: { type: string, enum: [sandbox, production, test] }
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/IntegrationCapability' }
+        configuration:
+          type: object
+          additionalProperties: true
+          description: Non-secret provider configuration. Secret-like keys are rejected unless they end in _reference.
+        secret_reference:
+          type: [string, 'null']
+          maxLength: 500
+          description: Approved vault, cloud-secret-manager, or environment reference; never a credential value.
+    IntegrationRunInput:
+      type: object
+      required: [capability]
+      properties:
+        capability: { type: string, enum: [reservations.import, accounting.journal_export, webhook.outbound] }
+        property_id: { type: [string, 'null'], format: uuid }
+        trigger: { type: string, enum: [manual, scheduled, reconciliation, resume], default: manual }
     DocumentRequestInput:
       type: object
       required: [kind]

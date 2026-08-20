@@ -23,10 +23,10 @@ final class SensitivePaymentDataGuard
                 ]);
             }
 
-            if (preg_match('/(?:^|\.)(?:id|[a-z_]+_id|phone|sha256|[a-z_]*(?:checksum|hash))$/i', $path) === 1) {
+            if (preg_match('/(?:^|\.)(?:id|[a-z_]+_id|phone|sha256|storage_(?:path|key)|[a-z_]*(?:checksum|hash))$/i', $path) === 1) {
                 continue;
             }
-            if (preg_match('/(?:^|\.)deduplication_key$/i', $path) === 1 && preg_match('/\A[0-9a-f]{64}\z/i', $text) === 1) {
+            if (preg_match('/(?:^|\.)(?:deduplication|idempotency)_key$/i', $path) === 1 && preg_match('/\A[0-9a-f]{64}\z/i', $text) === 1) {
                 continue;
             }
             $withoutUuids = preg_replace('/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i', '', $text) ?? $text;
@@ -91,6 +91,14 @@ final class SensitivePaymentDataGuard
     private function strings(mixed $value, string $path): iterable
     {
         if (is_string($value)) {
+            if (in_array($value[0] ?? '', ['{', '['], true)) {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    yield from $this->strings($decoded, $path);
+
+                    return;
+                }
+            }
             yield [$path, $value];
 
             return;

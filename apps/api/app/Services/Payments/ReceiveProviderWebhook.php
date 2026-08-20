@@ -6,24 +6,21 @@ use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Data\Payments\WebhookRequest;
 use App\Enums\ProviderEventState;
 use App\Jobs\ProcessProviderEventJob;
-use App\Models\IntegrationConnection;
 use App\Models\ProviderEvent;
-use App\Models\Tenant;
-use App\Support\Tenancy\TenantContext;
+use App\Services\Integrations\EndpointKeyService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class ReceiveProviderWebhook
 {
-    public function __construct(private readonly PaymentGatewayFactory $gateways) {}
+    public function __construct(private readonly PaymentGatewayFactory $gateways, private readonly EndpointKeyService $endpointKeys) {}
 
     /** @param array<string, string> $headers @param array<string, string> $query */
     public function handle(string $webhookKey, string $rawBody, array $headers, array $query): ProviderEvent
     {
-        $connection = IntegrationConnection::withoutGlobalScopes()
-            ->where('type', 'payment')->where('payment_webhook_key', $webhookKey)->firstOrFail();
-        app(TenantContext::class)->set(Tenant::query()->findOrFail($connection->tenant_id));
+        $connection = $this->endpointKeys->resolveConnection($webhookKey);
+        abort_unless($connection->type === 'payment', 404);
         $verified = $this->gateways->for($connection)->verifyWebhook(new WebhookRequest($rawBody, $headers, $query));
         $checksum = hash('sha256', $rawBody);
 

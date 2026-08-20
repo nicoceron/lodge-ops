@@ -340,6 +340,12 @@ return new class extends Migration
         foreach (DB::table('integration_connections')->where('type', 'payment')->get(['id', 'configuration']) as $connection) {
             $configuration = is_string($connection->configuration) ? json_decode($connection->configuration, true) : $connection->configuration;
             $key = is_array($configuration) ? ($configuration['webhook_key'] ?? null) : null;
+            if ((! is_string($key) || $key === '') && Schema::hasTable('integration_endpoint_keys')) {
+                $key = DB::table('integration_endpoint_keys')
+                    ->where('integration_connection_id', $connection->id)
+                    ->orderByDesc('version')
+                    ->value('key_hash');
+            }
             if (is_string($key) && $key !== '') {
                 DB::table('integration_connections')->where('id', $connection->id)->update(['payment_webhook_key' => $key]);
             }

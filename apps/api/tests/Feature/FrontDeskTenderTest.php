@@ -324,7 +324,14 @@ class FrontDeskTenderTest extends TestCase
         $this->tenantEnvironment(MembershipRole::Finance);
         app(SensitivePaymentDataGuard::class)->assertSafe(['phone' => '+4477009000007']);
         app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => hash('sha256', 'safe-machine-key')]);
-        $this->addToAssertionCount(2);
+        app(SensitivePaymentDataGuard::class)->assertSafe(['price_snapshot' => json_encode(['amount_minor' => 14_000, 'tax_minor' => 2_000], JSON_THROW_ON_ERROR)]);
+        $this->addToAssertionCount(3);
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(['metadata' => json_encode(['note' => '4111 1111 1111 1111'], JSON_THROW_ON_ERROR)]);
+            $this->fail('Nested JSON strings must not bypass PAN detection.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payload.metadata.note', $exception->errors());
+        }
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => '1234567890128']);
             $this->fail('Only a complete SHA-256 digest may bypass PAN detection for a deduplication key.');

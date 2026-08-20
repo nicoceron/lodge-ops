@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Contracts\Documents\DocumentRenderer;
 use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
+use App\Contracts\Integrations\SecretReferenceResolver;
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Integrations\Payments\MercadoPago\DefaultPaymentGatewayFactory;
+use App\Integrations\Secrets\EnvironmentSecretReferenceResolver;
 use App\Models\Allocation;
 use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
@@ -31,6 +33,16 @@ use App\Models\Guest;
 use App\Models\GuestMergeAlias;
 use App\Models\GuestPaymentEvidence;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationConnectionCapability;
+use App\Models\IntegrationDeadLetter;
+use App\Models\IntegrationEndpointKey;
+use App\Models\IntegrationEvent;
+use App\Models\IntegrationMapping;
+use App\Models\IntegrationOperation;
+use App\Models\IntegrationReconciliation;
+use App\Models\IntegrationSyncCursor;
+use App\Models\IntegrationSyncRun;
+use App\Models\IntegrationSyncRunItem;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\MessageTemplateVersion;
@@ -71,6 +83,8 @@ use App\Models\VoucherRedemptionEvent;
 use App\Observers\TenantAuditObserver;
 use App\Services\Documents\SpatieDocumentRenderer;
 use App\Services\Fiscal\DatabaseFiscalSourceSnapshotFactory;
+use App\Services\Integrations\CapabilityPortRegistry;
+use App\Services\Integrations\EndpointKeyRuntimeStore;
 use App\Services\Payments\SensitivePaymentDataGuard;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -91,6 +105,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(SensitivePaymentDataGuard::class, fn (): SensitivePaymentDataGuard => new SensitivePaymentDataGuard);
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
+        $this->app->bind(SecretReferenceResolver::class, EnvironmentSecretReferenceResolver::class);
+        $this->app->singleton(CapabilityPortRegistry::class);
+        $this->app->scoped(EndpointKeyRuntimeStore::class);
         $this->app->bind(FiscalSourceSnapshotFactory::class, DatabaseFiscalSourceSnapshotFactory::class);
     }
 
@@ -99,6 +116,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $contractFake = 'Tests\\Fakes\\MixedIntegrationReservationPort';
+        if ($this->app->environment('testing') && class_exists($contractFake)) {
+            $this->app->make(CapabilityPortRegistry::class)->register(
+                'contract_fake',
+                'mixed_reservations',
+                'reservations.import',
+                $this->app->make($contractFake),
+            );
+        }
+
         RateLimiter::for('guest-link', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('guest-link:'.$request->ip()));
         RateLimiter::for('guest-web', fn (Request $request): Limit => Limit::perMinute(120)
@@ -111,6 +138,8 @@ class AppServiceProvider extends ServiceProvider
             ->by('payment-request-link:'.$request->ip()));
         RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(240)
             ->by('payment-webhook:'.$request->ip()));
+        RateLimiter::for('integration-webhook', fn (Request $request): Limit => Limit::perMinute(240)
+            ->by('integration-webhook:'.$request->ip()));
         RateLimiter::for('commercial-voucher', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('commercial-voucher:'.$request->ip()));
 
@@ -143,6 +172,16 @@ class AppServiceProvider extends ServiceProvider
             GuestMergeAlias::class,
             GuestPaymentEvidence::class,
             IntegrationConnection::class,
+            IntegrationConnectionCapability::class,
+            IntegrationDeadLetter::class,
+            IntegrationEndpointKey::class,
+            IntegrationEvent::class,
+            IntegrationMapping::class,
+            IntegrationOperation::class,
+            IntegrationReconciliation::class,
+            IntegrationSyncCursor::class,
+            IntegrationSyncRun::class,
+            IntegrationSyncRunItem::class,
             Membership::class,
             MessageTemplate::class,
             MessageTemplateVersion::class,

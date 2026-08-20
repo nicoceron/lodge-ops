@@ -39,3 +39,9 @@ Schedule::command('payments:recover-refunds --older-than=15 --limit=100')
     ->everyTenMinutes()
     ->withoutOverlapping(15)
     ->onOneServer();
+
+Schedule::command('integrations:heartbeat')
+    ->name('integrations:heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer();

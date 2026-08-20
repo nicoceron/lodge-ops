@@ -13,6 +13,7 @@ use App\Models\PaymentAttempt;
 use App\Models\PaymentRequest;
 use App\Models\Reservation;
 use App\Services\FolioService;
+use App\Services\Integrations\EndpointKeyService;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,11 @@ use Throwable;
 
 final class CreateProviderCheckout
 {
-    public function __construct(private readonly PaymentGatewayFactory $gateways, private readonly FolioService $folio) {}
+    public function __construct(
+        private readonly PaymentGatewayFactory $gateways,
+        private readonly FolioService $folio,
+        private readonly EndpointKeyService $endpointKeys,
+    ) {}
 
     public function handle(PaymentRequest $request, IntegrationConnection $connection, bool $conversionAccepted = false, ?string $acceptedRateId = null): PaymentAttempt
     {
@@ -97,10 +102,7 @@ final class CreateProviderCheckout
         try {
             $configuration = $connection->configuration ?? [];
             $base = rtrim((string) data_get($configuration, 'return_url_base', config('app.url')), '/');
-            $webhookKey = (string) data_get($configuration, 'webhook_key');
-            if ($webhookKey === '') {
-                throw new DomainException('The payment webhook key is not configured.');
-            }
+            $webhookKey = $this->endpointKeys->rawForOutbound($connection);
             $hosted = $this->gateways->for($connection)->createHostedCheckout(new CheckoutRequest(
                 $attempt->external_reference,
                 $attempt->idempotency_key,

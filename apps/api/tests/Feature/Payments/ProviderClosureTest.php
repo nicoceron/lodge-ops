@@ -657,7 +657,10 @@ class ProviderClosureTest extends TestCase
         $this->assertSame($attempt->environment, DB::table('payments')->where('id', $payment->id)->value('environment'));
         $this->assertSame($attempt->provider_account, DB::table('payments')->where('id', $payment->id)->value('provider_account'));
         $this->assertSame($attempt->environment, DB::table('settlement_entries')->where('source_id', 'migration-payment')->value('environment'));
-        $this->assertSame(str_repeat('w', 48), DB::table('integration_connections')->where('id', $attempt->integration_connection_id)->value('payment_webhook_key'));
+        $expectedEndpointIdentity = Schema::hasTable('integration_endpoint_keys')
+            ? hash('sha256', str_repeat('w', 48))
+            : str_repeat('w', 48);
+        $this->assertSame($expectedEndpointIdentity, DB::table('integration_connections')->where('id', $attempt->integration_connection_id)->value('payment_webhook_key'));
     }
 
     public function test_property_scoped_finance_cannot_reconcile_or_recover_other_property_records(): void
