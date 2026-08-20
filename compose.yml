@@ -5,6 +5,8 @@ x-api-common: &api-common
     context: .
     dockerfile: docker/api.Dockerfile
   working_dir: /app
+  env_file:
+    - ./apps/api/.env
   environment:
     APP_ENV: local
     APP_NAME: Inn
@@ -110,7 +112,7 @@ services:
 
   worker:
     <<: *api-common
-    command: php artisan queue:work --queue=critical,documents,automations,default,notifications,integrations,reports --tries=3 --timeout=180
+    command: php artisan queue:work --queue=critical,provider-events,documents,automations,default,notifications,integrations,reports --tries=3 --timeout=180
     depends_on:
       postgres:
         condition: service_healthy

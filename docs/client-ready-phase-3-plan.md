@@ -1,78 +1,78 @@
 # Client-ready phase 3 implementation plan
 
-Date: 2026-08-18  
-Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [P3-03 granular plan](p3-03-documents-exports-implementation-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
+Date: 2026-08-20
+Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 2 plan](client-ready-phase-2-plan.md), [P3-03 granular plan](p3-03-documents-exports-implementation-plan.md), [P3-06A online payment plan](p3-06-mercado-pago-payments-implementation-plan.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md), [reference benchmark](reference-code-quality-benchmark.md), [UAT ledger](client-uat-ledger.md)
 
 ## Current release truth
 
-N2, P3-01, P3-02, and P3-03 are implemented and independently re-verified:
+N2, P3-01, P3-02, P3-03, and the software-controlled P3-06A closure are implemented and independently re-verified:
 
-- The fast local run reports 274 passed, 6 production-engine checks skipped by design, and 1,921 assertions across 280 tests.
-- The isolated PostgreSQL 18 gate reports 280 tests, 1 container source-tree check skipped, and 1,897 assertions, including real row-lock races for refund request versus reversal, concurrent refund completion/idempotency claims, payment-origin constraints, document/export request races, and the separated secure-link limiter regression.
-- Seven authenticated Playwright tests pass, including the N2 guarded-change/refund loop, the continuous P3-02 staff → guest → finance → operations → survey journey, and the P3-03 real-artifact journey with role isolation and a 390×844 guest viewport.
-- Pint, PHPStan, ESLint, TypeScript, OpenAPI verification, Docker/runtime health, and the authenticated client suite pass.
+- P3-03 merged through PR #7 as `e459935`; `main` and `origin/main` are synchronized and the feature branch was deleted.
+- P3-06A is merge-ready on `d861ac2` under the release owner's Colombia/MCO + COP decision. Argentina/MLA + ARS is deferred regional certification, not a code fork or current merge gate.
+- SQLite reports 325 tests, 310 passed, 15 expected PostgreSQL-only skips, and 2,396 assertions. PostgreSQL reports 325 tests, 324 passed, 1 expected host-path skip, and 2,433 assertions.
+- Authenticated Playwright passes 7/7 with the separately gated provider test intentionally skipped; public Playwright passes 4/4; the explicit provider Compose journey passes 1/1; GitHub CI passes 8/8.
+- Pint, PHPStan, ESLint, TypeScript, OpenAPI verification, Docker/runtime health, audits, and secret scanning pass.
 - Reservation creation is quote-authoritative and guarded changes are append-only, policy-authorized, conflict checked, and idempotent at their command endpoints.
 - Cancellation tiers use the property's local calendar date with UTC audit instants and DST coverage; staff/API-created card and transfer rows are explicitly manual-origin records; an open or completed refund blocks the legacy full-payment reversal path.
 - Identical guest evidence retries are exact-once, secure-link and authenticated guest throttles are isolated, early checkout enables post-stay feedback, and Operations can perform the resource-housekeeping work required to close the stay.
 
 This does **not** finish the client product. The remaining critical path is:
 
-```mermaid
-flowchart LR
-    A["N2.1 money and cutoff hardening"] --> B["Complete manual-transfer and stay UAT"]
-    B --> C["Real documents and exports"]
-    C --> D["Production communications and scheduling"]
-    D --> E["Private storage, deployment, and recovery"]
-    E --> F["One selected online gateway"]
-    F --> G["One selected external integration at a time"]
-```
+After P3-06A merges, Agents 01, 03, 04, 05, and 10 may start in parallel. Agent 05 merges after 04; Agent 02 follows 01; Agent 06 follows 04; Agent 07 follows 04 and 06; Agent 08 follows 06 but finalizes after 07; Agent 09 follows 03, 07, and 08. Agent 11 follows 10, and Agent 12 follows 01 and 03. Agent 13 may begin runtime/ADR work after 03 but merges only after 02, 09, 10, 11, 12, and in-scope 04B. Agent 14 follows 02, 04B or its formal deferment, 05, 09, 11, 12, and 13. Agent 15 is last, after every required slice or written deferment.
 
 ## Gap register
 
 | Area | What is real now | Remaining implementation gap |
 | --- | --- | --- |
-| N2 guarded changes | Date amendment, room assignment/move/swap, property-local cancellation/no-show fee, internal refund request/fail/complete, refund/reversal collision protection, explicit payment origins, concurrent PostgreSQL and API replay coverage, change ledger, Filament/browser evidence | Dedicated remaining-amount correction command and provider refund execution remain separate; both are deferred until their selected financial workflow/provider slice |
+| N2 guarded changes | Date amendment, room assignment/move/swap, property-local cancellation/no-show fee, internal refund request/fail/complete, refund/reversal collision protection, explicit payment origins, concurrent PostgreSQL and API replay coverage, change ledger, Filament/browser evidence | Provider refund execution, authoritative recovery, retry, exact-once completion, and receipt generation are implemented in P3-06A; only the generic remaining-amount correction workflow remains separate |
 | Client closed loop | One continuous browser journey persists pricing/allocation, guest pre-arrival/document/evidence, finance correction/approval, check-in/task/extra/checkout/settlement/folio close/housekeeping, survey, role denial, property isolation, expired/replayed links, retry behavior, and a phone viewport; the P3-03 journey additionally downloads and parses queued PDF/CSV/XLSX artifacts across staff and guest surfaces | Production communications, scheduling, managed object storage, and recovery remain P3-04/P3-05 |
-| Manual payments | Exact-once evidence approval, correction request without balance mutation, private finance preview, selected-deposit application, manual payment reconciliation, and zero-balance browser evidence | Cash controls/receipts if cash is in scope and production scanning/storage/retention remain separate slices |
+| Manual payments | Exact-once evidence approval, correction request without balance mutation, private finance preview, selected-deposit application, manual payment reconciliation, and zero-balance browser evidence | Cash controls, cash/standalone-terminal receipts, and external-refund evidence remain Agent 01; production scanning/storage/retention remains Agent 12/13 work |
 | Documents | Trusted versioned templates, immutable canonical snapshots, queued real-PDF rendering, parser/integrity checks, private authorized staff/guest downloads, email intent, retry/failure state, replacement lineage, and confirmation/itinerary/folio/payment/refund/waiver outputs | Jurisdiction-gated fiscal invoice issuance remains deferred until legal entity, numbering, tax, and cancellation rules are approved |
 | Exports | Eight tenant/property-scoped definitions, queued CSV/XLSX generation, formula neutralization, property-local half-open filters, private authorized download, row/integrity metadata, retry, expiry, and ledger-preserving purge | Production-scale performance sizing and managed private object storage remain P3-05 |
 | Communications | Local Laravel email transport, templates, suppressions, delivery attempts, outbox, worker, scheduler | Production provider, provider message/event IDs, delivery/bounce/complaint webhooks, preview/test-send/replay UI, failure queue, production supervision |
-| Scheduling | UTC scheduler with `withoutOverlapping()` and `onOneServer()` | Named lock TTLs, target occurrences persisted in UTC, property-local boundary and DST tests, backoff/timeouts/failed-job alerts, Horizon or equivalent production supervision |
+| Scheduling | P3-06A includes named one-server expiry, event-lease, and refund-recovery schedules | Cross-product delivery scheduling, queue supervision, alerts, and production observability remain Agent 03/13 work |
 | Production | Healthy Compose stack | Private object storage, managed data services, secrets, TLS, monitoring, alerting, logs, malware service, backup/restore rehearsal, rollback/incident/privacy runbooks |
-| Online gateway | No provider transaction model or execution | Provider choice, hosted checkout, attempts/events/refunds/settlements, raw-body signature verification, duplicate/reordered callback handling, disputes, receipts, payout reconciliation |
-| Direct booking | Public marketing site only | Conditional public availability/quote/hold/consent/payment/recovery flow using the same Inn services |
-| Integrations | Configuration records, local mail, and one-way private iCalendar | Adapter execution, sync runs/items/cursors, mappings, signed webhooks, retry/dead letter/replay, health, drift detection, reconciliation for each selected provider |
+| Payment requests/links | Inn-owned immutable payment requests with opaque revocable/rotatable links, delivery audit, exact amount/currency, request/attempt reuse, terminal states, and no emailed provider URL | Delivery-provider activation and broader operational tender workflows remain later slices |
+| Online gateway | Mercado Pago Checkout Pro test-mode adapter; account/environment-scoped attempts and events; authoritative payment/refund recovery; disputes; immutable settlement/report revisions; receipts; and Finance variance/exception queues | Colombia/MCO + COP is accepted for this merge. Argentina/MLA + ARS remains regional certification; provider-origin signed delivery through the final public HTTPS endpoint and production merchant report/payout evidence remain activation/final-certification gates |
+| Front-desk tenders | Manual payments exist but do not yet have full channel/entry-mode, external-terminal detail or cash-shift controls | Truthful bank-transfer/cash/standalone-terminal channels, typed receipt-safe details, cash open/close/variance, append-only external refund evidence and browser UAT |
+| Card-present and QR | No terminal registry or provider execution | Mercado Pago Point/QR Orders integration, one active order per terminal, signed event plus lookup, virtual/sandbox coverage and supervised real-hardware payment/refund/settlement UAT |
+| Direct booking | Public marketing site only | Public availability/quote/hold/consent/payment/recovery flow using the same Inn services remains in scope unless formally deferred |
+| Integrations | Configuration records, local mail, one-way private iCalendar, and the Mercado Pago REST/webhook/refund adapter | Non-payment connectors still need sync runs/items/cursors, mappings, signed webhooks, retry/dead letter/replay, health, drift detection, and reconciliation |
 
 ## Branch and pull-request sequence
 
-P3-01, P3-02, and the P3-03 foundation package are merged into `main` and `origin/main`; the P3-03 delivery branch starts from `1f0e383`. Phase 3 must not be implemented as one long-lived mixed branch.
+P3-01, P3-02, and P3-03 are merged into `main` and `origin/main` through `e459935`. Phase 3 must not be implemented as one long-lived mixed branch. Slice numbers are durable requirement identifiers, not a prohibition on executing the now-selected gateway before P3-04/P3-05.
 
-The active branch is:
+The active planning and implementation branch is:
 
 ```text
-codex/p3-03-documents-exports
+codex/p3-06-payment-gateway-mercado-pago
 ```
 
 Branch rules:
 
 1. Each P3 slice gets one branch and one reviewable pull request.
 2. A branch starts from the latest verified `main`; it does not start from another unmerged P3 branch unless an explicit dependency requires stacking.
-3. The branch contains its service/schema/API/Filament or portal changes, tests, OpenAPI updates, UAT evidence, and status-document update together.
+3. Feature branches contain their slice evidence and granular-plan/runbook updates; only the coordinator finalizes `client-ready-phase-3-plan.md`, `client-uat-ledger.md`, and `feature-matrix.md`.
 4. Do not begin the next slice merely because the current code compiles. Merge only after the slice's real journey and failure-path gates pass.
 5. Preserve synthetic UAT history through normal lifecycle behavior. Do not add database cleanup that deletes financial or audit evidence to make a branch look clean.
 
-Planned branch order:
+Branch register and current execution order:
 
 | Slice | Branch | Boundary |
 | --- | --- | --- |
 | P3-01 | `codex/p3-01-financial-temporal-hardening` | Cancellation cutoff, refund/reversal collision, payment origin truth, N2 concurrency and API replay tests only |
 | P3-02 | `codex/p3-02-client-closed-loop-uat` | Guest evidence, finance approval, stay/folio/survey, role and mobile state-changing journeys |
 | P3-03 | `codex/p3-03-documents-exports` | Generated artifacts, receipts/credit notes, private download/email, queued CSV/XLSX |
-| P3-04 | `codex/p3-04-production-communications` | Production mail events, scheduling, retries, failure work queues, queue supervision |
-| P3-05 | `codex/p3-05-production-readiness` | Storage, deployment, monitoring, backup/restore, security and handoff |
-| P3-06 | `codex/p3-06-payment-gateway-<provider>` | One selected gateway only; replace `<provider>` after the merchant decision |
-| P3-07 | `codex/p3-07-direct-booking` | Conditional public booking scope only |
-| P3-08 | `codex/p3-08-integration-<provider>` | Integration execution platform plus one selected connector |
+| P3-06A — merge-ready | `codex/p3-06-payment-gateway-mercado-pago` | Software-controlled closure complete; release-owner-accepted MCO/COP provider journey; MLA/ARS regional and production-origin final-HTTPS delivery deferred to later certification. |
+| P3-06B — after P3-06A | `codex/p3-06b-front-desk-tenders` | Truthful cash, bank-transfer and standalone external-terminal recording, cash close/variance, receipts and manual external refunds |
+| P3-06C — after P3-06B | `codex/p3-06c-mercado-pago-point-qr` | Integrated Point and QR Orders, terminal/POS registry, virtual/sandbox tests and real-hardware UAT |
+| P3-04 — Agent 03 after P3-06A | `codex/p3-04-production-communications` | Production mail events, scheduling, retries, failure work queues, queue supervision |
+| Commercial rules — Agent 04 after P3-06A | `codex/p3-commercial-rules` | Versioned pricing, promotion, tax-input, quote, and amendment rules |
+| Operational closure — Agent 05 after P3-06A, merge after Agent 04 | `codex/p3-operational-acceptance` | Remaining durable client operational gaps and UAT |
+| Direct booking — Agents 06–09 | `codex/p3-07*` | Contract, domain/API, public UX, then integration closure according to the execution graph |
+| Integrations — Agents 10–11 | `codex/p3-08*` | Execution kernel, then the default real Standard-Webhooks-compatible connector when no commercial provider is selected |
+| Private storage/runtime/recovery — Agents 12–15 | `codex/p3-05*` and certification | Private storage, late runtime integration, restore/handoff, and final certification after all named dependencies |
 
 After a slice merges:
 
@@ -139,7 +139,7 @@ Do not delete synthetic UAT financial/history rows to make reruns look clean. Us
 
 ### P3-03 — real documents, receipts, credit notes, and exports
 
-Status: **implemented and verified on `codex/p3-03-documents-exports`; the [granular P3-03 implementation plan](p3-03-documents-exports-implementation-plan.md) records the executable evidence and release gates.**
+Status: **merged through PR #7 as `e459935`; the [granular P3-03 implementation plan](p3-03-documents-exports-implementation-plan.md) records the executable evidence and release gates.**
 
 Build on the existing models without pretending supplied bytes are rendered PDFs:
 
@@ -171,12 +171,17 @@ Follow the current [Laravel 13 queue](https://laravel.com/docs/13.x/queues) and 
 - Rehearse database and object restore together; record RPO/RTO and evidence. Test deploy, migration rollback strategy, application rollback, worker restart, key rotation, incident handling, and disaster recovery.
 - Run the complete state-changing UAT against a production-like deployment and produce a handoff checklist.
 
-### P3-06 — one provider-backed online payment integration
+### P3-06A — Inn payment requests/links and one provider-backed online integration
 
-This starts only when the client confirms merchant legal entity/country, USD/ARS charging, settlement currencies/accounts, card-present needs, fees, tax-receipt behavior, sandbox owner, and refund/dispute operations.
+Status: **software-controlled closure complete and merge-ready. The release owner accepts Colombia/MCO + COP test-mode evidence for this merge. Argentina/MLA + ARS is deferred regional certification. Production-origin signed delivery through the final public HTTPS endpoint remains a production-activation/final-certification gate. Follow the [granular plan](p3-06-mercado-pago-payments-implementation-plan.md) and [operations runbook](p3-06a-payment-operations-runbook.md).**
+
+Configure one tenant integration connection per merchant application/account/environment, with declared site and charge-currency capabilities and connection-scoped credentials. Direct local-currency charging is configuration-driven; the optional cross-currency consent path remains specifically USD→ARS. The current implementation uses operator-managed secret references. OAuth seller authorization is a supported future onboarding path, not a currently implemented claim. A future MLA/ARS client receives a separately authorized connection and regional certification without replacing Inn's payment ledger.
+
+Production activation still requires the final merchant connection and secret workflow, enabled country/currency/payment-method capabilities, final return and notification origins, observed Mercado Pago-originated signed delivery through final HTTPS, ordinary-worker exact-once processing, and real merchant report/payout/withholding reconciliation. Account Money and Released Money parsing is currently deterministic-fixture evidence; no payout identity or production withholding claim is fabricated.
 
 Keep Inn authoritative and add:
 
+- immutable `payment_requests` with opaque hashed access tokens, expiry, revocation, supersession, resend/rotation audit and exactly-once satisfaction;
 - `payment_attempts`, `provider_events`, provider-backed `refunds`, and `settlement_entries` with unique provider/account/event and idempotency constraints.
 - A `PaymentGateway` adapter for hosted checkout creation, verified raw-body event parsing, payment lookup, and refund execution.
 - Authoritative asynchronous webhook processing; redirects are informational only.
@@ -187,7 +192,37 @@ Laravel Cashier is an optional Stripe implementation aid, not the domain. Its cu
 
 Acceptance replays invalid signatures, duplicates, reordering, delayed success, success-after-timeout, amount/currency mismatch, requires-action, failure, refund, dispute, and payout mismatch. Exactly one Inn payment/folio effect may result from a successful provider transaction.
 
-### P3-07 — direct booking, conditional on signed scope
+### P3-06B — front-desk cash and standalone-terminal tenders
+
+Status: **planned after P3-06A; follow the [granular P3-06B implementation plan](p3-06b-front-desk-tenders-implementation-plan.md).**
+
+Make existing/manual collection operationally truthful before controlling hardware:
+
+- explicit payment `channel`, `entry_mode` and origin constraints;
+- typed external-terminal receipt details with no PAN/CVV/expiry/track/chip/NFC data;
+- minimal cash shift, movements, close and variance review;
+- append-only manual external refunds with Finance execution evidence;
+- P3-03 receipts, reports, API/OpenAPI, Filament and reservation-hub actions;
+- PostgreSQL replay/race coverage plus a state-changing standalone-card/cash/variance/refund browser journey.
+
+P3-06B does not send money to a terminal and must not claim integrated card-present processing.
+
+### P3-06C — Mercado Pago Point and QR
+
+Status: **planned after P3-06B; follow the [granular P3-06C implementation plan](p3-06c-mercado-pago-point-qr-implementation-plan.md).**
+
+Reuse P3-06A's provider transport, event ledger, payment application, refunds and settlements to add:
+
+- property-scoped Point terminal and QR point-of-sale registry;
+- exact staff-initiated Point/QR requests with one active order per terminal;
+- Mercado Pago Orders create/fetch/cancel/refund using stable idempotency keys;
+- signed event plus authoritative lookup before any Inn money mutation;
+- dynamic QR rendering/expiry and Point virtual-device coverage;
+- supervised physical-terminal payment, receipt, refund and settlement UAT before the client-complete claim.
+
+Hyperswitch remains deferred until at least two live PSPs and measured routing/failover value exist. It currently adds infrastructure without a production-ready Mercado Pago/Payway/Mobbex or Argentine Getnet connector. Mobbex Smart POS remains a future commercial/security bake-off, not a speculative second adapter.
+
+### P3-07 — direct booking, in scope unless formally deferred
 
 Expose guest-safe search, quote, policy, consent, expiring hold, selected payment/manual instructions, confirmation, and failed-payment recovery through the same `AvailabilityQuery`, `BookingQuoteService`, and commit/change services. Add rate limiting, bot defense, analytics attribution, accessibility, locale, privacy, and abandoned-hold cleanup. Do not build a second public pricing or inventory engine.
 
@@ -195,11 +230,7 @@ Expose guest-safe search, quote, policy, consent, expiring hold, selected paymen
 
 Extend `integration_connections` with provider/account/environment identity and add `integration_sync_runs`, `integration_sync_items`, mappings, cursors, external IDs, attempts, errors, and reconciliation state. Every connector must expose test connection, last success, lag, mapping errors, retry/dead letter, manual replay, disable/revoke, and health.
 
-Implement exactly one client-selected outcome first:
-
-- accounting: immutable export package or one API with chart/tax/payment/currency/cost-center mappings, period locks, correction, and reconciliation; or
-- OTA/channel manager: property/room/rate mapping, ARI push, reservation create/change/cancel import, cursor/deduplication, drift detection, and inventory reconciliation; or
-- SMS/WhatsApp/e-signature only when a named legal/operational journey and consent model require it.
+Implement the execution pack's default Standard-Webhooks-compatible signed outbound connector to an independently hosted receiver when no commercial provider is selected. A named accounting, OTA/channel manager, SMS/WhatsApp, or e-signature adapter requires its own later provider decision and evidence.
 
 The existing private iCalendar feed remains a one-way availability feed, never a channel-manager claim.
 
@@ -234,4 +265,4 @@ A slice is complete only when:
 
 ## Immediate next action
 
-Review and merge **P3-01** after its branch checks remain green. Then update local `main` with `git pull --ff-only` and create **P3-02** from that merged commit; do not stack it on this branch. P3-02 closes the original Rincón Grande manual-transfer/stay promise, and P3-03 produces the documents/exports the client needs to see. Provider selection can proceed in parallel as a business decision, but P3-06 code must not start against an unconfirmed merchant/provider model.
+Merge Agent 00 after this coordinator reconciliation and green review/CI, synchronize `main`, then unlock Agents 01, 03, 04, 05, and 10 in isolated worktrees according to the execution pack. Agent 02's reviewed disposable prework may be replayed only after Agent 01 merges.

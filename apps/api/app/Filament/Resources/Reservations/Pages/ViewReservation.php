@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Reservations\Pages;
 
 use App\Enums\FolioStatus;
+use App\Filament\Resources\Reservations\PaymentRequestActions;
 use App\Filament\Resources\Reservations\ReservationChangeActions;
 use App\Filament\Resources\Reservations\ReservationResource;
 use App\Filament\Resources\Reservations\ReservationWorkflowActions;
@@ -23,6 +24,7 @@ class ViewReservation extends ViewRecord
     {
         return [
             EditAction::make()->visible(fn (Reservation $record): bool => ReservationResource::canEdit($record)),
+            PaymentRequestActions::issue(),
             ...ReservationChangeActions::make(),
             Action::make('closeFolio')
                 ->label('Close folio')

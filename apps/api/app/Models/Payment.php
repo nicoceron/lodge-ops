@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property PaymentStatus $status
  * @property string $method
  * @property PaymentOrigin $origin
+ * @property string|null $environment
+ * @property string|null $provider_account
  * @property CarbonImmutable|null $processed_at
  * @property string $currency
  * @property int $amount_minor
@@ -52,6 +54,21 @@ class Payment extends TenantModel
     public function generatedDocuments(): HasMany
     {
         return $this->hasMany(GeneratedDocument::class);
+    }
+
+    public function paymentRequests(): HasMany
+    {
+        return $this->hasMany(PaymentRequest::class);
+    }
+
+    public function providerRefunds(): HasMany
+    {
+        return $this->hasMany(ProviderRefund::class);
+    }
+
+    public function providerDisputes(): HasMany
+    {
+        return $this->hasMany(ProviderDispute::class);
     }
 
     /** @return HasMany<FolioLine, $this> */

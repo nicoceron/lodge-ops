@@ -14,6 +14,7 @@ use App\Filament\Resources\Reservations\RelationManagers\FolioLinesRelationManag
 use App\Filament\Resources\Reservations\RelationManagers\GeneratedDocumentsRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\OperationalTasksRelationManager;
+use App\Filament\Resources\Reservations\RelationManagers\PaymentRequestsRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\ReservationChangesRelationManager;
 use App\Filament\Resources\Reservations\RelationManagers\StatusHistoryRelationManager;
@@ -100,6 +101,7 @@ class ReservationResource extends TenantResource
             AllocationsRelationManager::class,
             DepositsRelationManager::class,
             PaymentsRelationManager::class,
+            PaymentRequestsRelationManager::class,
             FolioLinesRelationManager::class,
             OperationalTasksRelationManager::class,
             CommunicationsRelationManager::class,

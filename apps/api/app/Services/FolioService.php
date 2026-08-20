@@ -101,6 +101,26 @@ final class FolioService
         );
     }
 
+    /** @param array<string, mixed> $metadata */
+    public function postProviderAdjustment(Payment $payment, FolioLineType $type, string $description, int $amountMinor, array $metadata): FolioLine
+    {
+        if (! in_array($type, [FolioLineType::Refund, FolioLineType::Adjustment], true) || $amountMinor <= 0) {
+            throw new DomainException('A provider adjustment must be a positive refund or adjustment effect.');
+        }
+        $this->assertOpen($payment->reservation);
+
+        return $this->createLine(
+            reservation: $payment->reservation,
+            type: $type,
+            description: $description,
+            quantityThousandths: 1000,
+            unitAmountMinor: $amountMinor,
+            actorId: null,
+            paymentId: $payment->id,
+            metadata: $metadata,
+        );
+    }
+
     public function reverse(FolioLine $line, string $reason, ?int $actorId): FolioLine
     {
         return DB::transaction(function () use ($line, $reason, $actorId): FolioLine {

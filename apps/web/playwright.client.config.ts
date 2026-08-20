@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: "./e2e-client",
   globalSetup: "./e2e-client/global-setup.ts",
   fullyParallel: false,
+  workers: 1,
   reporter: "line",
   retries: process.env.CI ? 1 : 0,
   use: {
