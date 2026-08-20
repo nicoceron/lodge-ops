@@ -126,7 +126,7 @@ These are release inputs, not excuses to invent behavior:
 
 | Decision | Latest safe deadline | Default if absent |
 |---|---|---|
-| Mercado Pago merchant country/currency | before Agent 00 merge | Argentina/ARS, matching the current runbook and Rincón Grande currency requirement |
+| Mercado Pago merchant country/currency | decided 2026-08-20 | Colombia/MCO + COP accepted for Agent 00 merge; Argentina/MLA + ARS deferred as regional certification. Merchant credentials/account/environment/site/currency remain connection-scoped. |
 | Physical Point device/account and PDV mode | before Agent 02 production claim | ship QR sandbox + Point virtual-test mode; label physical Point not yet client-proven |
 | Email provider, verified domain, data-processing approval | before Agent 03 live UAT | Resend adapter; production completion remains gated on verified client domain |
 | Fiscal entity/jurisdiction/numbering/tax/cancellation rules | before fiscal issuance | run Agent 04B if fiscal issuance is required; otherwise obtain written deferment and keep P3-03 documents explicitly non-fiscal |
