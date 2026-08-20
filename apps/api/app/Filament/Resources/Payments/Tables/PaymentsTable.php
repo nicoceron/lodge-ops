@@ -29,19 +29,20 @@ class PaymentsTable
                     ->sortable(),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(InnPresentation::label(...))
+                    ->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->color(fn ($state): string => InnPresentation::statusColor($state))
                     ->sortable(),
                 TextColumn::make('amount_minor')
                     ->label('Amount')
                     ->money(fn (Payment $record): string => $record->currency, divideBy: 100)
                     ->sortable(),
-                TextColumn::make('method')
-                    ->formatStateUsing(InnPresentation::label(...))
+                TextColumn::make('channel')
+                    ->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->searchable(),
+                TextColumn::make('entry_mode')->badge()->formatStateUsing(fn ($state): string => InnPresentation::label($state)),
                 TextColumn::make('origin')
                     ->badge()
-                    ->formatStateUsing(InnPresentation::label(...))
+                    ->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->sortable(),
                 TextColumn::make('provider_reference')
                     ->label('Reference')
@@ -53,12 +54,13 @@ class PaymentsTable
                 SelectFilter::make('status')
                     ->options(InnPresentation::enumOptions(PaymentStatus::cases()))
                     ->multiple(),
-                SelectFilter::make('method')
+                SelectFilter::make('channel')
                     ->options([
                         'cash' => 'Cash',
-                        'card' => 'Card',
+                        'external_terminal' => 'Standalone external terminal',
                         'bank_transfer' => 'Bank transfer',
-                        'online' => 'Online',
+                        'manual_other' => 'Manual other',
+                        'online_checkout' => 'Online checkout',
                     ]),
                 SelectFilter::make('origin')
                     ->options(['manual' => 'Manual', 'provider' => 'Provider-backed']),

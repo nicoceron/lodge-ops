@@ -110,11 +110,9 @@ class TenantIsolationTest extends TestCase
             ->postJson('/api/v1/guests', ['first_name' => 'Not allowed'])
             ->assertForbidden();
         $this->withHeader('X-Tenant-ID', $financeTenant->id)
-            ->postJson('/api/v1/payments', [
-                'reservation_id' => $reservation->id,
-                'method' => 'cash',
+            ->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", [
+                'channel' => 'bank_transfer',
                 'amount_minor' => 5000,
-                'captured' => true,
             ])->assertCreated();
 
         app(TenantContext::class)->clear();
@@ -231,10 +229,8 @@ class TenantIsolationTest extends TestCase
         $payments = $this->withHeaders($headers)->getJson('/api/v1/payments')->assertOk();
         $this->assertSame([$payment->id], collect($payments->json('data'))->pluck('id')->all());
         $this->withHeaders($headers)->getJson("/api/v1/payments/{$otherPayment->id}")->assertForbidden();
-        $this->withHeaders($headers)->postJson('/api/v1/payments', [
-            'reservation_id' => $otherReservation->id,
-            'method' => 'cash',
-            'currency' => 'USD',
+        $this->withHeaders($headers)->postJson("/api/v1/reservations/{$otherReservation->id}/front-desk-payments", [
+            'channel' => 'bank_transfer',
             'amount_minor' => 500,
         ])->assertForbidden();
 

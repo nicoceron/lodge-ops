@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Controllers\CashShiftReportController;
 use App\Http\Controllers\GeneratedDocumentDownloadController;
 use App\Http\Controllers\PaymentEvidenceDownloadController;
 use App\Http\Controllers\ReportExportDownloadController;
@@ -37,8 +38,10 @@ class AdminPanelProvider extends PanelProvider
             ->maxContentWidth(Width::Full)
             ->spa(hasPrefetching: true)
             ->spaUrlExceptions([
+                '*manage/workspace/*/payment-evidence/*/download',
                 '*manage/workspace/*/generated-documents/*/download',
                 '*manage/workspace/*/report-exports/*/download',
+                '*manage/workspace/*/cash-shifts/*/report',
             ])
             ->unsavedChangesAlerts()
             ->databaseTransactions()
@@ -56,6 +59,7 @@ class AdminPanelProvider extends PanelProvider
             ->tenantMiddleware([ResolveFilamentTenant::class], isPersistent: true)
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('payment-evidence/{evidence}/download', PaymentEvidenceDownloadController::class)->name('payment-evidence.download');
+                Route::get('cash-shifts/{cashShift}/report', CashShiftReportController::class)->name('cash-shifts.report');
                 Route::get('generated-documents/{generatedDocument}/download', GeneratedDocumentDownloadController::class)->name('generated-documents.download');
                 Route::get('report-exports/{reportExport}/download', ReportExportDownloadController::class)->name('report-exports.download');
             })

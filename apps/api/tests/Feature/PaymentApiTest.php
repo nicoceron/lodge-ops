@@ -26,21 +26,21 @@ class PaymentApiTest extends TestCase
             'total_minor' => 10000,
         ]);
         $payload = [
-            'reservation_id' => $reservation->id,
-            'method' => 'card',
-            'provider' => 'test-gateway',
-            'provider_reference' => 'pi_123',
+            'channel' => 'external_terminal',
             'amount_minor' => 4001,
-            'captured' => true,
+            'processor_alias' => 'test-terminal-network',
+            'merchant_account_alias' => 'front-desk-merchant',
+            'terminal_identifier' => 'terminal-01',
+            'transaction_reference' => 'terminal-slip-123',
         ];
 
         $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson('/api/v1/payments', $payload)
+            ->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", $payload)
             ->assertCreated()
-            ->assertJsonPath('data.status', PaymentStatus::Succeeded->value)
-            ->assertJsonPath('data.origin', PaymentOrigin::Manual->value)
-            ->assertJsonPath('data.currency', 'USD')
-            ->assertJsonPath('data.amount_minor', 4001);
+            ->assertJsonPath('data.payment.status', PaymentStatus::Succeeded->value)
+            ->assertJsonPath('data.payment.origin', PaymentOrigin::Manual->value)
+            ->assertJsonPath('data.payment.currency', 'USD')
+            ->assertJsonPath('data.payment.amount_minor', 4001);
 
         $this->assertDatabaseHas('folio_lines', [
             'reservation_id' => $reservation->id,
@@ -51,8 +51,8 @@ class PaymentApiTest extends TestCase
         $this->assertSame(5999, app(MoneyCalculator::class)->reservationBalance($reservation));
 
         $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson('/api/v1/payments', $payload)
-            ->assertOk();
+            ->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", $payload)
+            ->assertCreated();
         $this->assertDatabaseCount('payments', 1);
         $this->assertDatabaseCount('folio_lines', 1);
     }

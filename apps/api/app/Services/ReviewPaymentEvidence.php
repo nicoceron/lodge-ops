@@ -2,21 +2,25 @@
 
 namespace App\Services;
 
+use App\Data\Payments\FrontDeskPaymentInput;
 use App\Enums\DepositStatus;
+use App\Enums\PaymentChannel;
 use App\Enums\PaymentEvidenceStatus;
 use App\Models\Communication;
 use App\Models\Deposit;
 use App\Models\GuestPaymentEvidence;
 use App\Models\Payment;
 use App\Models\Reservation;
+use App\Models\User;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\Payments\RecordFrontDeskPayment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class ReviewPaymentEvidence
 {
     public function __construct(
-        private readonly PaymentService $payments,
+        private readonly RecordFrontDeskPayment $payments,
         private readonly OutboxRecorder $outbox,
     ) {}
 
@@ -44,24 +48,22 @@ final class ReviewPaymentEvidence
                     ->orderBy('due_at')->lockForUpdate()->first()
                 : Deposit::query()->where('reservation_id', $reservation->id)->whereKey($depositId)->lockForUpdate()->firstOrFail();
 
-            $payment = $this->payments->recordManual([
-                'reservation_id' => $reservation->id,
-                'method' => 'bank_transfer',
-                'provider' => 'manual-bank',
-                'provider_reference' => 'evidence:'.$locked->id,
-                'evidence_note' => trim((string) $note) ?: 'Approved guest transfer evidence '.$locked->file_name,
-                'amount_minor' => $locked->amount_minor,
-                'deposit_id' => $deposit?->id,
-                'metadata' => [
-                    'guest_payment_evidence_id' => $locked->id,
-                    'transfer_reference' => $locked->transfer_reference,
-                    'sha256' => $locked->sha256,
-                ],
-            ], $actorId, capture: true);
+            $actor = User::query()->findOrFail($actorId);
+            $detail = $this->payments->handle($actor, new FrontDeskPaymentInput(
+                reservationId: $reservation->id,
+                channel: PaymentChannel::BankTransfer,
+                amountMinor: $locked->amount_minor,
+                idempotencyKey: 'evidence-approval:'.$locked->id,
+                depositId: $deposit?->id,
+                transactionReference: $locked->transfer_reference ?: 'evidence-'.substr(hash('sha256', $locked->id), 0, 24),
+                note: trim((string) $note) ?: null,
+            ));
+            $payment = $detail->payment ?? throw ValidationException::withMessages(['payment' => 'Approved evidence did not produce a posted payment.']);
 
             $locked->update([
                 'status' => PaymentEvidenceStatus::Approved,
                 'payment_id' => $payment->id,
+                'tender_detail_id' => $detail->id,
                 'reviewed_by' => $actorId,
                 'reviewed_at' => now(),
                 'decided_at' => now(),

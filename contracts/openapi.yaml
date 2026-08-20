@@ -1177,24 +1177,6 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Payment' }
-    post:
-      tags: [Payments]
-      operationId: recordPayment
-      parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/PaymentInput' }
-      responses:
-        '201':
-          description: Staff-entered manual payment record created; externally settled methods remain append-only and are not provider-capture claims.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PaymentEnvelope' }
-        '422': { $ref: '#/components/responses/ValidationError' }
   /payments/{payment}:
     get:
       tags: [Payments]
@@ -1233,6 +1215,127 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/front-desk-payments:
+    post:
+      tags: [Payments]
+      operationId: recordFrontDeskPayment
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/ReservationId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FrontDeskPaymentInput' } } } }
+      responses:
+        '201': { description: Staff-recorded tender posted, or a non-posted identity or duplicate exception created., content: { application/json: { schema: { $ref: '#/components/schemas/TenderDetailEnvelope' } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /cash-shifts:
+    post:
+      tags: [Payments]
+      operationId: openCashShift
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [property_id, currency, opening_float_minor], properties: { property_id: { type: string, format: uuid }, currency: { type: string, pattern: '^[A-Z]{3}$' }, opening_float_minor: { type: integer, minimum: 0 } } } } } }
+      responses: { '201': { description: Cash shift and opening movement created., content: { application/json: { schema: { $ref: '#/components/schemas/CashShiftEnvelope' } } } } }
+  /cash-shifts/{cashShift}:
+    get:
+      tags: [Payments]
+      operationId: getCashShift
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { name: cashShift, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Property-scoped cash shift and immutable movements., content: { application/json: { schema: { $ref: '#/components/schemas/CashShiftEnvelope' } } } } }
+  /cash-shifts/{cashShift}/movements:
+    post:
+      tags: [Payments]
+      operationId: recordCashShiftMovement
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: cashShift, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, amount_minor, reason], properties: { type: { type: string, enum: [pay_in, pay_out, correction] }, amount_minor: { type: integer, minimum: 1 }, reason: { type: string, maxLength: 500 }, reverses_movement_id: { type: [string, 'null'], format: uuid } } } } } }
+      responses: { '200': { description: Movement appended and expected cash recalculated., content: { application/json: { schema: { $ref: '#/components/schemas/CashShiftEnvelope' } } } } }
+  /cash-shifts/{cashShift}/close:
+    post:
+      tags: [Payments]
+      operationId: closeCashShift
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: cashShift, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [counted_cash_minor], properties: { counted_cash_minor: { type: integer, minimum: 0 }, reason: { type: [string, 'null'], maxLength: 500 }, force: { type: boolean } } } } } }
+      responses: { '200': { description: Shift closed or entered variance review., content: { application/json: { schema: { $ref: '#/components/schemas/CashShiftEnvelope' } } } } }
+  /cash-shifts/{cashShift}/approve-variance:
+    post:
+      tags: [Finance]
+      operationId: approveCashVariance
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: cashShift, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses: { '200': { description: Finance-approved closed cash shift. } }
+  /tender-details/{detail}/resolve:
+    post:
+      tags: [Finance]
+      operationId: resolveTenderDuplicate
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: detail, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [confirmed_duplicate, needs_corrected_identity, dismissed_unposted, corrected_identity] }
+                reason: { type: string, maxLength: 500 }
+                processor_alias: { type: [string, 'null'], maxLength: 80 }
+                merchant_account_alias: { type: [string, 'null'], maxLength: 120 }
+                terminal_identifier: { type: [string, 'null'], maxLength: 80 }
+                transaction_reference: { type: [string, 'null'], maxLength: 160 }
+                authorization_reference: { type: [string, 'null'], maxLength: 160 }
+                batch_reference: { type: [string, 'null'], maxLength: 120 }
+                card_brand: { type: [string, 'null'], maxLength: 40 }
+                card_last_four: { type: [string, 'null'], pattern: '^\\d{4}$' }
+      responses: { '200': { description: Unposted duplicate or identity exception reviewed without deleting history. } }
+  /payments/{payment}/manual-refunds:
+    post:
+      tags: [Finance]
+      operationId: requestManualExternalRefund
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/PaymentId' }]
+      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      responses: { '201': { description: Manual external refund requested but not yet completed. } }
+  /manual-refunds/{refund}/evidence:
+    post:
+      tags: [Finance]
+      operationId: uploadManualRefundEvidence
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/RefundId' }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [evidence], properties: { evidence: { type: string, format: binary } } } } } }
+      responses: { '201': { description: Private scanned evidence stored without exposing its storage key. }, '422': { $ref: '#/components/responses/ValidationError' }, '503': { description: Evidence scanner unavailable. } }
+  /manual-refunds/{refund}/complete:
+    post:
+      tags: [Finance]
+      operationId: completeManualExternalRefund
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/RefundId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [execution_reference]
+              properties:
+                execution_reference: { type: string, maxLength: 160 }
+                evidence_id: { type: [string, 'null'], format: uuid }
+                cash_shift_id: { type: [string, 'null'], format: uuid }
+      responses: { '200': { description: Manual external execution evidenced and accounting completed exactly once. } }
+  /manual-refund-evidence/{evidence}/review:
+    post:
+      tags: [Finance]
+      operationId: reviewManualRefundEvidence
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: evidence, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                reason: { type: string, maxLength: 500 }
+      responses: { '200': { description: Private refund evidence reviewed without posting a new payment. } }
+  /payments/{payment}/correct-remaining:
+    post:
+      tags: [Finance]
+      operationId: correctRemainingReversiblePaymentAmount
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/PaymentId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 500 } } } } } }
+      responses: { '201': { description: Remaining reversible guest credit requested through the controlled evidence and completion workflow. } }
   /reservations/{reservation}/payment-requests:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -3000,17 +3103,17 @@ components:
         data: { $ref: '#/components/schemas/Task' }
     Payment:
       type: object
-      required: [id, reservation_id, status, method, origin, currency, amount_minor]
+      required: [id, reservation_id, status, method, channel, entry_mode, origin, currency, amount_minor]
       properties:
         id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
         status: { type: string, enum: [pending, succeeded, failed, refunded, reversed] }
         method: { type: string, enum: [bank_transfer, cash, card, other] }
+        channel: { type: string, enum: [bank_transfer, cash, external_terminal, manual_other, online_checkout, integrated_terminal, qr] }
+        entry_mode: { type: string, enum: [staff_recorded, provider_reported] }
         origin: { type: string, enum: [manual, provider], description: Provider-backed origin is reserved for a verified gateway adapter; this endpoint creates manual records only. }
         provider: { type: [string, 'null'] }
         provider_reference: { type: [string, 'null'] }
-        evidence_url: { type: [string, 'null'], format: uri }
-        evidence_note: { type: [string, 'null'] }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
         amount_minor: { type: integer }
         processed_at: { type: [string, 'null'], format: date-time }
@@ -3038,6 +3141,48 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/Payment' }
+    FrontDeskPaymentInput:
+      type: object
+      required: [channel, amount_minor]
+      additionalProperties: false
+      properties:
+        channel: { type: string, enum: [cash, bank_transfer, external_terminal, manual_other] }
+        amount_minor: { type: integer, minimum: 1 }
+        deposit_id: { type: [string, 'null'], format: uuid }
+        processor_alias: { type: [string, 'null'], maxLength: 80 }
+        merchant_account_alias: { type: [string, 'null'], maxLength: 120 }
+        terminal_identifier: { type: [string, 'null'], maxLength: 80 }
+        transaction_reference: { type: [string, 'null'], maxLength: 160 }
+        authorization_reference: { type: [string, 'null'], maxLength: 160 }
+        batch_reference: { type: [string, 'null'], maxLength: 120 }
+        card_brand: { type: [string, 'null'], maxLength: 40 }
+        card_last_four: { type: [string, 'null'], pattern: '^\\d{4}$' }
+        note: { type: [string, 'null'], maxLength: 500 }
+        pan_false_positive_confirmed: { type: boolean, description: Finance-only documented false-positive override for a legitimate non-card reference; never bypasses CVV, expiry, track, or PIN rejection. }
+    TenderDetailEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, reservation_id, channel, amount_minor, currency, state]
+          properties:
+            id: { type: string, format: uuid }
+            reservation_id: { type: string, format: uuid }
+            payment_id: { type: [string, 'null'], format: uuid }
+            deposit_id: { type: [string, 'null'], format: uuid }
+            channel: { type: string, enum: [cash, bank_transfer, external_terminal, manual_other] }
+            amount_minor: { type: integer, minimum: 1 }
+            currency: { type: string, pattern: '^[A-Z]{3}$' }
+            state: { type: string, enum: [posted, identity_exception, duplicate_review, confirmed_duplicate, needs_corrected_identity, dismissed_unposted, corrected_identity_submitted] }
+            card_brand: { type: [string, 'null'] }
+            card_last_four: { type: [string, 'null'], pattern: '^\\d{4}$' }
+            payment: { oneOf: [{ $ref: '#/components/schemas/Payment' }, { type: 'null' }] }
+    CashShiftEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object, additionalProperties: true }
     PaymentRequest:
       type: object
       required: [id, property_id, reservation_id, purpose, state, source_amount_minor, source_currency, expires_at]

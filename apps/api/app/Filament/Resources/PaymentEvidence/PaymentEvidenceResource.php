@@ -9,12 +9,16 @@ use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\Deposit;
 use App\Models\GuestPaymentEvidence;
+use App\Models\ReservationChange;
+use App\Services\Payments\CompleteManualExternalRefund;
+use App\Services\Payments\ReviewRefundEvidence;
 use App\Services\ReviewPaymentEvidence;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
@@ -75,7 +79,7 @@ class PaymentEvidenceResource extends TenantResource
             Section::make('Transfer submission')->columns(2)->schema([
                 TextEntry::make('reservation.confirmation_number')->label('Reservation')->copyable(),
                 TextEntry::make('guest.email')->label('Guest'),
-                TextEntry::make('status')->badge()->formatStateUsing(InnPresentation::label(...))
+                TextEntry::make('status')->badge()->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextEntry::make('amount_minor')->label('Declared amount')
                     ->money(fn (GuestPaymentEvidence $record): string => $record->currency, divideBy: 100),
@@ -103,7 +107,7 @@ class PaymentEvidenceResource extends TenantResource
                 TextColumn::make('amount_minor')->label('Amount')
                     ->money(fn (GuestPaymentEvidence $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('transfer_reference')->label('Reference')->placeholder('—')->searchable(),
-                TextColumn::make('status')->badge()->formatStateUsing(InnPresentation::label(...))
+                TextColumn::make('status')->badge()->formatStateUsing(fn ($state): string => InnPresentation::label($state))
                     ->color(fn ($state): string => InnPresentation::statusColor($state)),
                 TextColumn::make('reviewer.name')->label('Reviewed by')->placeholder('Pending'),
             ])
@@ -114,8 +118,11 @@ class PaymentEvidenceResource extends TenantResource
                 ViewAction::make(),
                 static::downloadAction(),
                 static::approveAction(),
+                static::approveRefundAction(),
+                static::completeRefundAction(),
                 static::requestInformationAction(),
                 static::rejectAction(),
+                static::rejectRefundAction(),
             ])
             ->defaultSort('submitted_at', 'desc')
             ->striped()
@@ -152,6 +159,7 @@ class PaymentEvidenceResource extends TenantResource
             ->color('success')
             ->authorize('review')
             ->visible(fn (GuestPaymentEvidence $record): bool => static::canReview($record)
+                && $record->refund_change_id === null
                 && in_array($record->status, [PaymentEvidenceStatus::Pending, PaymentEvidenceStatus::MoreInformationRequired], true))
             ->schema([
                 Select::make('deposit_id')->label('Apply to deposit')
@@ -169,6 +177,24 @@ class PaymentEvidenceResource extends TenantResource
             });
     }
 
+    public static function approveRefundAction(): Action
+    {
+        return Action::make('approve_refund_evidence')
+            ->label('Approve refund evidence')
+            ->icon('heroicon-o-check-badge')
+            ->color('success')
+            ->authorize('review')
+            ->visible(fn (GuestPaymentEvidence $record): bool => static::canReview($record)
+                && $record->refund_change_id !== null
+                && in_array($record->status, [PaymentEvidenceStatus::Pending, PaymentEvidenceStatus::MoreInformationRequired], true))
+            ->schema([Textarea::make('reason')->required()->rows(3)->maxLength(500)])
+            ->requiresConfirmation()
+            ->action(function (GuestPaymentEvidence $record, array $data): void {
+                app(ReviewRefundEvidence::class)->handle(auth()->user(), $record, 'approved', $data['reason'], 'filament-refund-evidence-approve:'.str()->uuid());
+                Notification::make()->success()->title('Refund execution evidence approved')->send();
+            });
+    }
+
     public static function requestInformationAction(): Action
     {
         return Action::make('request_information')
@@ -177,11 +203,45 @@ class PaymentEvidenceResource extends TenantResource
             ->color('warning')
             ->authorize('review')
             ->visible(fn (GuestPaymentEvidence $record): bool => static::canReview($record)
+                && $record->refund_change_id === null
                 && $record->status !== PaymentEvidenceStatus::Approved)
             ->schema([Textarea::make('note')->required()->rows(3)->maxLength(5000)])
             ->action(function (GuestPaymentEvidence $record, array $data): void {
                 app(ReviewPaymentEvidence::class)->requestMoreInformation($record, $data['note'], auth()->id());
                 Notification::make()->success()->title('Information request recorded for the guest')->send();
+            });
+    }
+
+    public static function completeRefundAction(): Action
+    {
+        return Action::make('complete_manual_refund')
+            ->label('Complete manual refund')
+            ->icon('heroicon-o-banknotes')
+            ->color('success')
+            ->authorize('review')
+            ->visible(function (GuestPaymentEvidence $record): bool {
+                if (! static::canReview($record) || $record->refund_change_id === null || $record->status !== PaymentEvidenceStatus::Approved) {
+                    return false;
+                }
+
+                return ReservationChange::query()->whereKey($record->refund_change_id)
+                    ->where('type', 'refund_requested')->where('status', 'requested')->exists();
+            })
+            ->schema([
+                TextInput::make('execution_reference')->label('External execution reference')->required()->maxLength(160),
+            ])
+            ->requiresConfirmation()
+            ->modalDescription('Confirm only after the external refund has actually been executed. Inn records the evidence; it does not call or verify the external processor.')
+            ->action(function (GuestPaymentEvidence $record, array $data): void {
+                $request = ReservationChange::query()->findOrFail($record->refund_change_id);
+                app(CompleteManualExternalRefund::class)->handle(
+                    auth()->user(),
+                    $request,
+                    $data['execution_reference'],
+                    'filament-manual-refund-complete:'.str()->uuid(),
+                    $record,
+                );
+                Notification::make()->success()->title('Manual refund completion recorded from approved evidence')->send();
             });
     }
 
@@ -193,12 +253,31 @@ class PaymentEvidenceResource extends TenantResource
             ->color('danger')
             ->authorize('review')
             ->visible(fn (GuestPaymentEvidence $record): bool => static::canReview($record)
+                && $record->refund_change_id === null
                 && $record->status !== PaymentEvidenceStatus::Approved)
             ->schema([Textarea::make('note')->required()->rows(3)->maxLength(5000)])
             ->requiresConfirmation()
             ->action(function (GuestPaymentEvidence $record, array $data): void {
                 app(ReviewPaymentEvidence::class)->reject($record, $data['note'], auth()->id());
                 Notification::make()->success()->title('Evidence rejected; no payment was created')->send();
+            });
+    }
+
+    public static function rejectRefundAction(): Action
+    {
+        return Action::make('reject_refund_evidence')
+            ->label('Reject refund evidence')
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->authorize('review')
+            ->visible(fn (GuestPaymentEvidence $record): bool => static::canReview($record)
+                && $record->refund_change_id !== null
+                && in_array($record->status, [PaymentEvidenceStatus::Pending, PaymentEvidenceStatus::MoreInformationRequired], true))
+            ->schema([Textarea::make('reason')->required()->rows(3)->maxLength(500)])
+            ->requiresConfirmation()
+            ->action(function (GuestPaymentEvidence $record, array $data): void {
+                app(ReviewRefundEvidence::class)->handle(auth()->user(), $record, 'rejected', $data['reason'], 'filament-refund-evidence-reject:'.str()->uuid());
+                Notification::make()->success()->title('Refund execution evidence rejected')->send();
             });
     }
 }

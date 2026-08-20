@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Contracts\Payments\PaymentGatewayFactory;
+use App\Data\Payments\FrontDeskPaymentInput;
 use App\Data\Payments\ProviderDispute as ProviderDisputeData;
 use App\Data\Payments\ProviderPayment;
 use App\Data\Payments\ProviderRefund as ProviderRefundData;
+use App\Enums\CashShiftState;
 use App\Enums\DocumentGenerationStatus;
 use App\Enums\DocumentKind;
 use App\Enums\FolioLineType;
+use App\Enums\PaymentChannel;
 use App\Enums\PaymentRequestPurpose;
 use App\Enums\PaymentStatus;
 use App\Enums\ProviderEventState;
@@ -17,6 +20,8 @@ use App\Enums\ReportExportKind;
 use App\Enums\ReportExportStatus;
 use App\Enums\ReservationStatus;
 use App\Http\Middleware\EnsureIdempotentCommand;
+use App\Models\CashShift;
+use App\Models\CashShiftMovement;
 use App\Models\IntegrationConnection;
 use App\Models\Membership;
 use App\Models\Payment;
@@ -28,12 +33,17 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CompleteRefund;
 use App\Services\FolioService;
+use App\Services\Payments\CloseCashShift;
+use App\Services\Payments\CompleteManualExternalRefund;
 use App\Services\Payments\CreateProviderCheckout;
 use App\Services\Payments\ExecuteProviderRefund;
 use App\Services\Payments\IssuePaymentRequest;
+use App\Services\Payments\OpenCashShift;
 use App\Services\Payments\ProcessProviderEvent;
+use App\Services\Payments\RecordFrontDeskPayment;
 use App\Services\Payments\RecordSettlementRevision;
 use App\Services\Payments\RecoverProviderRefund;
+use App\Services\Payments\RequestManualExternalRefund;
 use App\Services\PaymentService;
 use App\Services\RequestRefund;
 use App\Support\Tenancy\TenantContext;
@@ -53,6 +63,133 @@ use Throwable;
 class PostgresFinancialConcurrencyTest extends TestCase
 {
     use CreatesTenant, DatabaseMigrations;
+
+    public function test_concurrent_external_terminal_identity_records_one_payment_and_one_review_exception(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $firstReservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'currency' => 'COP',
+            'subtotal_minor' => 20_000,
+            'tax_minor' => 0,
+            'total_minor' => 20_000,
+        ]);
+        $secondReservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'currency' => 'COP',
+            'subtotal_minor' => 20_000,
+            'tax_minor' => 0,
+            'total_minor' => 20_000,
+        ]);
+        $record = fn (Reservation $reservation, string $key): string => app(RecordFrontDeskPayment::class)->handle(
+            $user,
+            $this->terminalTenderInput($reservation, $key),
+        )->state;
+
+        $results = $this->concurrently([
+            fn (): string => $record($firstReservation, 'pg-terminal-race-command-a'),
+            fn (): string => $record($secondReservation, 'pg-terminal-race-command-b'),
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(2, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertEqualsCanonicalizing(['duplicate_review', 'posted'], collect($results)->pluck('result')->all());
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('folio_lines', 1);
+        $this->assertDatabaseCount('payment_tender_details', 2);
+    }
+
+    public function test_concurrent_cash_shift_opens_leave_exactly_one_open_shift(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+
+        $results = $this->concurrently([
+            fn (): string => app(OpenCashShift::class)->handle($user, $property->id, 'COP', 10_000, 'pg-open-shift-race-a')->id,
+            fn (): string => app(OpenCashShift::class)->handle($user, $property->id, 'COP', 10_000, 'pg-open-shift-race-b')->id,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, CashShift::query()->where('state', CashShiftState::Open)->count());
+        $this->assertDatabaseCount('cash_shift_movements', 1);
+    }
+
+    public function test_cash_payment_racing_shift_close_never_posts_without_a_drawer_movement(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'currency' => 'COP',
+            'subtotal_minor' => 5_000,
+            'tax_minor' => 0,
+            'total_minor' => 5_000,
+        ]);
+        $shift = app(OpenCashShift::class)->handle($user, $property->id, 'COP', 1_000, 'pg-payment-close-open');
+
+        $results = $this->concurrently([
+            fn (): string => 'payment:'.app(RecordFrontDeskPayment::class)->handle($user, new FrontDeskPaymentInput(
+                $reservation->id,
+                PaymentChannel::Cash,
+                5_000,
+                'pg-payment-close-record',
+            ))->id,
+            fn (): string => 'close:'.app(CloseCashShift::class)->handle($user, $shift, 1_000, 'Concurrent count', 'pg-payment-close-shift')->state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $payments = Payment::query()->where('reservation_id', $reservation->id)->count();
+        $paymentMovements = CashShiftMovement::query()->where('cash_shift_id', $shift->id)->where('type', 'payment')->count();
+        $this->assertSame(1, collect($results)->filter(fn (array $result): bool => ($result['ok'] ?? false) && str($result['result'])->startsWith('close:'))->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame($payments, $paymentMovements, json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertContains($payments, [0, 1]);
+        $this->assertNotSame(CashShiftState::Open, $shift->fresh()->state);
+    }
+
+    public function test_cash_refund_racing_shift_close_never_completes_without_negative_drawer_movement(): void
+    {
+        $this->requirePostgresConcurrency();
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $reservation = Reservation::factory()->create([
+            'property_id' => $property->id,
+            'currency' => 'COP',
+            'subtotal_minor' => 10_000,
+            'tax_minor' => 0,
+            'total_minor' => 10_000,
+        ]);
+        $shift = app(OpenCashShift::class)->handle($user, $property->id, 'COP', 0, 'pg-refund-close-open');
+        $detail = app(RecordFrontDeskPayment::class)->handle($user, new FrontDeskPaymentInput(
+            $reservation->id,
+            PaymentChannel::Cash,
+            10_000,
+            'pg-refund-close-payment',
+        ));
+        $reservation->update(['subtotal_minor' => 7_000, 'total_minor' => 7_000]);
+        $refund = app(RequestManualExternalRefund::class)->handle($user, $detail->payment, 3_000, 'Cash overpayment', 'pg-refund-close-request');
+
+        $results = $this->concurrently([
+            fn (): string => 'refund:'.app(CompleteManualExternalRefund::class)->handle(
+                $user,
+                $refund,
+                'drawer-slip-race',
+                'pg-refund-close-complete',
+                null,
+                $shift,
+            )->id,
+            fn (): string => 'close:'.app(CloseCashShift::class)->handle($user, $shift, 7_000, 'Concurrent close', 'pg-refund-close-shift')->state->value,
+        ], $tenant, $membership);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $completedRefunds = $reservation->changes()->where('type', 'refund_completed')->count();
+        $refundMovements = CashShiftMovement::query()->where('cash_shift_id', $shift->id)->where('type', 'refund')->where('amount_minor', -3_000)->count();
+        $this->assertSame(1, collect($results)->filter(fn (array $result): bool => ($result['ok'] ?? false) && str($result['result'])->startsWith('close:'))->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame($completedRefunds, $refundMovements, json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertContains($completedRefunds, [0, 1]);
+        $this->assertNotSame(CashShiftState::Open, $shift->fresh()->state);
+    }
 
     public function test_postgres_allows_only_one_reusable_attempt_per_payment_request_under_race(): void
     {
@@ -632,6 +769,24 @@ class PostgresFinancialConcurrencyTest extends TestCase
         return $response->getStatusCode()
             .':'.($response->headers->get('Idempotency-Replayed') === 'true' ? 'replayed' : 'executed')
             .':'.data_get(json_decode((string) $response->getContent(), true), 'data.affected');
+    }
+
+    private function terminalTenderInput(Reservation $reservation, string $key): FrontDeskPaymentInput
+    {
+        return new FrontDeskPaymentInput(
+            reservationId: $reservation->id,
+            channel: PaymentChannel::ExternalTerminal,
+            amountMinor: 10_000,
+            idempotencyKey: $key,
+            processorAlias: 'Synthetic processor',
+            merchantAccountAlias: 'Front desk merchant',
+            terminalIdentifier: 'Terminal 01',
+            transactionReference: 'Race receipt 100',
+            authorizationReference: 'Race approval 200',
+            batchReference: 'Race batch 300',
+            cardBrand: 'Test brand',
+            cardLastFour: '0042',
+        );
     }
 
     private function requirePostgresConcurrency(): void

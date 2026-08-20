@@ -83,8 +83,7 @@ class PaymentEvidenceReviewTest extends TestCase
         Filament::setCurrentPanel(Filament::getPanel('admin'));
         Filament::setTenant($tenant, isQuiet: true);
         $this->get(route('filament.admin.payment-evidence.download', ['tenant' => $tenant, 'evidence' => $evidence]))
-            ->assertOk()
-            ->assertHeader('x-content-type-options', 'nosniff');
+            ->assertConflict();
     }
 
     public function test_sales_cannot_review_transfer_evidence(): void

@@ -154,16 +154,32 @@ final class DocumentSnapshotFactory
     /** @return array<string, mixed> */
     private function payment(Reservation $reservation, ?Payment $payment, string $timezone): array
     {
+        if ($payment === null) {
+            throw new \LogicException('A payment receipt requires a payment subject.');
+        }
+        $payment->loadMissing('tenderDetail');
+        $tender = $payment->tenderDetail;
+        $wording = match ($payment->channel->value) {
+            'external_terminal' => 'Recorded external terminal payment; Inn did not charge the card',
+            'cash' => 'Payment recorded by staff — cash',
+            'bank_transfer' => 'Payment recorded by staff — bank transfer',
+            'manual_other' => 'Payment recorded by staff — manual other',
+            default => 'Payment reported by provider',
+        };
         $base = $this->base($reservation, $timezone);
         $base['payment'] = [
             'id' => $payment->id,
             'status' => $payment->status->value,
             'origin' => $payment->origin->value,
             'method' => $payment->method,
-            'wording' => $payment->origin->value === 'manual' ? 'Payment recorded by staff' : 'Payment reported by provider',
+            'channel' => $payment->channel->value,
+            'entry_mode' => $payment->entry_mode->value,
+            'wording' => $wording,
             'amount_minor' => $payment->amount_minor,
             'currency' => strtoupper($payment->currency),
-            'reference' => $payment->provider_reference,
+            'reference' => $tender === null ? $payment->provider_reference : $tender->transaction_reference,
+            'card_brand' => $tender?->card_brand,
+            'card_last_four' => $tender?->card_last_four,
             'processed_at' => $payment->processed_at ? $this->instant($payment->processed_at, $timezone) : null,
         ];
 

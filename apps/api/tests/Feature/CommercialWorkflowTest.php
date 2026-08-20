@@ -146,29 +146,18 @@ class CommercialWorkflowTest extends TestCase
             ])->assertCreated()->json('data');
 
         $payment = $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson('/api/v1/payments', [
-                'reservation_id' => $reservation->id,
-                'method' => 'bank_transfer',
-                'provider' => 'manual-bank',
-                'provider_reference' => 'wire-2026-001',
-                'evidence_url' => 'https://example.test/evidence/wire-2026-001',
-                'evidence_note' => 'Matched against the August statement.',
+            ->postJson("/api/v1/reservations/{$reservation->id}/front-desk-payments", [
+                'channel' => 'bank_transfer',
                 'amount_minor' => 25000,
-            ])->assertCreated()->assertJsonPath('data.status', 'pending')->json('data');
+                'deposit_id' => $deposit['id'],
+                'transaction_reference' => 'wire-2026-001',
+                'note' => 'Matched against the August statement.',
+            ])->assertCreated()->assertJsonPath('data.payment.status', 'succeeded')->json('data.payment');
 
         $this->assertSame('manual', $payment['origin']);
 
-        $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson("/api/v1/payments/{$payment['id']}/reconcile", ['deposit_id' => $deposit['id']])
-            ->assertOk()
-            ->assertJsonPath('data.status', 'succeeded');
         $this->assertDatabaseHas('deposits', ['id' => $deposit['id'], 'status' => 'paid', 'payment_id' => $payment['id']]);
         $this->assertDatabaseHas('folio_lines', ['payment_id' => $payment['id'], 'amount_minor' => -25000]);
-
-        $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->postJson("/api/v1/payments/{$payment['id']}/reconcile", ['deposit_id' => $deposit['id']])
-            ->assertOk();
-        $this->assertDatabaseCount('folio_lines', 1);
 
         $this->withHeader('X-Tenant-ID', $tenant->id)
             ->postJson("/api/v1/payments/{$payment['id']}/reverse", ['reason' => 'Bank returned the transfer'])

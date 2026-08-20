@@ -85,13 +85,15 @@ class N2ApiIdempotencyTest extends TestCase
         ], $headers, 'n2-reservation-move-0001');
         $this->assertSame(1, $reservation->changes()->where('type', 'resource_moved')->count());
 
-        $payment = $this->assertPostReplay('/api/v1/payments', [
-            'reservation_id' => $reservationId,
-            'method' => 'card',
-            'provider' => 'external-terminal',
-            'provider_reference' => 'terminal-slip-n2-0001',
+        $tender = $this->assertPostReplay("/api/v1/reservations/{$reservationId}/front-desk-payments", [
+            'channel' => 'external_terminal',
             'amount_minor' => $reservation->fresh()->total_minor,
+            'processor_alias' => 'external-terminal',
+            'merchant_account_alias' => 'front-desk',
+            'terminal_identifier' => 'terminal-n2',
+            'transaction_reference' => 'terminal-slip-n2-0001',
         ], $headers, 'n2-payment-record-0001');
+        $payment = $tender['payment'];
         $this->assertSame('manual', $payment['origin']);
         $this->assertDatabaseCount('payments', 1);
 

@@ -44,20 +44,18 @@ class RoleBoundaryApiTest extends TestCase
             'currency' => 'USD',
         ]);
         $payload = [
-            'reservation_id' => $operationsReservation->id,
-            'method' => 'bank_transfer',
+            'channel' => 'bank_transfer',
             'amount_minor' => 25_000,
-            'evidence_note' => 'Wire confirmation checked by the lodge.',
+            'note' => 'Wire confirmation checked by the lodge.',
         ];
 
-        $this->withHeader('X-Tenant-ID', $operationsTenant->id)->postJson('/api/v1/payments', $payload)
+        $this->withHeader('X-Tenant-ID', $operationsTenant->id)->postJson("/api/v1/reservations/{$operationsReservation->id}/front-desk-payments", $payload)
             ->assertCreated()
-            ->assertJsonPath('data.amount_minor', 25_000);
+            ->assertJsonPath('data.payment.amount_minor', 25_000);
 
         [$salesTenant, $salesProperty] = $this->tenantEnvironment(MembershipRole::Sales);
         $salesReservation = Reservation::factory()->create(['property_id' => $salesProperty->id]);
-        $payload['reservation_id'] = $salesReservation->id;
-        $this->withHeader('X-Tenant-ID', $salesTenant->id)->postJson('/api/v1/payments', $payload)
+        $this->withHeader('X-Tenant-ID', $salesTenant->id)->postJson("/api/v1/reservations/{$salesReservation->id}/front-desk-payments", $payload)
             ->assertForbidden();
     }
 
