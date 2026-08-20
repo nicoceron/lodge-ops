@@ -77,6 +77,7 @@ class Reservation extends TenantModel
             'hold_expires_at' => 'immutable_datetime',
             'adults' => 'integer',
             'children' => 'integer',
+            'infants' => 'integer',
             'subtotal_minor' => 'integer',
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
@@ -133,6 +134,11 @@ class Reservation extends TenantModel
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function voucherRedemptions(): HasMany
+    {
+        return $this->hasMany(VoucherRedemption::class);
     }
 
     public function paymentRequests(): HasMany

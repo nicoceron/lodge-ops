@@ -19,6 +19,7 @@ use LogicException;
  * @property array<string, mixed> $inputs
  * @property array<string, mixed>|null $deposit_policy_snapshot
  * @property array<string, mixed>|null $cancellation_policy_snapshot
+ * @property array<string, mixed>|null $calculation_snapshot
  * @property-read Collection<int, BookingQuoteLine> $lines
  */
 class BookingQuote extends TenantModel
@@ -42,12 +43,15 @@ class BookingQuote extends TenantModel
             'ends_at' => 'immutable_datetime',
             'adults' => 'integer',
             'children' => 'integer',
+            'infants' => 'integer',
             'subtotal_minor' => 'integer',
+            'discount_minor' => 'integer',
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
             'inputs' => 'array',
             'deposit_policy_snapshot' => 'array',
             'cancellation_policy_snapshot' => 'array',
+            'calculation_snapshot' => 'array',
             'expires_at' => 'immutable_datetime',
             'committed_at' => 'immutable_datetime',
         ];

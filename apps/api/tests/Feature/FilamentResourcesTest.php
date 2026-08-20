@@ -49,6 +49,7 @@ use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\Concerns\CreatesTenant;
@@ -271,6 +272,7 @@ class FilamentResourcesTest extends TestCase
         $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 3]);
         $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Filament rate', 'currency' => 'USD']);
         RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
         $this->actingAs($user);
         Filament::setCurrentPanel(filament()->getPanel('admin'));
         Filament::setTenant($tenant, isQuiet: true);

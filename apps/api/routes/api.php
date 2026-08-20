@@ -70,7 +70,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::apiResource('guests', GuestController::class);
     Route::get('resources/suggestions', ResourceSuggestionController::class);
     Route::apiResource('resources', ResourceController::class);
-    Route::post('booking-quotes', [BookingQuoteController::class, 'store'])->middleware('idempotent');
+    Route::post('booking-quotes', [BookingQuoteController::class, 'store'])->middleware(['idempotent', 'throttle:commercial-voucher']);
+    Route::get('booking-quotes/{bookingQuote}', [BookingQuoteController::class, 'show']);
     Route::patch('resources/{resource}/housekeeping', [ResourceController::class, 'updateHousekeeping']);
     Route::apiResource('reservations', ReservationController::class)->except(['destroy', 'store']);
     Route::post('reservations', [ReservationController::class, 'store'])->middleware('idempotent');

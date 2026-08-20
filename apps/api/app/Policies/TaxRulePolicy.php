@@ -27,6 +27,11 @@ class TaxRulePolicy extends TenantPolicy
         return $this->canManageConfiguration($user, $record);
     }
 
+    public function manageConfiguration(User $user, TaxRule $record): bool
+    {
+        return $this->canManageConfiguration($user, $record);
+    }
+
     public function delete(User $user, TaxRule $record): bool
     {
         return $this->canManageConfiguration($user, $record);

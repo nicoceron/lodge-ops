@@ -21,6 +21,7 @@ final class CloseReservationWithPolicy
         private readonly ReservationPaymentScheduleService $paymentSchedule,
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
+        private readonly CommercialPromotionService $promotions,
     ) {}
 
     public function handle(Reservation $reservation, ReservationStatus $target, string $reason, ?int $actorId): Reservation
@@ -73,6 +74,7 @@ final class CloseReservationWithPolicy
                 'revision' => $locked->revision + 1,
             ]);
             $locked->allocations()->where('status', '!=', AllocationStatus::Released)->update(['status' => AllocationStatus::Released]);
+            $this->promotions->release($locked, ucfirst(str_replace('_', ' ', $target->value)).': '.$reason, true);
             $waivedDeposits = $this->paymentSchedule->waiveOpen($locked, ucfirst(str_replace('_', ' ', $target->value)).': '.$reason, $actorId);
             $paid = (int) $locked->payments()->where('status', PaymentStatus::Succeeded)->sum('amount_minor');
             $completedRefunds = (int) $locked->changes()

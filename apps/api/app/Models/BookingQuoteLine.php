@@ -31,9 +31,12 @@ class BookingQuoteLine extends TenantModel
             'service_on' => 'immutable_date',
             'quantity_thousandths' => 'integer',
             'unit_amount_minor' => 'integer',
+            'calculation_order' => 'integer',
+            'pre_total_minor' => 'integer',
             'net_amount_minor' => 'integer',
             'tax_amount_minor' => 'integer',
             'gross_amount_minor' => 'integer',
+            'post_total_minor' => 'integer',
             'metadata' => 'array',
         ];
     }
