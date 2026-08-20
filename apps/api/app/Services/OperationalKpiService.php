@@ -45,34 +45,48 @@ final class OperationalKpiService
             $paid = (int) Payment::query()->whereIn('reservation_id', $ids)->where('currency', $currency)
                 ->where('status', PaymentStatus::Succeeded)->sum('amount_minor');
             $booked = (int) $currencyReservations->sum('total_minor');
+            $rawBalance = $booked - $paid;
+            $reportedOutstanding = max(0, $rawBalance);
+            $overpayment = max(0, -$rawBalance);
 
             return [
                 'currency' => $currency,
                 'revenue_minor' => $revenue,
                 'booked_minor' => $booked,
                 'deposit_received_minor' => $paid,
-                'outstanding_minor' => max(0, $booked - $paid),
+                'outstanding_minor' => $reportedOutstanding,
                 'adr_minor' => $currencyReservations->count() === 0 ? null : intdiv($booked, $currencyReservations->count()),
                 'disclosure' => 'Currency totals are not converted or combined.',
+                'reconciliation' => [
+                    'booked_less_deposits_minor' => $rawBalance,
+                    'reported_outstanding_minor' => $reportedOutstanding,
+                    'overpayment_minor' => $overpayment,
+                    'balanced' => $booked + $overpayment === $paid + $reportedOutstanding,
+                ],
             ];
         })->values();
         $taskScope = OperationalTask::query()->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId));
 
         return [
             'status' => 'provisional_client_approval_required',
-            'range' => ['local_start' => $localStart->toDateString(), 'local_end' => $localEnd->toDateString(), 'timezone' => $timezone, 'utc_start' => $start->toIso8601String(), 'utc_end_exclusive' => $end->toIso8601String()],
+            'range' => ['local_start' => $localStart->toDateString(), 'local_end' => $localEnd->toDateString(), 'timezone' => $timezone, 'property_id' => $propertyId, 'utc_start' => $start->toIso8601String(), 'utc_end_exclusive' => $end->toIso8601String()],
             'definitions' => $this->definitions(),
             'values' => [
                 'reservation_volume' => $reservations->count(),
                 'occupied_room_nights' => $occupiedRoomNights,
                 'available_room_nights' => $availableRoomNights,
-                'occupancy_percent' => $availableRoomNights === 0 ? null : round(($occupiedRoomNights / $availableRoomNights) * 100, 2),
+                'occupancy_percent' => $availableRoomNights <= 0 ? null : round(($occupiedRoomNights / $availableRoomNights) * 100, 2),
                 'arrivals' => $reservationScope()->whereIn('status', $active)->where('starts_at', '>=', $start)->where('starts_at', '<', $end)->count(),
                 'departures' => $reservationScope()->whereIn('status', $active)->where('ends_at', '>=', $start)->where('ends_at', '<', $end)->count(),
-                'tasks_total' => (clone $taskScope)->where(fn (Builder $query) => $query->whereNull('due_at')->orWhereBetween('due_at', [$start, $end]))->count(),
+                'tasks_total' => (clone $taskScope)->where(fn (Builder $query) => $query->whereNull('due_at')->orWhere(fn (Builder $due) => $due->where('due_at', '>=', $start)->where('due_at', '<', $end)))->count(),
                 'tasks_overdue' => (clone $taskScope)->where('due_at', '<', now())->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])->count(),
                 'kitchen_guest_count' => (int) $reservations->sum(fn (Reservation $reservation): int => $reservation->adults + $reservation->children),
                 'currencies' => $currencyRows,
+            ],
+            'reconciliation' => [
+                'occupancy_balanced' => $occupiedRoomNights <= $availableRoomNights,
+                'currency_rows_balanced' => $currencyRows->every(fn (array $row): bool => data_get($row, 'reconciliation.balanced') === true),
+                'source_tables' => ['reservations', 'resources', 'folio_lines', 'payments', 'operational_tasks'],
             ],
         ];
     }

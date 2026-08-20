@@ -10,6 +10,7 @@ use App\Http\Resources\ReservationResource;
 use App\Models\Proposal;
 use App\Services\ProposalService;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -61,18 +62,21 @@ class ProposalController extends Controller
         return new ProposalResource($this->service->send($proposal));
     }
 
-    public function revise(Request $request, Proposal $proposal): ProposalResource
+    public function revise(Request $request, Proposal $proposal): JsonResponse
     {
         $this->authorize('create', Proposal::class);
         $this->authorize('view', $proposal);
 
-        return new ProposalResource($this->service->revise($proposal, $request->user()->id));
+        return (new ProposalResource($this->service->revise($proposal, $request->user()->id)))
+            ->response()->setStatusCode(201);
     }
 
-    public function convert(Proposal $proposal): ReservationResource
+    public function convert(Proposal $proposal): JsonResponse
     {
         $this->authorize('convert', $proposal);
+        $alreadyConverted = $proposal->reservation_id !== null;
 
-        return new ReservationResource($this->service->convertToReservation($proposal));
+        return (new ReservationResource($this->service->convertToReservation($proposal)))
+            ->response()->setStatusCode($alreadyConverted ? 200 : 201);
     }
 }

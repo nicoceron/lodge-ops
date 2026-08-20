@@ -10,7 +10,6 @@ use App\Models\Resource;
 use App\Models\ResourceCategory;
 use App\Support\Tenancy\TenantContext;
 use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -114,29 +113,8 @@ class ProposalForm
             Section::make('Pricing')
                 ->description(fn (?Proposal $record): string => $record === null
                     ? 'Availability, rate rules, promotions, tax, deposit policy, and cancellation policy are calculated and frozen by the server when you create this proposal.'
-                    : 'Legacy manually-priced drafts remain editable for compatibility. Server-priced proposal versions are immutable; revise from a fresh quote when the stay changes.')
-                ->hidden(fn (?Proposal $record): bool => $record?->booking_quote_id !== null)
-                ->schema([
-                    Repeater::make('lines')
-                        ->schema([
-                            TextInput::make('description')->required()->maxLength(500)->columnSpan(2),
-                            TextInput::make('quantity')->numeric()->step(0.001)->minValue(0.001)->default(1)->required(),
-                            TextInput::make('unit_amount_minor')->label('Unit amount (minor units)')->integer()->required(),
-                        ])
-                        ->columns(4)
-                        ->defaultItems(1)
-                        ->minItems(1)
-                        ->reorderable()
-                        ->addActionLabel('Add price line')
-                        ->required(),
-                    TextInput::make('tax_minor')
-                        ->label('Tax (minor units)')
-                        ->integer()
-                        ->minValue(0)
-                        ->default(0)
-                        ->required(),
-                ])
-                ->visible(fn (?Proposal $record): bool => $record !== null),
+                    : 'Pricing, tax, policies, and line items are immutable facts from the linked server quote. Legacy manual proposals are view-only and non-convertible.')
+                ->schema([]),
         ]);
     }
 }

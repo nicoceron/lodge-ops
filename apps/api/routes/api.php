@@ -113,6 +113,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('checklist-templates/{checklistTemplate}/publish', [OperationalAcceptanceController::class, 'publishChecklist'])->middleware('idempotent');
     Route::post('checklist-templates/{checklistTemplate}/retire', [OperationalAcceptanceController::class, 'retireChecklist'])->middleware('idempotent');
     Route::post('reservations/{reservation}/checklist-exceptions', [OperationalAcceptanceController::class, 'storeChecklistException'])->middleware('idempotent');
+    Route::patch('reservations/{reservation}/checklist-exceptions/{exception}', [OperationalAcceptanceController::class, 'updateChecklistException'])->middleware('idempotent');
+    Route::delete('reservations/{reservation}/checklist-exceptions/{exception}', [OperationalAcceptanceController::class, 'destroyChecklistException'])->middleware('idempotent');
     Route::post('reservations/{reservation}/checklists/generate', [OperationalAcceptanceController::class, 'generateChecklist'])->middleware('idempotent');
     Route::put('calendar/preferences', [OperationalAcceptanceController::class, 'calendarPreferences']);
     Route::get('operational-kpis', [OperationalAcceptanceController::class, 'kpis']);

@@ -11,11 +11,14 @@ use App\Models\Opportunity;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\Proposal;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\StockLocation;
 use App\Models\User;
+use App\Services\BookingQuoteService;
 use App\Services\ProposalService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
@@ -121,7 +124,12 @@ class AuthorizationPropertyScopeTest extends TestCase
         [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Sales);
         $otherProperty = Property::factory()->for($tenant)->create();
         $own = $this->proposal($property);
-        $other = $this->proposal($otherProperty);
+        $other = Proposal::query()->create([
+            'property_id' => $otherProperty->id, 'reference' => 'LEGACY-SCOPE', 'version' => 1,
+            'status' => 'draft', 'starts_at' => now()->addMonth(), 'ends_at' => now()->addMonth()->addDay(),
+            'adults' => 1, 'children' => 0, 'currency' => 'USD', 'total_minor' => 1, 'tax_minor' => 0,
+            'snapshot' => ['schema_version' => 1, 'lines' => []],
+        ]);
         $headers = ['X-Tenant-ID' => $tenant->id];
 
         $this->withHeaders($headers)->getJson('/api/v1/proposals?per_page=100')
@@ -129,11 +137,14 @@ class AuthorizationPropertyScopeTest extends TestCase
             ->assertJsonFragment(['id' => $own->id])
             ->assertJsonMissing(['id' => $other->id]);
         $this->withHeaders($headers)->getJson("/api/v1/proposals/{$other->id}")->assertForbidden();
-        $this->withHeaders($headers)->postJson('/api/v1/proposals', $this->proposalPayload($otherProperty))
+        $this->withHeaders($headers)->postJson('/api/v1/proposals', [
+            'property_id' => $otherProperty->id,
+            'booking_quote_id' => $own->booking_quote_id,
+        ])
             ->assertForbidden();
         $this->withHeaders($headers)->patchJson("/api/v1/proposals/{$own->id}", [
             'property_id' => $otherProperty->id,
-        ])->assertForbidden();
+        ])->assertUnprocessable()->assertJsonValidationErrors('property_id');
     }
 
     public function test_stock_and_retail_writes_reject_cross_property_records(): void
@@ -331,17 +342,24 @@ class AuthorizationPropertyScopeTest extends TestCase
     /** @return array<string, mixed> */
     private function proposalPayload(Property $property): array
     {
+        $category = $this->category($property, 'room');
+        $resource = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 4]);
+        $plan = RatePlan::query()->create([
+            'property_id' => $property->id, 'name' => 'Scoped proposal '.str()->ulid(),
+            'currency' => 'USD', 'maximum_occupancy' => 4,
+        ]);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 10_000]);
+        $plan->forceFill(['state' => 'published', 'published_at' => now()])->save();
+        $quote = app(BookingQuoteService::class)->create([
+            'property_id' => $property->id, 'rate_plan_id' => $plan->id,
+            'resource_category_id' => $category->id, 'resource_id' => $resource->id,
+            'starts_at' => now()->addMonth(), 'ends_at' => now()->addMonth()->addDays(3),
+            'adults' => 2, 'children' => 0,
+        ]);
+
         return [
             'property_id' => $property->id,
-            'starts_at' => now()->addMonth()->toIso8601String(),
-            'ends_at' => now()->addMonth()->addDays(3)->toIso8601String(),
-            'adults' => 2,
-            'currency' => 'USD',
-            'lines' => [[
-                'description' => 'Three nights',
-                'quantity_thousandths' => 3000,
-                'unit_amount_minor' => 10000,
-            ]],
+            'booking_quote_id' => $quote->id,
         ];
     }
 

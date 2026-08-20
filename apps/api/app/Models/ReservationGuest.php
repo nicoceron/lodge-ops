@@ -7,6 +7,7 @@ use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
+/** @property array<string, mixed>|null $operational_preferences */
 class ReservationGuest extends Pivot
 {
     use BelongsToTenant, HasUuid;

@@ -63,6 +63,57 @@ final class ChecklistWorkflowService
         }, 3);
     }
 
+    /** @param array<string, mixed> $data */
+    public function saveException(Reservation $reservation, array $data, ?int $actorId, ?ReservationChecklistException $exception = null): ReservationChecklistException
+    {
+        return DB::transaction(function () use ($reservation, $data, $actorId, $exception): ReservationChecklistException {
+            $locked = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if ($exception !== null && $exception->reservation_id !== $locked->id) {
+                throw ValidationException::withMessages(['exception' => 'The exception is outside this reservation.']);
+            }
+            $this->validateException($locked, $data);
+            $record = $exception === null
+                ? new ReservationChecklistException
+                : ReservationChecklistException::query()->lockForUpdate()->findOrFail($exception->id);
+            $record->forceFill([
+                ...collect($data)->only([
+                    'checklist_template_item_id', 'operation', 'title', 'description', 'priority',
+                    'due_offset_minutes', 'sort_order',
+                ])->all(),
+                'reservation_id' => $locked->id,
+                'created_by' => $record->created_by ?? $actorId,
+            ])->save();
+
+            return $record->fresh('templateItem');
+        }, 3);
+    }
+
+    public function deleteException(Reservation $reservation, ReservationChecklistException $exception): void
+    {
+        if ($exception->reservation_id !== $reservation->id) {
+            throw ValidationException::withMessages(['exception' => 'The exception is outside this reservation.']);
+        }
+        $exception->delete();
+    }
+
+    /** @param list<array<string, mixed>> $rows */
+    public function replaceExceptions(Reservation $reservation, array $rows, ?int $actorId): void
+    {
+        DB::transaction(function () use ($reservation, $rows, $actorId): void {
+            $keep = collect();
+            foreach ($rows as $index => $row) {
+                $row['sort_order'] = $index;
+                $existing = isset($row['id'])
+                    ? ReservationChecklistException::query()->where('reservation_id', $reservation->id)->find($row['id'])
+                    : null;
+                $keep->push($this->saveException($reservation, $row, $actorId, $existing)->id);
+            }
+            ReservationChecklistException::query()->where('reservation_id', $reservation->id)
+                ->when($keep->isNotEmpty(), fn ($query) => $query->whereNotIn('id', $keep))
+                ->delete();
+        }, 3);
+    }
+
     /** @return array{created: int, superseded: int, generation: int} */
     public function generate(Reservation $reservation, ChecklistTemplateVersion $version, ?int $actorId): array
     {
@@ -77,7 +128,8 @@ final class ChecklistWorkflowService
             $superseded = 0;
             $previous = OperationalTask::query()->where('reservation_id', $reservation->id)
                 ->whereNotNull('checklist_template_version_id')
-                ->whereIn('status', [TaskStatus::Todo, TaskStatus::Blocked])
+                ->where('status', TaskStatus::Todo)
+                ->whereNull('started_at')->whereNull('failed_at')->whereNull('escalated_at')
                 ->lockForUpdate()->get();
             foreach ($previous as $task) {
                 $from = $task->status;
@@ -138,5 +190,29 @@ final class ChecklistWorkflowService
 
             return ['created' => $created->count(), 'superseded' => $superseded, 'generation' => $generation];
         }, 3);
+    }
+
+    /** @param array<string, mixed> $data */
+    private function validateException(Reservation $reservation, array $data): void
+    {
+        $operation = (string) ($data['operation'] ?? '');
+        if ($operation === 'add') {
+            if (blank($data['title'] ?? null) || ! empty($data['checklist_template_item_id'])) {
+                throw ValidationException::withMessages(['title' => 'An added exception needs a title and cannot target a template item.']);
+            }
+
+            return;
+        }
+
+        $itemId = $data['checklist_template_item_id'] ?? null;
+        $applicable = filled($itemId) && ChecklistTemplateVersion::query()
+            ->where('state', 'published')
+            ->whereHas('items', fn ($query) => $query->whereKey($itemId))
+            ->whereHas('template', fn ($query) => $query->where('property_id', $reservation->property_id)
+                ->where(fn ($scope) => $scope->whereNull('program_id')->orWhere('program_id', $reservation->program_id)))
+            ->exists();
+        if (! $applicable) {
+            throw ValidationException::withMessages(['checklist_template_item_id' => 'Select an item from a published checklist applicable to this reservation and property.']);
+        }
     }
 }

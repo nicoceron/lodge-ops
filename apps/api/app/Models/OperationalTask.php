@@ -6,6 +6,7 @@ use App\Enums\TaskStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use LogicException;
 
 /**
  * @property CarbonImmutable|null $due_at
@@ -35,6 +36,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class OperationalTask extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::deleting(fn () => throw new LogicException('Operational tasks are append-only. Cancel them through the lifecycle service.'));
+    }
+
     protected $table = 'operational_tasks';
 
     protected function casts(): array

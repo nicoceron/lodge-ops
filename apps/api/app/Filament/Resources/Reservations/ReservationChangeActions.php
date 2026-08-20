@@ -6,6 +6,7 @@ use App\Enums\AllocationStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ReservationStatus;
 use App\Models\Allocation;
+use App\Models\ChecklistTemplateItem;
 use App\Models\ChecklistTemplateVersion;
 use App\Models\Payment;
 use App\Models\RatePlan;
@@ -21,6 +22,8 @@ use App\Services\ReallocateResource;
 use App\Services\RequestRefund;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -33,7 +36,7 @@ final class ReservationChangeActions
     /** @return array<Action> */
     public static function make(): array
     {
-        return [self::explainQuote(), self::amend(), self::move(), self::generateChecklist(), self::requestRefund(), self::completeRefund()];
+        return [self::explainQuote(), self::amend(), self::move(), self::checklistExceptions(), self::generateChecklist(), self::requestRefund(), self::completeRefund()];
     }
 
     private static function explainQuote(): Action
@@ -164,6 +167,54 @@ final class ReservationChangeActions
                 );
                 Notification::make()->success()->title("Generated {$result['created']} tasks")
                     ->body("Generation {$result['generation']}; superseded {$result['superseded']} pending tasks.")->send();
+            });
+    }
+
+    private static function checklistExceptions(): Action
+    {
+        return Action::make('checklistExceptions')
+            ->label('Checklist exceptions')
+            ->icon('heroicon-o-adjustments-horizontal')
+            ->color('gray')
+            ->authorize('update')
+            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true))
+            ->fillForm(fn (Reservation $record): array => [
+                'exceptions' => $record->checklistExceptions()->get()->map(fn ($exception): array => [
+                    'id' => $exception->id,
+                    'operation' => $exception->operation,
+                    'checklist_template_item_id' => $exception->checklist_template_item_id,
+                    'title' => $exception->title,
+                    'description' => $exception->description,
+                    'priority' => $exception->priority,
+                    'due_offset_minutes' => $exception->due_offset_minutes,
+                ])->all(),
+            ])
+            ->schema([
+                Repeater::make('exceptions')
+                    ->label('Reservation-specific items')
+                    ->reorderable()
+                    ->schema([
+                        Hidden::make('id'),
+                        Select::make('operation')->options([
+                            'add' => 'Add item', 'edit' => 'Edit item', 'remove' => 'Remove item', 'reorder' => 'Reorder item',
+                        ])->required()->live(),
+                        Select::make('checklist_template_item_id')->label('Published template item')
+                            ->options(fn (Reservation $record): array => ChecklistTemplateItem::query()
+                                ->whereHas('version', fn ($query) => $query->where('state', 'published')
+                                    ->whereHas('template', fn ($template) => $template->where('property_id', $record->property_id)
+                                        ->where(fn ($scope) => $scope->whereNull('program_id')->orWhere('program_id', $record->program_id))))
+                                ->orderBy('title')->pluck('title', 'id')->all())
+                            ->searchable(),
+                        TextInput::make('title')->maxLength(200),
+                        Textarea::make('description')->maxLength(2000)->rows(2),
+                        Select::make('priority')->options(['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'urgent' => 'Urgent']),
+                        TextInput::make('due_offset_minutes')->label('Due offset (minutes)')->integer(),
+                    ])->columns(2),
+            ])
+            ->modalDescription('Add, edit, remove, and reorder reservation-specific work. Regenerate the checklist to project the new exception set.')
+            ->action(function (Reservation $record, array $data): void {
+                app(ChecklistWorkflowService::class)->replaceExceptions($record, $data['exceptions'] ?? [], auth()->id());
+                Notification::make()->success()->title('Checklist exceptions saved')->body('Regenerate the checklist to apply them.')->send();
             });
     }
 

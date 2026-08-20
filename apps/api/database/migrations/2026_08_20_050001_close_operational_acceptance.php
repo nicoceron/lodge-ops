@@ -121,7 +121,7 @@ return new class extends Migration
 
         Schema::create('operational_task_events', function (Blueprint $table): void {
             $this->tenantUuid($table);
-            $table->foreignUuid('operational_task_id')->constrained()->cascadeOnDelete();
+            $table->foreignUuid('operational_task_id')->constrained()->restrictOnDelete();
             $table->foreignId('actor_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('type', 32);
             $table->string('from_status', 32)->nullable();
@@ -132,7 +132,7 @@ return new class extends Migration
             $table->timestamps();
             $table->index(['tenant_id', 'operational_task_id', 'occurred_at'], 'operational_task_events_timeline_idx');
             $table->foreign(['tenant_id', 'operational_task_id'], 'task_events_tenant_task_fk')
-                ->references(['tenant_id', 'id'])->on('operational_tasks')->cascadeOnDelete();
+                ->references(['tenant_id', 'id'])->on('operational_tasks')->restrictOnDelete();
         });
     }
 

@@ -9,6 +9,7 @@ use App\Models\ChecklistTemplate;
 use App\Models\ChecklistTemplateVersion;
 use App\Models\Guest;
 use App\Models\OperationalTask;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\ReservationChecklistException;
 use App\Services\ChecklistWorkflowService;
@@ -100,7 +101,7 @@ class OperationalAcceptanceController extends Controller
         return response()->json(['data' => ['state' => 'retired']]);
     }
 
-    public function storeChecklistException(Request $request, Reservation $reservation): JsonResponse
+    public function storeChecklistException(Request $request, Reservation $reservation, ChecklistWorkflowService $service): JsonResponse
     {
         $this->authorize('update', $reservation);
         $data = $request->validate([
@@ -111,16 +112,32 @@ class OperationalAcceptanceController extends Controller
             'due_offset_minutes' => ['nullable', 'integer', 'between:-525600,525600'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:1000'],
         ]);
-        if ($data['operation'] === 'add' && blank($data['title'] ?? null)) {
-            abort(422, 'An added reservation checklist item needs a title.');
-        }
-        $exception = new ReservationChecklistException;
-        $exception->forceFill([
-            ...$data, 'reservation_id' => $reservation->id, 'created_by' => $request->user()?->id,
-        ]);
-        $exception->save();
+        $exception = $service->saveException($reservation, $data, $request->user()?->id);
 
         return response()->json(['data' => $exception], 201);
+    }
+
+    public function updateChecklistException(Request $request, Reservation $reservation, ReservationChecklistException $exception, ChecklistWorkflowService $service): JsonResponse
+    {
+        $this->authorize('update', $reservation);
+        $data = $request->validate([
+            'checklist_template_item_id' => ['nullable', 'uuid'],
+            'operation' => ['required', Rule::in(['add', 'edit', 'remove', 'reorder'])],
+            'title' => ['nullable', 'string', 'max:200'], 'description' => ['nullable', 'string', 'max:2000'],
+            'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'due_offset_minutes' => ['nullable', 'integer', 'between:-525600,525600'],
+            'sort_order' => ['sometimes', 'integer', 'min:0', 'max:1000'],
+        ]);
+
+        return response()->json(['data' => $service->saveException($reservation, $data, $request->user()?->id, $exception)]);
+    }
+
+    public function destroyChecklistException(Reservation $reservation, ReservationChecklistException $exception, ChecklistWorkflowService $service): JsonResponse
+    {
+        $this->authorize('update', $reservation);
+        $service->deleteException($reservation, $exception);
+
+        return response()->json(['data' => ['deleted' => true]]);
     }
 
     public function generateChecklist(Request $request, Reservation $reservation, ChecklistWorkflowService $service): JsonResponse
@@ -140,6 +157,7 @@ class OperationalAcceptanceController extends Controller
             'expected_revision' => ['required', 'integer', 'min:1'],
             'assignee_id' => ['required_if:action,assign', 'nullable', 'integer'],
             'reason' => ['required_if:action,fail,escalate,cancel', 'nullable', 'string', 'max:2000'],
+            'reservation_reopen_authorized' => ['sometimes', 'boolean'],
         ]);
 
         return new TaskResource($service->transition($task, $data['action'], $data, $request->user()?->id));
@@ -170,7 +188,9 @@ class OperationalAcceptanceController extends Controller
         if ($propertyId !== null) {
             abort_unless($context->canAccessProperty($propertyId), 403);
         }
-        $timezone = $context->tenant()->timezone;
+        $timezone = $propertyId === null
+            ? $context->tenant()->timezone
+            : (Property::query()->whereKey($propertyId)->value('timezone') ?? $context->tenant()->timezone);
 
         return response()->json(['data' => $service->reconcile(
             CarbonImmutable::createFromFormat('!Y-m-d', $data['start'], $timezone),

@@ -9,14 +9,7 @@ final class ProposalFormData
     /** @param array<string, mixed> $data @return array<string, mixed> */
     public static function forService(array $data): array
     {
-        $data['currency'] = strtoupper($data['currency']);
-        $data['lines'] = collect($data['lines'] ?? [])->map(fn (array $line): array => [
-            'description' => $line['description'],
-            'quantity_thousandths' => (int) round(((float) $line['quantity']) * 1000),
-            'unit_amount_minor' => (int) $line['unit_amount_minor'],
-        ])->all();
-
-        return $data;
+        return collect($data)->only(['inquiry_source', 'primary_guest_id', 'expires_at', 'title', 'notes'])->all();
     }
 
     /** @return array<string, mixed> */

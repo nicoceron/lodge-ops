@@ -6,6 +6,7 @@ use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ResourceKind;
 use App\Filament\Resources\Reservations\ReservationResource;
+use App\Models\Allocation;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Program;
@@ -15,13 +16,18 @@ use App\Models\Resource;
 use App\Models\ResourceBlock;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
+use App\Services\AllocationWorkflowService;
 use App\Services\Projections\CalendarProjectionService;
+use App\Services\ReallocateResource;
+use App\Services\SharedResourceAttentionService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 
 class MasterCalendar extends Page
 {
@@ -56,6 +62,46 @@ class MasterCalendar extends Page
     public string $housekeeping = 'all';
 
     public int $rangeDays = 14;
+
+    public function assignAttention(string $reservationId, string $categoryId, string $resourceId, ?string $allocationId = null): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        $resource = Resource::query()->findOrFail($resourceId);
+        Gate::authorize('reallocate', $reservation);
+        $allocationId = filled($allocationId) ? $allocationId : null;
+        if ($allocationId === null) {
+            app(AllocationWorkflowService::class)->create($reservation, [
+                'requested_category_id' => $categoryId, 'resource_id' => $resource->id,
+                'starts_at' => $reservation->starts_at, 'ends_at' => $reservation->ends_at, 'quantity' => 1,
+            ]);
+        } else {
+            app(ReallocateResource::class)->handle($reservation, Allocation::query()->findOrFail($allocationId), $resource, auth()->id(), reason: 'Shared-resource attention workbench.');
+        }
+        Notification::make()->success()->title('Shared resource assigned')->send();
+    }
+
+    public function swapAttention(string $reservationId, string $allocationId, string $targetResourceId, string $swapAllocationId): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        Gate::authorize('reallocate', $reservation);
+        app(ReallocateResource::class)->handle(
+            $reservation, Allocation::query()->findOrFail($allocationId), Resource::query()->findOrFail($targetResourceId),
+            auth()->id(), Allocation::query()->findOrFail($swapAllocationId), 'Shared-resource attention workbench swap.',
+        );
+        Notification::make()->success()->title('Shared resources swapped')->send();
+    }
+
+    public function releaseAttention(string $reservationId, string $allocationId): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        $allocation = Allocation::query()->where('reservation_id', $reservation->id)->findOrFail($allocationId);
+        Gate::authorize('delete', $allocation);
+        app(AllocationWorkflowService::class)->release($reservation, $allocation);
+        Notification::make()->success()->title('Shared resource released')->send();
+    }
 
     public function mount(): void
     {
@@ -234,10 +280,18 @@ class MasterCalendar extends Page
                 ->values(),
             'buyouts' => $allEvents->where('is_buyout', true)->values(),
             'allocationSummary' => $projection['summary'],
+            'attentionRows' => $isGuide ? collect() : app(SharedResourceAttentionService::class)->build(
+                $start, $end, $propertyId, $projection['summary']['hard_conflict_reservation_ids'],
+            ),
             'resources' => collect($projection['resources']),
             'resourceGroups' => $this->resourceRows($days, $propertyId, $isGuide, $guideResourceIds),
             'today' => CarbonImmutable::now($timezone)->toDateString(),
         ];
+    }
+
+    private function assertMayManageAttention(): void
+    {
+        abort_unless(app(TenantContext::class)->membership()?->role?->canScheduleOperations() === true, 403);
     }
 
     /**

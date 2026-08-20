@@ -7,6 +7,7 @@ use App\Enums\ReservationStatus;
 use App\Models\Guest;
 use App\Models\Property;
 use App\Models\Reservation;
+use App\Services\ReservationOperationalPreferenceService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -161,12 +162,7 @@ class KitchenDashboard extends Page
             'starts_at' => $reservation->starts_at->timezone($timezone),
             'ends_at' => $reservation->ends_at->timezone($timezone),
             'party' => $reservation->adults + $reservation->children,
-            'dietary' => $guests->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
-                ->concat($reservation->guestPortalProfiles
-                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-                ->unique(fn (string $label): string => strtolower($label))
-                ->values()
-                ->all(),
+            'dietary' => app(ReservationOperationalPreferenceService::class)->dietaryLabels($reservation),
         ];
     }
 
@@ -190,24 +186,7 @@ class KitchenDashboard extends Page
     /** @return list<string> */
     private function reservationRestrictionLabels(Reservation $reservation): array
     {
-        $guests = $this->reservationGuests($reservation);
-        $knownGuestIds = $guests->pluck('id');
-        $guestLabels = $guests->flatMap(function (Guest $guest) use ($reservation): array {
-            return collect($this->dietaryLabels($guest->preferences))
-                ->concat($reservation->guestPortalProfiles
-                    ->where('guest_id', $guest->id)
-                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-                ->unique(fn (string $label): string => strtolower($label))
-                ->values()
-                ->all();
-        });
-
-        return $guestLabels
-            ->concat($reservation->guestPortalProfiles
-                ->whereNotIn('guest_id', $knownGuestIds)
-                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-            ->values()
-            ->all();
+        return app(ReservationOperationalPreferenceService::class)->restrictionLabels($reservation);
     }
 
     /** @return Collection<int, Guest> */
@@ -218,33 +197,5 @@ class KitchenDashboard extends Page
             ->concat($reservation->guests)
             ->unique('id')
             ->values();
-    }
-
-    /** @param array<string, mixed>|null $preferences @return list<string> */
-    private function dietaryLabels(?array $preferences): array
-    {
-        if ($preferences === null) {
-            return [];
-        }
-
-        $values = collect([
-            data_get($preferences, 'dietary'),
-            data_get($preferences, 'dietary_style'),
-            data_get($preferences, 'dietary_requirements'),
-            data_get($preferences, 'allergies'),
-        ])->filter()->flatMap(function (mixed $value): array {
-            if (is_array($value)) {
-                return array_values(array_filter($value, 'is_string'));
-            }
-
-            return is_string($value) ? preg_split('/[,;]+/', $value) ?: [] : [];
-        });
-
-        return $values
-            ->map(fn (string $value): string => trim($value))
-            ->filter()
-            ->unique(fn (string $value): string => strtolower($value))
-            ->values()
-            ->all();
     }
 }

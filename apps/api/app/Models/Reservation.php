@@ -222,6 +222,7 @@ class Reservation extends TenantModel
         return $this->hasMany(GuestPortalAcknowledgement::class);
     }
 
+    /** @return HasMany<ReservationChecklistException, $this> */
     public function checklistExceptions(): HasMany
     {
         return $this->hasMany(ReservationChecklistException::class)->orderBy('sort_order');

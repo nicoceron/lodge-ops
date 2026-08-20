@@ -185,6 +185,8 @@ class CalendarProjectionService
             ->filter(fn (array $event) => collect($event['resource_ids'])->isEmpty())
             ->count();
 
+        $conflictFacts = $this->conflictFacts($allocations, $blocks);
+
         return [
             'data' => $events->sortBy('start')->values(),
             'range' => [
@@ -216,8 +218,9 @@ class CalendarProjectionService
                 'quantity' => $allocation->quantity,
             ]),
             'summary' => [
-                'hard_conflicts' => $this->hardConflicts($allocations, $blocks),
-                'hard_conflict_reservation_ids' => $this->conflictReservationIds($allocations, $blocks),
+                'hard_conflicts' => $conflictFacts->count(),
+                'hard_conflict_reservation_ids' => $conflictFacts->flatMap(fn (array $fact) => $fact['reservation_ids'])->filter()->unique()->values()->all(),
+                'hard_conflict_facts' => $conflictFacts->values()->all(),
                 'unassigned_reservations' => $unassignedReservations,
                 'suggestions' => $unassignedReservations,
             ],
@@ -244,9 +247,9 @@ class CalendarProjectionService
      * @param  Collection<int, Allocation>  $allocations
      * @param  Collection<int, ResourceBlock>  $blocks
      */
-    private function hardConflicts(Collection $allocations, Collection $blocks): int
+    private function conflictFacts(Collection $allocations, Collection $blocks): Collection
     {
-        $conflicts = 0;
+        $facts = collect();
 
         foreach ($allocations->whereNotNull('resource_id')->groupBy('resource_id') as $resourceAllocations) {
             $ordered = $resourceAllocations->sortBy('starts_at')->values();
@@ -256,7 +259,11 @@ class CalendarProjectionService
                 $resource = $allocation->getRelation('resource');
                 $capacity = max(1, $resource instanceof Resource ? $resource->capacity : 1);
                 if ($active->sum('quantity') + $allocation->quantity > $capacity) {
-                    $conflicts++;
+                    $facts->push([
+                        'type' => 'capacity_overlap',
+                        'resource_id' => $allocation->resource_id,
+                        'reservation_ids' => $active->pluck('reservation_id')->push($allocation->reservation_id)->filter()->unique()->values()->all(),
+                    ]);
                 }
                 $active->push($allocation);
             }
@@ -269,7 +276,16 @@ class CalendarProjectionService
                 && $candidate->resource?->property_id === $buyout->resource?->property_id
                 && $candidate->starts_at < $buyout->ends_at
                 && $candidate->ends_at > $buyout->starts_at)) {
-                $conflicts++;
+                $facts->push([
+                    'type' => 'property_buyout_overlap',
+                    'resource_id' => $buyout->resource_id,
+                    'reservation_ids' => $allocations->filter(fn (Allocation $candidate): bool => $candidate->id === $buyout->id
+                        || ($candidate->reservation_id !== $buyout->reservation_id
+                            && $candidate->resource?->property_id === $buyout->resource?->property_id
+                            && $candidate->starts_at < $buyout->ends_at
+                            && $candidate->ends_at > $buyout->starts_at))
+                        ->pluck('reservation_id')->filter()->unique()->values()->all(),
+                ]);
             }
         }
 
@@ -284,32 +300,22 @@ class CalendarProjectionService
                     && $allocation->starts_at < $block->ends_at
                     && $allocation->ends_at > $block->starts_at;
             })) {
-                $conflicts++;
+                $facts->push([
+                    'type' => $block->resource->isBuyout() ? 'property_buyout_block' : 'resource_block',
+                    'resource_id' => $block->resource_id,
+                    'resource_block_id' => $block->id,
+                    'reservation_ids' => $allocations->filter(function (Allocation $allocation) use ($block): bool {
+                        $resource = $allocation->resource;
+                        $samePropertyBuyout = $resource->property_id === $block->resource->property_id
+                            && ($block->resource->isBuyout() || $resource->isBuyout());
+
+                        return ($allocation->resource_id === $block->resource_id || $samePropertyBuyout)
+                            && $allocation->starts_at < $block->ends_at && $allocation->ends_at > $block->starts_at;
+                    })->pluck('reservation_id')->filter()->unique()->values()->all(),
+                ]);
             }
         }
 
-        return $conflicts;
-    }
-
-    /** @param Collection<int, Allocation> $allocations @param Collection<int, ResourceBlock> $blocks @return list<string> */
-    private function conflictReservationIds(Collection $allocations, Collection $blocks): array
-    {
-        $ids = collect();
-        foreach ($allocations->whereNotNull('resource_id')->groupBy('resource_id') as $resourceAllocations) {
-            foreach ($resourceAllocations as $allocation) {
-                $resource = $allocation->resource;
-                $overlapQuantity = $resourceAllocations->filter(fn (Allocation $candidate): bool => $candidate->starts_at < $allocation->ends_at
-                    && $candidate->ends_at > $allocation->starts_at)->sum('quantity');
-                if ($overlapQuantity > max(1, $resource->capacity)) {
-                    $ids->push($allocation->reservation_id);
-                }
-                if ($blocks->contains(fn (ResourceBlock $block): bool => $block->resource_id === $allocation->resource_id
-                    && $block->starts_at < $allocation->ends_at && $block->ends_at > $allocation->starts_at)) {
-                    $ids->push($allocation->reservation_id);
-                }
-            }
-        }
-
-        return $ids->filter()->unique()->values()->all();
+        return $facts->unique(fn (array $fact): string => $fact['type'].'|'.($fact['resource_id'] ?? '').'|'.implode(',', $fact['reservation_ids']))->values();
     }
 }

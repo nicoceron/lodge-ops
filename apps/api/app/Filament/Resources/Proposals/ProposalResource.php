@@ -40,6 +40,10 @@ class ProposalResource extends TenantResource
 
     public static function canEdit(Model $record): bool
     {
+        if ($record->getAttribute('booking_quote_id') === null) {
+            return false;
+        }
+
         return parent::canEdit($record)
             && $record instanceof Proposal
             && $record->status === ProposalStatus::Draft;
@@ -47,7 +51,7 @@ class ProposalResource extends TenantResource
 
     public static function canRunWorkflow(Proposal $proposal): bool
     {
-        return static::belongsToCurrentTenant($proposal) && static::canWrite();
+        return static::belongsToCurrentTenant($proposal) && static::canWrite() && $proposal->booking_quote_id !== null;
     }
 
     public static function form(Schema $schema): Schema

@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use App\Models\Program;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Validator;
 
 class StoreProposalRequest extends TenantRequest
 {
@@ -12,34 +10,21 @@ class StoreProposalRequest extends TenantRequest
     {
         return [
             'property_id' => ['required', 'uuid', $this->tenantExists('properties')],
-            'booking_quote_id' => ['nullable', 'uuid', $this->tenantExists('booking_quotes')],
+            'booking_quote_id' => ['required', 'uuid', $this->tenantExists('booking_quotes')],
             'inquiry_source' => ['nullable', Rule::in(['email', 'whatsapp', 'phone', 'walk_in', 'partner', 'web', 'other_approved'])],
-            'program_id' => ['nullable', 'uuid', $this->tenantExists('programs')],
+            'program_id' => ['prohibited'],
             'primary_guest_id' => ['nullable', 'uuid', $this->tenantExists('guests')],
-            'starts_at' => ['required', 'date'],
-            'ends_at' => ['required', 'date', 'after:starts_at'],
-            'adults' => ['required', 'integer', 'min:1', 'max:1000'],
-            'children' => ['sometimes', 'integer', 'min:0', 'max:1000'],
-            'currency' => ['required', 'string', 'size:3'],
+            'starts_at' => ['prohibited'],
+            'ends_at' => ['prohibited'],
+            'adults' => ['prohibited'],
+            'children' => ['prohibited'],
+            'currency' => ['prohibited'],
             'title' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:10000'],
-            'tax_minor' => ['sometimes', 'integer', 'min:0', 'max:999999999999'],
+            'tax_minor' => ['prohibited'],
+            'total_minor' => ['prohibited'],
             'expires_at' => ['nullable', 'date', 'after:now'],
-            'lines' => ['required', 'array', 'min:1', 'max:200'],
-            'lines.*.description' => ['required', 'string', 'max:500'],
-            'lines.*.quantity_thousandths' => ['required', 'integer', 'min:1', 'max:100000000'],
-            'lines.*.unit_amount_minor' => ['required', 'integer', 'min:-999999999999', 'max:999999999999'],
+            'lines' => ['prohibited'],
         ];
-    }
-
-    public function after(): array
-    {
-        return [function (Validator $validator): void {
-            $programId = $this->input('program_id');
-            $propertyId = $this->input('property_id');
-            if ($programId && $propertyId && ! Program::query()->whereKey($programId)->where('property_id', $propertyId)->exists()) {
-                $validator->errors()->add('program_id', 'The program does not belong to the selected property.');
-            }
-        }];
     }
 }

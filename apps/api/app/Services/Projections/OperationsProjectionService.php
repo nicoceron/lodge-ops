@@ -8,13 +8,13 @@ use App\Enums\ReservationStatus;
 use App\Enums\ResourceKind;
 use App\Enums\TaskStatus;
 use App\Models\Allocation;
-use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
+use App\Services\ReservationOperationalPreferenceService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -26,6 +26,7 @@ class OperationsProjectionService
     public function __construct(
         private readonly TenantContext $context,
         private readonly StaffProjectionVisibility $visibility,
+        private readonly ReservationOperationalPreferenceService $preferences,
     ) {}
 
     /** @return array<string, mixed> */
@@ -245,73 +246,13 @@ class OperationsProjectionService
     /** @return list<string> */
     private function reservationRestrictionLabels(Reservation $reservation): array
     {
-        $knownGuestIds = $this->reservationGuests($reservation)->pluck('id');
-        $guestLabels = $this->reservationGuests($reservation)->flatMap(function (Guest $guest) use ($reservation): array {
-            return collect($this->dietaryLabels($guest->preferences))
-                ->concat($reservation->guestPortalProfiles
-                    ->where('guest_id', $guest->id)
-                    ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-                ->unique(fn (string $label) => strtolower($label))
-                ->values()
-                ->all();
-        });
-
-        return $guestLabels
-            ->concat($reservation->guestPortalProfiles
-                ->whereNotIn('guest_id', $knownGuestIds)
-                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-            ->values()
-            ->all();
+        return $this->preferences->restrictionLabels($reservation);
     }
 
     /** @return list<string> */
     private function reservationDietaryLabels(Reservation $reservation): array
     {
-        return $this->reservationGuests($reservation)
-            ->flatMap(fn (Guest $guest) => $this->dietaryLabels($guest->preferences))
-            ->concat($reservation->guestPortalProfiles
-                ->flatMap(fn ($profile) => $this->dietaryLabels($profile->preferences)))
-            ->unique(fn (string $label) => strtolower($label))
-            ->values()
-            ->all();
-    }
-
-    /** @return Collection<int, Guest> */
-    private function reservationGuests(Reservation $reservation): Collection
-    {
-        return collect([$reservation->primaryGuest])
-            ->filter()
-            ->concat($reservation->guests)
-            ->unique('id')
-            ->values();
-    }
-
-    /** @param array<string, mixed>|null $preferences @return list<string> */
-    private function dietaryLabels(?array $preferences): array
-    {
-        if ($preferences === null) {
-            return [];
-        }
-
-        $values = collect([
-            data_get($preferences, 'dietary'),
-            data_get($preferences, 'dietary_style'),
-            data_get($preferences, 'dietary_requirements'),
-            data_get($preferences, 'allergies'),
-        ])->filter()->flatMap(function (mixed $value): array {
-            if (is_array($value)) {
-                return array_values(array_filter($value, 'is_string'));
-            }
-
-            return is_string($value) ? preg_split('/[,;]+/', $value) ?: [] : [];
-        });
-
-        return $values
-            ->map(fn (string $value) => trim($value))
-            ->filter()
-            ->unique(fn (string $value) => strtolower($value))
-            ->values()
-            ->all();
+        return $this->preferences->dietaryLabels($reservation);
     }
 
     /** @return array<string, mixed> */

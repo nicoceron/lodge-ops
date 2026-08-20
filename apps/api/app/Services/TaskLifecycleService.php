@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\MembershipRole;
+use App\Enums\ReservationStatus;
 use App\Enums\TaskStatus;
+use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\OperationalTaskEvent;
 use App\Services\Automation\OutboxRecorder;
@@ -12,7 +15,10 @@ use Illuminate\Validation\ValidationException;
 
 final class TaskLifecycleService
 {
-    public function __construct(private readonly OutboxRecorder $outbox) {}
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+        private readonly OperationalTaskAssigneeService $assignees,
+    ) {}
 
     /** @param array<string, mixed> $data */
     public function transition(OperationalTask $task, string $action, array $data, ?int $actorId): OperationalTask
@@ -25,6 +31,12 @@ final class TaskLifecycleService
             }
 
             $from = $locked->status;
+            if ($action === 'assign') {
+                $this->assignees->assertEligible($locked, (int) $data['assignee_id']);
+            }
+            if ($action === 'reopen') {
+                $this->assertReservationMayReopenTask($locked, $data, $actorId);
+            }
             [$to, $attributes, $event] = $this->transitionAttributes($locked, $action, $data);
             $locked->forceFill([...$attributes, 'status' => $to, 'revision' => $locked->revision + 1]);
             $locked->save();
@@ -36,6 +48,32 @@ final class TaskLifecycleService
                 'status' => $to->value,
                 'due_at' => $locked->due_at?->toIso8601String(),
                 'assignee_id' => $locked->assignee_id,
+            ]);
+
+            return $locked->fresh(['assignee', 'events']);
+        }, 3);
+    }
+
+    /** @param array<string, mixed> $data */
+    public function updateDetails(OperationalTask $task, array $data, ?int $actorId): OperationalTask
+    {
+        return DB::transaction(function () use ($task, $data, $actorId): OperationalTask {
+            $locked = OperationalTask::query()->lockForUpdate()->findOrFail($task->id);
+            if ((int) ($data['expected_revision'] ?? 0) !== $locked->revision) {
+                throw ValidationException::withMessages(['expected_revision' => 'This task changed. Refresh and retry the update.']);
+            }
+            $before = $locked->only(['title', 'description', 'priority', 'due_at', 'metadata']);
+            $locked->fill(collect($data)->only(['title', 'description', 'priority', 'due_at', 'metadata'])->all());
+            $locked->revision++;
+            $locked->save();
+            OperationalTaskEvent::query()->create([
+                'operational_task_id' => $locked->id,
+                'actor_id' => $actorId,
+                'type' => 'details_updated',
+                'from_status' => $locked->status->value,
+                'to_status' => $locked->status->value,
+                'snapshot' => ['revision' => $locked->revision, 'before' => $before],
+                'occurred_at' => now(),
             ]);
 
             return $locked->fresh(['assignee', 'events']);
@@ -76,8 +114,9 @@ final class TaskLifecycleService
         return DB::transaction(function () use ($reservationId, $seconds, $actorId): int {
             $tasks = OperationalTask::query()->where('reservation_id', $reservationId)
                 ->whereNotNull('checklist_template_version_id')
-                ->whereIn('status', [TaskStatus::Todo, TaskStatus::Blocked])
-                ->whereNull('started_at')->lockForUpdate()->get();
+                ->where('status', TaskStatus::Todo)
+                ->whereNull('started_at')->whereNull('failed_at')->whereNull('escalated_at')
+                ->lockForUpdate()->get();
             foreach ($tasks as $task) {
                 $task->update([
                     'due_at' => $task->due_at?->addSeconds($seconds),
@@ -128,6 +167,27 @@ final class TaskLifecycleService
         }
 
         return $reason;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function assertReservationMayReopenTask(OperationalTask $task, array $data, ?int $actorId): void
+    {
+        $reservation = $task->reservation()->first();
+        if ($reservation === null || ! in_array($reservation->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow, ReservationStatus::CheckedOut], true)) {
+            return;
+        }
+
+        $authorized = ($data['reservation_reopen_authorized'] ?? false) === true
+            && $actorId !== null
+            && Membership::query()->where('user_id', $actorId)->where('is_active', true)
+                ->whereIn('role', [MembershipRole::Administrator->value, MembershipRole::Manager->value])
+                ->where(fn ($query) => $query->whereNull('property_id')->orWhere('property_id', $task->property_id))
+                ->exists();
+        if (! $authorized) {
+            throw ValidationException::withMessages([
+                'reservation_reopen_authorized' => 'Tasks on a terminal reservation require explicit reservation-reopen authority from an active property manager.',
+            ]);
+        }
     }
 
     private function event(OperationalTask $task, string $type, TaskStatus $from, TaskStatus $to, ?string $reason, ?int $actorId): void

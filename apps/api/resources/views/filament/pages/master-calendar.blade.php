@@ -191,6 +191,61 @@
             </x-filament::section>
         </div>
 
+        @if ($attentionRows->isNotEmpty())
+            <x-filament::section
+                heading="Shared-resource attention workbench"
+                description="Required and conflicted guide, horse, boat, and vehicle assignments. Recommendations are availability-ranked and every mutation rechecks capacity under lock."
+            >
+                <div class="space-y-3">
+                    @foreach ($attentionRows as $row)
+                        <div class="rounded-xl border border-gray-200 p-4 dark:border-white/10" wire:key="attention-{{ $row['reservation_id'] }}-{{ $row['category_id'] }}">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold">{{ $row['reference'] }} · {{ $row['category'] }}</div>
+                                    <div class="mt-1 text-sm text-gray-500">Required {{ $row['required'] }} · assigned {{ $row['assigned'] }}</div>
+                                </div>
+                                <x-filament::badge :color="$row['conflicted'] ? 'danger' : 'warning'">
+                                    {{ $row['conflicted'] ? 'Conflicted' : 'Unassigned' }}
+                                </x-filament::badge>
+                            </div>
+                            <ol class="mt-3 space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                                @foreach ($row['reasons'] as $reason)<li>{{ $reason }}</li>@endforeach
+                            </ol>
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                @foreach ($row['suggestions'] as $suggestion)
+                                    <button
+                                        type="button"
+                                        class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
+                                        wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $row['allocation_id'] ?? '' }}')"
+                                    >
+                                        {{ $row['resource_id'] ? 'Move to' : 'Assign' }} {{ $suggestion['name'] }}
+                                    </button>
+                                @endforeach
+                                @if ($row['swap'] && $row['allocation_id'])
+                                    <x-filament::button
+                                        size="sm"
+                                        color="warning"
+                                        wire:click="swapAttention('{{ $row['reservation_id'] }}', '{{ $row['allocation_id'] }}', '{{ $row['swap']['resource_id'] }}', '{{ $row['swap']['allocation_id'] }}')"
+                                    >Swap assignments</x-filament::button>
+                                @endif
+                                @if ($row['allocation_id'])
+                                    <x-filament::button
+                                        size="sm"
+                                        color="danger"
+                                        wire:click="releaseAttention('{{ $row['reservation_id'] }}', '{{ $row['allocation_id'] }}')"
+                                        wire:confirm="Release this assignment?"
+                                    >Release</x-filament::button>
+                                @endif
+                            </div>
+                            @if ($row['suggestions'] === [])
+                                <div class="mt-3 text-sm text-danger-600">No conflict-free matching resource is currently available.</div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </x-filament::section>
+        @endif
+
         @if ($resourceGroups->isNotEmpty())
             <x-filament::section
                 heading="Resource planner"
