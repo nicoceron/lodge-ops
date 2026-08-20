@@ -51,6 +51,7 @@ use App\Models\Tenant;
 use App\Services\IntegrationConnectionService;
 use App\Services\MessageTemplateService;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -347,12 +348,16 @@ class BackOfficeFilamentTest extends TestCase
             'trigger' => 'manual', 'status' => 'completed_with_errors', 'correlation_id' => 'inspect-correlation',
             'idempotency_key' => 'inspect-idempotency', 'item_count' => 1, 'dead_letter_count' => 1,
         ]);
+        $availableAt = CarbonImmutable::parse('2026-08-20T22:30:01Z');
+        $startedAt = CarbonImmutable::parse('2026-08-20T22:30:02Z');
+        $finishedAt = CarbonImmutable::parse('2026-08-20T22:30:03Z');
         $item = IntegrationSyncRunItem::query()->create([
             'integration_sync_run_id' => $run->id, 'property_id' => $property->id, 'page_number' => 1,
             'external_key' => 'inspect-external', 'payload_checksum' => str_repeat('a', 64),
             'safe_payload' => ['private_internal_note' => 'must-not-render'], 'status' => 'dead_letter', 'attempt' => 2,
             'idempotency_key' => 'inspect-item-idempotency', 'request_checksum' => str_repeat('b', 64),
             'response_checksum' => str_repeat('c', 64), 'last_error' => 'Safe item failure',
+            'available_at' => $availableAt, 'started_at' => $startedAt, 'finished_at' => $finishedAt,
         ]);
         $letter = IntegrationDeadLetter::query()->create([
             'integration_connection_id' => $connection->id, 'property_id' => $property->id,
@@ -362,9 +367,16 @@ class BackOfficeFilamentTest extends TestCase
 
         Livewire::test(CapabilitiesRelationManager::class, ['ownerRecord' => $connection, 'pageClass' => ViewIntegrationConnection::class])
             ->assertCanSeeTableRecords([$capability])->assertSee('Safe capability warning')->assertDontSee('env:INSPECTION_SECRET');
-        Livewire::test(ItemsRelationManager::class, ['ownerRecord' => $run, 'pageClass' => ViewIntegrationRun::class])
+        $itemInspection = Livewire::test(ItemsRelationManager::class, ['ownerRecord' => $run, 'pageClass' => ViewIntegrationRun::class])
             ->assertCanSeeTableRecords([$item])->assertSee('Safe item failure')->assertSee($letter->id)
-            ->assertSee('inspect-item-idemp')->assertDontSee('must-not-render')->assertDontSee('safe_payload');
+            ->assertSee('inspect-item-idemp')
+            ->assertSee($availableAt->setTimezone($tenant->timezone)->format('M j, Y · H:i:s'))
+            ->assertSee($startedAt->setTimezone($tenant->timezone)->format('M j, Y · H:i:s'))
+            ->assertSee($finishedAt->setTimezone($tenant->timezone)->format('M j, Y · H:i:s'))
+            ->assertDontSee('must-not-render')->assertDontSee('safe_payload');
+        $itemInspection->callTableAction('view', $item)
+            ->assertSee('Available at')->assertSee('Started at')->assertSee('Finished at')
+            ->assertSee($finishedAt->setTimezone($tenant->timezone)->format('M j, Y · H:i:s'));
 
         foreach (MembershipRole::cases() as $role) {
             $membership->update(['role' => $role]);

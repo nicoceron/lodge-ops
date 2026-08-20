@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\IntegrationRuns\RelationManagers;
 
 use App\Filament\Resources\IntegrationRuns\IntegrationRunResource;
+use App\Filament\Support\InnPresentation;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -36,6 +37,9 @@ class ItemsRelationManager extends RelationManager
             Section::make('Safe item inspection')->columns(2)->schema([
                 TextEntry::make('external_key'), TextEntry::make('local_key')->placeholder('—'),
                 TextEntry::make('status')->badge(), TextEntry::make('attempt'),
+                TextEntry::make('available_at')->label('Available at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never'),
+                TextEntry::make('started_at')->label('Started at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never'),
+                TextEntry::make('finished_at')->label('Finished at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never'),
                 TextEntry::make('idempotency_key')->copyable()->columnSpanFull(),
                 TextEntry::make('payload_checksum')->copyable()->columnSpanFull(),
                 TextEntry::make('request_checksum')->copyable()->placeholder('—')->columnSpanFull(),
@@ -53,7 +57,11 @@ class ItemsRelationManager extends RelationManager
         return $table->modifyQueryUsing(fn ($query) => $query->with('deadLetter'))->columns([
             TextColumn::make('page_number')->label('Page'), TextColumn::make('external_key'),
             TextColumn::make('local_key')->placeholder('—'), TextColumn::make('status')->badge(),
-            TextColumn::make('attempt'), TextColumn::make('payload_checksum')->label('Payload checksum')->limit(12)->copyable(),
+            TextColumn::make('attempt'),
+            TextColumn::make('available_at')->label('Available at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
+            TextColumn::make('started_at')->label('Started at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
+            TextColumn::make('finished_at')->label('Finished at')->dateTime('M j, Y · H:i:s', timezone: InnPresentation::timezone())->placeholder('Never')->sortable(),
+            TextColumn::make('payload_checksum')->label('Payload checksum')->limit(12)->copyable(),
             TextColumn::make('request_checksum')->label('Request checksum')->limit(12)->copyable()->placeholder('—'),
             TextColumn::make('response_checksum')->label('Response checksum')->limit(12)->copyable()->placeholder('—'),
             TextColumn::make('idempotency_key')->label('Idempotency')->limit(18)->copyable(),

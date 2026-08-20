@@ -25,7 +25,7 @@ Actor: property-scoped administrator in the ordinary Chrome Filament session at 
 2. **Test:** Ran the visible Test action for `reservations.import`; Filament reported `Connection test passed` using safe contract-fixture text.
 3. **Enable:** Ran Enable with an operator reason. The connection changed to `Connected`, and Start run became available.
 4. **Mixed run:** Ran Start run for `reservations.import`. The visible run page showed one page and two items: `uat-good` succeeded on attempt 1, while `uat-poison` entered `dead_letter` with safe error `Test-only unmapped reservation fact.`
-5. **Inspect:** The non-lazy capability table showed enabled state, configuration version 1, last-sync/error timestamps, and the safe error. The non-lazy item table showed statuses, attempts, truncated checksums, idempotency keys, and dead-letter linkage. It exposed neither configuration secrets nor raw payloads.
+5. **Inspect:** The non-lazy capability table showed enabled state, configuration version 1, last-sync/error timestamps, and the safe error. The non-lazy item table showed statuses, attempts, truncated checksums, idempotency keys, and dead-letter linkage. The original browser session predated the final execution-timestamp column repair, so visible available/started/finished assertions are supplied by the final scoped Filament test and rebuilt browser smoke rather than claimed by this original session. Neither surface exposed configuration secrets or raw payloads.
 6. **Replay:** Opened the visible Replay action for dead letter `01a0214b-6358-73c8-9d53-f913c701029b`, entered a reason, and confirmed. The dead-letter table changed from `open / 0` to `resolved / 1`; the poison item succeeded on attempt 2.
 7. **Reconcile:** Ran the visible Reconcile action after replay. Filament reported `0 open reconciliation item(s)`.
 8. **Disable and block:** Ran Disable with an operator reason. The row changed to `Disabled`; Start run disappeared and only Enable remained. This is the visible policy fence. Service/API attempts against a disabled connection are covered by the focused and PostgreSQL race suites.
@@ -40,3 +40,7 @@ Actor: property-scoped administrator in the ordinary Chrome Filament session at 
 - Connection: disabled, not revoked, with a recorded last-sync timestamp. No raw credential, provider payload, authorization header, PAN, or secret-reference URI appeared in the rendered pages or this receipt.
 
 Blocked-run resume remains covered by the automated browser-policy and PostgreSQL concurrency suites. The synchronous contract run completed before a browser disable could create a genuine blocked run, so this receipt does not claim a browser-observed resume.
+
+## Final execution-timestamp browser assertion
+
+After the final review repair, the rebuilt Filament run view for `01a0214b-6334-70cf-ba09-8b68686d9e3d` visibly rendered **Available at**, **Started at**, and **Finished at** columns for both redacted items. Opening the `uat-good` View action rendered the same three labeled timestamps in **Safe item inspection** (`Aug 20, 2026 · 19:29:43` for this synchronous fixture). The table and detail continued to omit `safe_payload` and all raw provider or credential data.
