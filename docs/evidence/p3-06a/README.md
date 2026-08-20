@@ -1,17 +1,17 @@
 # P3-06A WP-11 evidence — 2026-08-19
 
-Release classification: **Colombia/MCO provider evidence recorded; Argentina/ARS WP-11 remains open.**
+Release classification: **the release owner accepts the Colombia/MCO + COP test-mode journey for the current P3-06A merge. Argentina/MLA + ARS is a deferred regional certification, not a merge blocker. Production-origin signed public-HTTPS delivery remains a production-activation/final-certification gate.**
 
 No access token, test-user credential, public-link token, webhook key, signing secret, signature, or full provider identifier is stored in this directory.
 
 ## Provider journey
 
 - Checkout Pro approved a real COP 10,000 test payment, redacted payment ID `…7197`.
-- A correctly signed public HTTPS delivery was accepted and queued; the worker then performed the authoritative payment lookup.
+- A dashboard/test notification signed with Mercado Pago's documented HMAC manifest was submitted through the temporary public HTTPS endpoint, accepted, and queued; the ordinary worker then performed the authoritative payment lookup.
 - Replaying the same signed delivery and refreshing the browser return three times retained exactly one accounting effect.
 - Mercado Pago reported COP 10,000 gross, COP 1,344 provider fee, COP 41.40 ICA withholding, COP 150 withholding tax, and COP 8,464.60 net.
 - Mercado Pago's refund API was rejected by account policy. A COP 2,000 partial refund was therefore completed in the seller UI and then reconciled through authoritative lookup, redacted refund ID `…6852`.
-- No provider-originated webhook delivery was observed. The signature/lookup proof used the documented Mercado Pago HMAC format against the real provider payment.
+- No Mercado Pago-originated HTTP delivery was observed. The dashboard/test signature-and-lookup proof used the documented HMAC format against the real provider payment and must not be presented as production-origin delivery evidence.
 
 ## Database assertions
 
@@ -62,11 +62,11 @@ The PDFs are intentionally not committed because their immutable receipt bodies 
 
 [`wp11-approved-mobile-390x844@2x.png`](wp11-approved-mobile-390x844@2x.png) is the approved return rendered with a requested 390×844 CSS viewport and captured at device scale factor 2 (780×1688 pixels). It contains no provider ID or credential.
 
-## Open provider blockers
+## Deferred regional and production-activation gates
 
-- The runbook requires an Argentina seller/test buyer and ARS; this account is Colombia/MCO and COP.
-- Mercado Pago's hosted Colombia flow rendered the `CONT` and `OTHE` manual test cards as `UNDEFINED SOURCE` and disabled the final action.
-- Direct payment and refund API attempts returned `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`.
-- The authorized MCO developer context created same-country MLA test seller/buyer identities, retained only as redacted hashes, but Mercado Pago returned no MLA seller access token. An ARS preference created with the MCO token remained on the Colombia host. No test-user credential was retained.
-- Dashboard/test signed notification plus authenticated lookup is the documented sandbox notification path and is proven deterministically. Production activation still requires a real provider-signed delivery over public HTTPS.
-- Because approved/pending/rejected and refund execution/recovery remain unproven with a same-country MLA seller application/access token, the PR must remain draft and P3-06B must not start.
+- Mercado Pago credentials are application/integration scoped; OAuth seller authorization is required when connecting a different merchant. Site/country, currency and enabled payment methods are connection capabilities, not properties that may be inferred from a token. See Mercado Pago's official [credentials](https://www.mercadopago.com.ar/developers/en/docs/your-integrations/credentials) and [OAuth authorization-code](https://www.mercadopago.com.ar/developers/en/docs/security/oauth/creation) documentation.
+- The Colombia hosted flow rendered the `CONT` and `OTHE` manual test cards as `UNDEFINED SOURCE` and kept the final action disabled. Direct payment and refund API attempts returned `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`. These are preserved limitations of the authorized MCO connection, not current merge blockers.
+- The authorized MCO developer context created redacted MLA test seller/buyer identities, but Mercado Pago returned no MLA seller access token. An ARS preference created with the MCO token remained on the Colombia host. No test-user credential was retained, and none of this is claimed as an MLA merchant journey.
+- Argentina/MLA + ARS remains a future regional certification. It requires its own authorized seller application/account connection and the same approved/pending/rejected, refund/recovery, receipt and Finance/report invariants; the existing ARS and USD→ARS software contracts remain in scope for that future certification.
+- Dashboard/test signed notification plus authenticated lookup is the documented test-mode notification proof exercised here. Production activation/final certification still requires observation of a Mercado Pago-originated, correctly signed delivery through the final public HTTPS endpoint and exactly-once ordinary-worker processing.
+- With the release-owner decision, the deferred MLA/ARS certification no longer keeps P3-06A from merge. This evidence does not claim Argentina sandbox completion or production readiness.

@@ -1,17 +1,17 @@
 # P3-06A payment operations runbook
 
-Status: software-controlled closure available; Colombia/MCO evidence is preserved; same-country Argentina/ARS provider acceptance remains pending an MLA seller application/access token and public HTTPS activation.
+Status: software-controlled closure is complete, and the release owner accepts the observed Colombia/MCO + COP test-mode journey for the current P3-06A merge. Argentina/MLA + ARS is a deferred regional certification, not a merge blocker. Production-origin signed delivery over the final public HTTPS endpoint remains an unproven production-activation/final-certification gate.
 
 ## Connection setup
 
-Create one tenant integration connection with `type=payment`, `name=mercado-pago-argentina`, and only non-secret configuration:
+Create one tenant integration connection per merchant application/account and its declared site/currency capabilities. The currently certified example is Colombia/MCO + COP; names are operator-defined rather than embedded product behavior:
 
 ```json
 {
   "provider": "mercado_pago",
   "environment": "sandbox",
-  "site": "MLA",
-  "charge_currency": "ARS",
+  "site": "MCO",
+  "charge_currency": "COP",
   "provider_account": "TEST-SELLER-ID",
   "return_url_base": "https://public-https-host.example",
   "webhook_key": "GENERATE-AT-LEAST-32-RANDOM-CHARACTERS",
@@ -20,6 +20,8 @@ Create one tenant integration connection with `type=payment`, `name=mercado-pago
 ```
 
 Set `secret_reference=env:MERCADO_PAGO_ACCESS_TOKEN`. Put both values in the runtime secret store/environment, never in the row, logs, screenshots, fixtures, tickets, or this document. Restart API and worker processes after rotation. Old webhook deliveries signed with the retired secret will be rejected; reconcile their known payment attempts after the rotation window.
+
+Mercado Pago credentials identify and are directly linked to an application/integration; do not treat an access token as a portable country capability. For a merchant other than the application's own account, use the provider's OAuth seller-authorization flow and persist the resulting connection identity without exposing its credentials. Site/country, currency and enabled payment methods are capabilities of that connection. See Mercado Pago's official [credentials](https://www.mercadopago.com.ar/developers/en/docs/your-integrations/credentials) and [OAuth authorization-code](https://www.mercadopago.com.ar/developers/en/docs/security/oauth/creation) documentation.
 
 Register the provider notification URL as `https://<host>/api/v1/payment-webhooks/<webhook_key>`. The webhook route verifies the provider signature manifest before decoding the exact raw body, persists an encrypted private payload and its checksum, returns quickly, and queues authoritative provider lookup on `provider-events`.
 
@@ -61,16 +63,24 @@ All paths reuse authoritative provider lookup and the same exactly-once applicat
 - Account-level payout/withdrawal and balance-availability rows remain account-level. Never attach them to a payment using report proximity or external reference alone.
 - Use `--fixture` only for committed synthetic deterministic fixtures. Test accounts may return empty reports; a production merchant report remains a separate payout/withholding activation gate.
 
-## Test-mode acceptance record
+## Current Colombia/MCO test-mode acceptance record
 
-Required evidence before calling P3-06A sandbox-complete:
+The release owner accepts this evidence for the current P3-06A merge:
 
-1. Staff issues an Inn URL for an ARS deposit; the URL opens on a 390×844 viewport.
-2. Argentina test buyer completes approved, pending, and rejected Checkout Pro scenarios.
-3. The signed provider notification and authenticated lookup produce exactly one request/payment/deposit/folio effect across refresh and duplicate delivery.
+1. Staff issues an Inn URL for a configured COP deposit; the URL opens on a 390×844 viewport.
+2. An MCO test buyer completes a real COP 10,000 Checkout Pro approval.
+3. A dashboard/test signed notification submitted through the public HTTPS endpoint and the authenticated provider lookup produce exactly one request/payment/deposit/folio effect across refresh and duplicate delivery. This does not claim that Mercado Pago originated the HTTP delivery.
 4. Finance can explain provider payment ID, gross, fee, and net without exposing credentials.
-5. A partial provider refund completes exactly one Inn refund and generates the immutable refund receipt.
+5. A COP 2,000 partial provider refund completed in the seller UI is recovered authoritatively into exactly one Inn refund and generates the immutable refund receipt.
 6. Import Account Money and Released Money reports where the merchant account provides them; otherwise preserve the deterministic fixture proof and record the production-report activation gate.
 7. Redacted screenshots/video and provider IDs are attached to the UAT ledger. Never attach test credentials or signatures.
 
-The existing authorized MCO account could create MLA test identities, but Mercado Pago did not issue an MLA seller access token and an ARS preference remained bound to the Colombia host. Until a same-country MLA seller application/access token completes the required journey, the correct claim is “software-controlled closure plus MCO/COP provider evidence,” not “Argentina sandbox-complete” or “production-ready.”
+The MCO account's hosted pending/rejected cards and direct refund API were restricted by provider policy. Those limits are recorded evidence about this connection, not current P3-06A merge blockers; deterministic contract/browser suites cover the software-controlled state paths.
+
+## Deferred Argentina/ARS regional certification
+
+An Argentina deployment still requires a separately authorized MLA seller application/account connection with ARS capability. It must preserve the existing ARS and USD→ARS invariants and repeat the operational journey with an Argentina test buyer: approved/pending/rejected outcomes, authoritative event lookup, duplicate protection, provider refund/recovery, receipts, and report/variance review. An MCO token, MLA test-user identifier, or ARS preference created under the Colombia application must not be relabeled as proof of an MLA merchant connection.
+
+## Production activation/final certification
+
+Before production activation, configure the final merchant application/account, secrets, enabled country/currency/payment-method capabilities, return origins and public HTTPS notification URL. Observe a Mercado Pago-originated delivery whose provider signature manifest validates at that final endpoint, then prove authoritative lookup, ordinary-worker consumption, exactly-once accounting and operational replay/recovery. The current dashboard/test HMAC delivery proves the application path but is not production-origin delivery evidence; neither the current MCO/COP release decision nor future MLA/ARS certification should be described as production-ready without this gate.

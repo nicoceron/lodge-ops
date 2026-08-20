@@ -1,7 +1,7 @@
 # P3-06A online payment requests, links, and Mercado Pago implementation plan
 
 Date: 2026-08-18
-Status: **software-controlled closure complete; Colombia/MCO provider journey partially proven; Argentina/ARS WP-11 release gate open**
+Status: **software-controlled closure complete; Colombia/MCO + COP accepted for the current P3-06A merge; Argentina/MLA + ARS deferred to regional certification; production-origin public-HTTPS delivery remains an activation gate**
 Branch: `codex/p3-06-payment-gateway-mercado-pago`
 Base: clean `main` at or after P3-03 merge `e459935`
 Inputs: [Rincón Grande requirements](rincon-grande-requirements.md), [phase 3 plan](client-ready-phase-3-plan.md), [feature matrix](feature-matrix.md), [UAT ledger](client-uat-ledger.md), [reference benchmark](reference-code-quality-benchmark.md), [P3-06B front-desk tender plan](p3-06b-front-desk-tenders-implementation-plan.md), [P3-06C Point/QR plan](p3-06c-mercado-pago-point-qr-implementation-plan.md)
@@ -15,15 +15,15 @@ The next implementation slice is a real provider-backed payment loop. It has two
 
 The email/WhatsApp/guest-portal URL is an Inn URL, never a copied provider-dashboard link or an expiring provider checkout URL. Opening the Inn link resolves the current request state and creates or recovers a provider checkout attempt. That keeps the guest experience stable across provider-session expiry and makes a later adapter change possible without changing reservation accounting.
 
-For the current Argentina/Patagonia lodge baseline, use **Mercado Pago Checkout Pro** as the first adapter:
+Use **Mercado Pago Checkout Pro** as the first adapter. Provider credentials identify and are directly linked to an application/integration; an access token is not a portable country capability. The current release evidence belongs to an authorized Colombia/MCO merchant application/account connection with COP capability. A future Argentina/Patagonia deployment requires a separately authorized MLA seller application/account connection, or the provider's OAuth seller-authorization flow, with ARS capability:
 
-- Argentina is supported by Checkout Pro; the buyer pays in Mercado Pago's hosted environment and returns to Inn.
-- Mercado Pago supplies Argentina test buyers/cards and deterministic approved, pending, and rejected scenarios.
+- Colombia/MCO + COP is the current release-owner-accepted test-mode journey; its observed provider-policy limitations are recorded rather than generalized to other connections.
+- Argentina is supported by Checkout Pro and remains the intended regional target; an MLA/ARS connection must repeat the approved, pending, rejected, refund/recovery, receipt and report review journeys before that regional certification is claimed.
 - Webhooks carry a secret-backed `x-signature`; the event is only a notification and Inn must retrieve the provider payment before mutating money.
 - The provider supports partial and full refunds with `X-Idempotency-Key`.
 - Stripe is not the default because Argentina is not on Stripe's current merchant-country availability list.
 
-This provider choice is based on the current demo property and must be revalidated before production activation. The production merchant account, legal entity, settlement bank, fees, tax treatment, accepted international cards, and charge/settlement currencies remain launch decisions. They do not block building and proving the test-mode integration.
+Country/site, charge currency and enabled payment methods are declared capabilities of each connection; they must never be inferred from or relabeled across credentials. This provider choice must be revalidated before production activation. The production merchant account, legal entity, settlement bank, fees, tax treatment, accepted international cards, charge/settlement currencies and final public origins remain launch decisions. Production-origin signed delivery through the final public HTTPS endpoint is still unproven and is a production-activation/final-certification gate, not part of the current merge claim.
 
 Primary implementation references:
 
@@ -33,14 +33,17 @@ Primary implementation references:
 - [Webhook `x-signature` validation](https://www.mercadopago.com.ar/developers/es/docs/checkout-bricks/additional-content/your-integrations/notifications/webhooks)
 - [Partial/full refund API and required idempotency key](https://www.mercadopago.com.ar/developers/es/reference/online-payments/checkout-pro/create-refund/post)
 - [Mercado Pago preference creation](https://www.mercadopago.com.ar/developers/es/docs/checkout-pro/create-payment-preference)
+- [Mercado Pago application-scoped credentials](https://www.mercadopago.com.ar/developers/en/docs/your-integrations/credentials)
+- [Mercado Pago OAuth seller authorization](https://www.mercadopago.com.ar/developers/en/docs/security/oauth/creation)
 - [Hyperswitch payment-link lifecycle](https://docs.hyperswitch.io/explore-hyperswitch/payment-orchestration/quickstart/payment-links/create-payment-links) as an interaction and state-model reference only; Hyperswitch is not an Inn runtime dependency
 - [Stripe merchant-country availability](https://stripe.com/global)
 - [Mercado Pago official PHP SDK](https://github.com/mercadopago/sdk-php) for provider models and compatibility reference; Inn still owns the interface and transport decision
 
 ### Currency boundary
 
-The first real provider rail is **ARS Checkout Pro**. Inn continues to support USD and ARS reservations:
+The currently certified test-mode provider rail is **COP Checkout Pro on Colombia/MCO**. The connection's configured site and charge currency control eligibility; the product must not hard-code MCO/COP or relabel a reservation amount. Inn also retains the Argentina/ARS and USD→ARS invariants for the deferred MLA regional certification:
 
+- COP reservations charge the exact outstanding/deposit amount in COP only through a connection that declares MCO/COP capability.
 - ARS reservations charge the exact outstanding/deposit amount in ARS.
 - A USD reservation may be offered an ARS checkout only after Inn creates and displays an immutable USD → ARS conversion snapshot, the guest accepts the ARS amount, and the attempt stores both source and charge values.
 - If no approved conversion snapshot exists, a USD reservation remains payable by the already-supported international bank-transfer workflow.
@@ -117,7 +120,7 @@ Implement `MercadoPagoCheckoutProGateway` with Laravel's HTTP client behind a sm
 The existing `integration_connections` row remains the provider configuration anchor:
 
 - `type = payment`
-- `name = mercado-pago-argentina`
+- operator-defined `name`, for example `mercado-pago-colombia`; behavior is selected from the validated connection capabilities, not the name
 - non-secret configuration: provider, environment, site/country, charge currency, provider account identifier, enabled payment modes, return URL base
 - `secret_reference`: reference to test/production access token and webhook secret in an approved secret store
 - never store the access token or webhook secret in `configuration`
@@ -310,7 +313,7 @@ Every mutating authenticated endpoint uses Inn idempotency middleware. Payment-l
 | WP-08 | Dispute, fee and settlement reconciliation | Append-only claim/chargeback handling and visible unmatched/variance queues without rewriting payment history |
 | WP-09 | Guest and Finance UX, API and OpenAPI | Role/property/link allow-deny tests plus accessible phone and desktop states |
 | WP-10 | Documents, delivery intent, audit, logging and operations | Payment/refund receipts, link delivery/resend audit, secret-redaction assertions, replay runbook, metrics/log events and bounded retention |
-| WP-11 | Real provider sandbox UAT and release gates | Staff-issued Inn link → hosted test checkout approved/pending/rejected → signed notification → exactly-once Inn effect → partial refund and receipt demonstrated end to end |
+| WP-11 | Real provider test-mode UAT and release gates | Current MCO/COP acceptance: staff-issued Inn link → hosted approval → dashboard/test signed notification plus authoritative lookup → exactly-once Inn effect → seller-UI partial refund recovered authoritatively → payment/refund receipts; MCO policy-blocked pending/rejected and refund-API paths are recorded limitations, while MLA/ARS certification and production-origin delivery remain separate gates |
 
 ## 8. Ordered agent implementation checklist
 
@@ -390,14 +393,14 @@ The implementing agent follows this order and does not build Filament pages befo
 1. Staff creates/confirms a reservation and due deposit, issues an Inn payment request and previews/copies its Inn-owned link.
 2. A second staff action resends without changing money; an explicit rotation invalidates the old link and the new link resolves.
 3. Guest opens the phone-sized payment page and chooses hosted payment.
-4. For the ARS path, Checkout Pro test buyer completes an approved card payment.
+4. For the configured connection path, a matching Checkout Pro test buyer completes an approved card payment; the current certification is MCO/COP, while a future MLA/ARS certification repeats this journey under that separate connection.
 5. The return page remains non-authoritative until the signed event and provider lookup complete.
 6. Guest sees the request/deposit paid exactly once and downloads the payment receipt; refresh cannot start another charge.
 7. Finance sees the request, provider attempt/event/payment and reconciled gross/fee/net data.
 8. Finance requests and executes a partial refund; the provider confirms it; Inn posts one refund and generates the refund receipt.
 9. Separate runs prove revoked, superseded, expired, pending, rejected and retry/recovery states without a false payment.
 
-Mocks, fixture payloads and a fake gateway are required for deterministic CI but do not complete WP-11. Completion requires Mercado Pago test credentials, an Argentina seller/test-buyer context, an HTTPS webhook URL, and recorded test-mode provider IDs with secrets redacted.
+Mocks, fixture payloads and a fake gateway are required for deterministic CI but do not complete WP-11. For the current release, WP-11 is completed by the release-owner-accepted Colombia/MCO + COP journey, its redacted provider IDs, and the dashboard/test signed notification plus authoritative lookup through public HTTPS. This does not prove a Mercado Pago-originated HTTP delivery. Argentina/MLA + ARS is a separate regional certification requiring its own authorized seller connection and matching test buyer. Production activation still requires a provider-originated signed delivery through the final public HTTPS endpoint.
 
 ## 10. Release gates
 
@@ -412,7 +415,7 @@ The branch may merge only when all of these pass together:
 7. OpenAPI validation and response-contract tests;
 8. Docker health/smoke, dependency audits and `git diff --check`;
 9. log/exception/queue-payload assertions proving tokens, secrets, raw card data and sensitive provider fields are absent;
-10. updated feature matrix, UAT ledger, phase plan and operations runbook with exact evidence.
+10. coordinator-owned release records and the assignment-owned implementation plan, evidence and operations runbook reflect the release-owner decision and exact observed evidence.
 
 ## 11. Agent handoff
 
@@ -433,7 +436,7 @@ Do not mark the slice complete with only `Http::fake()`, a provider-dashboard pa
 Implemented on `codex/p3-06-payment-gateway-mercado-pago` from baseline `e459935`:
 
 - ordered request/attempt/event/refund/dispute/settlement schema with tenant composite foreign keys, provider-account/environment identity, money/state checks, PostgreSQL partial uniqueness, immutable report imports/rows/revisions, and upgrade/rollback proof;
-- hashed one-time link issuance, rotation, expiry, revocation, authoritative amount calculation, ARS direct charge and explicit current USD→ARS snapshot acceptance;
+- hashed one-time link issuance, rotation, expiry, revocation, authoritative amount calculation, connection-driven charge currency, ARS direct charge and explicit USD→ARS snapshot acceptance for the deferred Argentina capability;
 - provider-neutral gateway/factory/DTO boundary plus the Checkout Pro REST preference, payment lookup, raw `x-signature` verification, refund, and exact decimal normalization adapter;
 - encrypted provider-event persistence, signed HTTP intake, normal-worker `provider-events` consumption, lease/crash recovery, duplicate/mismatch handling, and exactly-once provider-only payment/deposit/folio/receipt application;
 - provider refund execution plus authoritative recovery, atomic completion, scheduled stuck-refund recovery, and dashboard-refund fallback without duplicate accounting;
@@ -453,7 +456,7 @@ Secrets are configured only in the ignored, mode-`600` API environment file and 
 Completed with a Colombia/MCO test seller and buyer:
 
 - real Checkout Pro COP 10,000 card approval, provider payment `…7197`;
-- valid `x-signature` delivery accepted through the public endpoint, followed by authoritative provider lookup;
+- a dashboard/test notification signed with Mercado Pago's documented HMAC manifest accepted through the temporary public HTTPS endpoint, followed by authoritative provider lookup; no Mercado Pago-originated HTTP delivery was observed;
 - duplicate delivery and three browser refreshes retained exactly one provider-origin payment, one paid deposit, and one COP -10,000 folio payment line;
 - authoritative settlement evidence: COP 10,000 gross, COP 1,344 Mercado Pago fee, COP 41.40 ICA withholding, COP 150 withholding tax, and COP 8,464.60 net; the settlement entry remains a truthful variance because tax withholdings are separate from the modeled provider fee;
 - COP 2,000 partial provider refund, provider refund `…6852`, completed in Mercado Pago's seller UI after the account policy rejected the refund API call, then reconciled by authoritative API lookup into exactly one completed Inn refund and one folio refund line;
@@ -462,10 +465,11 @@ Completed with a Colombia/MCO test seller and buyer:
 
 Observed limitations and release classification:
 
-- the runbook requires an Argentina seller/test buyer and ARS; the available personal developer account is Colombia/MCO and COP;
+- the release owner accepts this Colombia/MCO + COP journey for the current P3-06A merge; Argentina/MLA + ARS is a deferred regional certification, not a merge blocker;
 - the Colombia hosted flow rendered manual `CONT` and `OTHE` test cards as `UNDEFINED SOURCE` and kept the final payment action disabled;
 - direct provider payment and refund calls returned `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, so those API paths cannot substitute for the blocked hosted pending/rejected cases on this account;
-- the signed-delivery test used Mercado Pago's documented HMAC format and a real provider payment. Dashboard/test simulation plus authenticated lookup is the supported sandbox-notification proof; production activation separately requires a real provider-signed delivery through public HTTPS.
-- the authorized MCO developer token successfully created redacted MLA test seller/buyer identities and an ARS preference, but the preference remained hosted on the Colombia site and the test-user response did not provide an MLA seller access token. No credentials were retained. A same-country MLA seller application/access token is therefore an external provider/account gate, not a remaining software task.
+- the signed-delivery test used Mercado Pago's documented HMAC format and a real provider payment. Dashboard/test simulation plus authenticated lookup is the test-mode notification proof exercised here; production activation separately requires a Mercado Pago-originated signed delivery through the final public HTTPS endpoint;
+- official provider documentation confirms credentials are linked to an application/integration and OAuth seller authorization is required for a different merchant. Site/country, currency and payment methods therefore remain explicit connection capabilities;
+- the authorized MCO developer token successfully created redacted MLA test seller/buyer identities and an ARS preference, but the preference remained hosted on the Colombia site and the test-user response did not provide an MLA seller access token. No credentials were retained. This is preserved as the reason MLA/ARS is deferred, not as a current merge blocker or proof of an MLA merchant journey.
 
-WP-11 therefore remains open. Keep the pull request draft and describe it as deterministic implementation plus MCO provider evidence, not Argentina sandbox-complete or production-ready. P3-06B remains blocked until this release criterion is met or explicitly changed.
+WP-11 is accepted for the current P3-06A release on the MCO/COP evidence above. The branch may proceed through normal review and CI without waiting for MLA/ARS; no claim of Argentina sandbox completion is made. Argentina/ARS certification remains a future regional gate, and production readiness remains false until the production-origin signed public-HTTPS delivery and final merchant activation checks are observed.
