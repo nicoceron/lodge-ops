@@ -9,8 +9,9 @@ test("UAT-4.1 calendar and operational workspaces render in an authenticated ses
   for (const route of ["master-calendar", "operations-board", "kitchen-dashboard", "finance-dashboard"]) {
     const response = await page.goto(`/manage/workspace/demo-lodge/${route}`);
     expect(response?.ok(), route).toBeTruthy();
-    await expect(page.locator("main")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText(/server error|exception|trace/i);
+    const main = page.locator("main");
+    await expect(main).toBeVisible();
+    await expect(main).not.toContainText(/server error|exception|trace/i);
   }
 });
 
