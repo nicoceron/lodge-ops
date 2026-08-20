@@ -320,6 +320,7 @@ class OutboxAutomationTest extends TestCase
             'trigger' => 'reservation.arrival_approaching',
             'actions' => [[
                 'type' => 'queue_communication',
+                'purpose' => 'pre_arrival',
                 'template_key' => 'arrival',
                 'subject' => 'Ignored fallback subject',
                 'body' => 'Ignored fallback body',
@@ -338,6 +339,7 @@ class OutboxAutomationTest extends TestCase
             'reservation_id' => $reservation->id,
             'subject' => 'Published arrival TPL-100',
             'body' => 'Published body for '.$guest->first_name,
+            'purpose' => 'pre_arrival',
             'status' => 'queued',
             'metadata->template_id' => $template->id,
         ]);

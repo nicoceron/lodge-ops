@@ -24,11 +24,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $delivered_at
  * @property CarbonImmutable|null $failed_at
  * @property CarbonImmutable|null $status_occurred_at
+ * @property CarbonImmutable|null $delivery_idempotency_started_at
+ * @property CarbonImmutable|null $delivery_idempotency_expires_at
  * @property-read Guest|null $guest
  * @property-read Reservation|null $reservation
  */
 class Communication extends TenantModel
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $communication): void {
+            foreach (['delivery_idempotency_started_at', 'delivery_idempotency_expires_at'] as $attribute) {
+                if ($communication->getOriginal($attribute) !== null && $communication->isDirty($attribute)) {
+                    throw new \LogicException('A communication delivery idempotency window is immutable once anchored.');
+                }
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -38,6 +51,8 @@ class Communication extends TenantModel
             'failed_at' => 'immutable_datetime',
             'status_occurred_at' => 'immutable_datetime',
             'status_precedence' => 'integer',
+            'delivery_idempotency_started_at' => 'immutable_datetime',
+            'delivery_idempotency_expires_at' => 'immutable_datetime',
             'metadata' => 'array',
         ];
     }

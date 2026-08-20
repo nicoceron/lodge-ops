@@ -6,7 +6,7 @@
 - Endpoint identity comes from the SHA-256 hash of the opaque URL key, not webhook JSON. Signatures cover the exact raw bytes with Svix ID and timestamp.
 - Delivery events are append-only provider facts. Duplicate event IDs are acknowledged once; later terminal facts such as complaints may supersede a prior delivered display state.
 - Every send rechecks property-scoped consent and suppression while holding the communication row. Templates cannot select sender headers or undeclared merge fields.
-- A retry retains `communication:{uuid}`. A deliberate resend creates a new communication and audit identity. Unknown outcomes beyond the provider's 24-hour idempotency window enter reconciliation instead of being sent blindly.
+- A retry retains `communication:{uuid}`. Its 24-hour provider-idempotency deadline is anchored to the first request in that identity, is immutable, and is evaluated across every grouped attempt. A later throttled/transient attempt cannot hide or extend an earlier uncertain outcome. A deliberate resend creates a new communication and audit identity, but an unresolved original identity must first be authoritatively reconciled; expired uncertainty fails closed as `reconciliation_required`.
 
 ## Configure a property
 
@@ -26,7 +26,7 @@ On deploy, run migrations, start the new release, and run `php artisan horizon:t
 - Poison job: pause the affected queue, record the delivery/event ID and safe exception, move it to manual reconciliation, deploy the correction, then retry only the named job.
 - Starvation: compare Horizon wait metrics against configured thresholds; increase the affected supervisor without merging provider events and documents into one queue.
 - Provider/Redis outage: leave communications queued, do not enable production fallback, restore the dependency, reconcile uncertain provider attempts, then resume workers.
-- Worker death after provider acceptance: retry keeps the same provider idempotency key within 24 hours. After that window the attempt becomes `reconciliation_required`.
+- Worker death after provider acceptance: retry keeps the same provider idempotency key only until the immutable deadline established by its first request. After that deadline any unresolved attempt in the identity makes the communication `reconciliation_required`; do not retry or create a new resend until authoritative reconciliation.
 
 ## Scheduling and heartbeat
 
@@ -58,5 +58,7 @@ Transactional, operational, and optional purposes are fixed enum values backed b
 ## Activation checklist
 
 Merge readiness and production activation are separate. Activation remains blocked until all are observed: approved provider/DPA, verified client domain, SPF/DKIM/DMARC, client-approved sender mapping, secret-manager credentials, rotation drill, alerts, real recipient inbox plus authenticated delivered event, and controlled bounce/complaint causing suppression. A local Mailpit message or provider acceptance is not delivery evidence.
+
+The normal P3-04 Compose browser journey uses an explicitly marked, local/testing-only signing fixture to exercise raw-body authentication, delivery-state reduction, complaint/bounce suppression, preference withdrawal, and blocked resend. This is deterministic software evidence only. It is not provider-origin traffic and never satisfies the real Resend inbox, authenticated provider-origin delivery, bounce, or complaint activation gates.
 
 Primary behavior references: [Laravel mail](https://laravel.com/docs/13.x/mail), [queues](https://laravel.com/docs/13.x/queues), [scheduling](https://laravel.com/docs/13.x/scheduling), [Horizon](https://laravel.com/docs/13.x/horizon), [Resend webhook verification](https://resend.com/docs/webhooks/verify-webhooks-requests), [event types](https://resend.com/docs/webhooks/event-types), [retries and replays](https://resend.com/docs/webhooks/retries-and-replays), and [idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys).

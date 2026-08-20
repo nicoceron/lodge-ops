@@ -11,6 +11,7 @@ use App\Models\Guest;
 use App\Models\Membership;
 use App\Models\User;
 use App\Services\Communications\CommunicationConsentService;
+use App\Services\Communications\CommunicationIdempotencyWindow;
 use App\Services\Communications\CommunicationProviderResolver;
 use App\Services\Communications\CommunicationPurposePolicyService;
 use App\Services\Documents\DocumentArtifactStore;
@@ -27,6 +28,7 @@ class CommunicationDeliveryService
         private readonly CommunicationProviderResolver $providers,
         private readonly DocumentArtifactStore $documents,
         private readonly CommunicationPurposePolicyService $purposePolicies,
+        private readonly CommunicationIdempotencyWindow $idempotencyWindow,
         private readonly TenantContext $tenantContext,
     ) {}
 
@@ -66,27 +68,22 @@ class CommunicationDeliveryService
                 return null;
             }
 
-            $existing = DeliveryAttempt::query()
+            $attempts = DeliveryAttempt::query()
                 ->where('communication_id', $locked->id)
                 ->where('idempotency_key', "communication:{$locked->id}")
-                ->orderByDesc('attempt')->lockForUpdate()->first();
+                ->orderBy('attempt')->lockForUpdate()->get();
+            $existing = $attempts->last();
 
-            if ($existing !== null && in_array($existing->status, ['provider_accepted', 'sent', 'delivered'], true)) {
+            if ($this->idempotencyWindow->hasAuthoritativeOutcome($attempts)) {
                 return null;
             }
             if ($existing !== null && $existing->status === 'sending' && $existing->attempted_at->isAfter(now()->subMinute())) {
                 return null;
             }
-            if ($existing !== null && in_array($existing->status, ['sending', 'outcome_uncertain'], true)
-                && (($existing->reconcile_after !== null && $existing->reconcile_after->isPast())
-                    || $existing->attempted_at->isBefore(now()->subHours((int) config('communications.provider.idempotency_window_hours', 24))))) {
-                $existing->forceFill([
-                    'status' => 'reconciliation_required',
-                    'retry_state' => 'reconciliation_required',
-                    'safe_error' => 'Provider outcome remained uncertain beyond the idempotency window.',
-                    'reconcile_after' => now(),
-                ])->save();
-                $locked->forceFill(['status' => 'reconciliation_required'])->save();
+            $now = now()->toImmutable();
+            $idempotencyExpiresAt = $this->idempotencyWindow->anchor($locked, $attempts, $now);
+            if ($this->idempotencyWindow->requiresReconciliation($attempts, $idempotencyExpiresAt, $now)) {
+                $this->idempotencyWindow->markReconciliationRequired($locked, $attempts, $idempotencyExpiresAt);
 
                 return null;
             }
@@ -116,6 +113,7 @@ class CommunicationDeliveryService
             return [
                 'communication_id' => $locked->id,
                 'attempt_id' => $attempt->id,
+                'idempotency_expires_at' => $idempotencyExpiresAt,
                 'provider' => $resolved->provider,
                 'is_local' => $resolved->provider->name() === 'laravel-mail',
                 'request' => new CommunicationProviderRequest(
@@ -171,15 +169,18 @@ class CommunicationDeliveryService
     private function recordFailure(array $prepared, CommunicationProviderException $exception): void
     {
         DB::transaction(function () use ($prepared, $exception): void {
-            $status = $exception->outcomeUncertain ? 'outcome_uncertain' : ($exception->retryable ? 'retry_pending' : 'failed');
+            $expiredUncertainty = $exception->outcomeUncertain
+                && now()->greaterThanOrEqualTo($prepared['idempotency_expires_at']);
+            $status = $expiredUncertainty
+                ? 'reconciliation_required'
+                : ($exception->outcomeUncertain ? 'outcome_uncertain' : ($exception->retryable ? 'retry_pending' : 'failed'));
             DeliveryAttempt::query()->whereKey($prepared['attempt_id'])->update([
                 'status' => $status,
                 'retry_state' => $status,
                 'error_code' => $exception->safeCode,
                 'safe_error' => mb_substr($exception->getMessage(), 0, 500),
                 'failed_at' => $exception->outcomeUncertain ? null : now(),
-                'reconcile_after' => $exception->outcomeUncertain
-                    ? now()->addHours((int) config('communications.provider.idempotency_window_hours', 24)) : null,
+                'reconcile_after' => $exception->outcomeUncertain ? $prepared['idempotency_expires_at'] : null,
             ]);
             Communication::query()->whereKey($prepared['communication_id'])->update([
                 'status' => $status,

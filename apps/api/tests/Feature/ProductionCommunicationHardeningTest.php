@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\CommunicationPurpose;
 use App\Enums\MembershipRole;
+use App\Exceptions\CommunicationProviderException;
 use App\Jobs\SendCommunication;
 use App\Models\Communication;
 use App\Models\CommunicationDeliveryEvent;
@@ -18,6 +19,7 @@ use App\Services\Communications\CommunicationOperationsService;
 use App\Services\Communications\CommunicationProviderVerificationService;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -54,6 +56,131 @@ class ProductionCommunicationHardeningTest extends TestCase
             'status' => 'reconciliation_required',
             'retry_state' => 'reconciliation_required',
         ]);
+    }
+
+    public function test_near_expiry_uncertain_retry_keeps_the_first_request_deadline(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        putenv('COMMUNICATION_WINDOW_KEY=window-test-key');
+        CommunicationProviderConnection::query()->create([
+            'property_id' => $property->id, 'provider' => 'resend', 'account_id' => 'acct_window',
+            'endpoint_key' => 'provider-window-endpoint-key-000000001',
+            'secret_ref' => 'env:COMMUNICATION_WINDOW_KEY', 'webhook_secret_refs' => ['env:WINDOW_WEBHOOK'],
+            'from_email' => 'mail@mail.example.com', 'from_name' => 'Inn',
+            'allowed_sender_domains' => ['mail.example.com'], 'verified_at' => now(), 'is_enabled' => true,
+        ]);
+        $startedAt = now()->subHours(23)->subMinutes(59)->toImmutable();
+        $expiresAt = $startedAt->addHours(24);
+        $communication = $this->metadataCommunication($property, 'near-expiry@example.com', 'near-expiry');
+        $communication->forceFill([
+            'status' => 'retry_pending',
+            'delivery_idempotency_started_at' => $startedAt,
+            'delivery_idempotency_expires_at' => $expiresAt,
+        ])->save();
+        DeliveryAttempt::query()->create([
+            'communication_id' => $communication->id, 'provider' => 'resend', 'status' => 'retry_pending',
+            'kind' => 'initial', 'idempotency_key' => 'communication:'.$communication->id, 'attempt' => 1,
+            'retry_state' => 'retry_pending', 'attempted_at' => $startedAt, 'failed_at' => $startedAt,
+        ]);
+        Http::fake(['api.resend.com/emails' => Factory::failedConnection('socket timeout')]);
+
+        $failed = false;
+        try {
+            app(CommunicationDeliveryService::class)->deliver($communication);
+        } catch (CommunicationProviderException $exception) {
+            $this->assertSame('network_timeout', $exception->safeCode);
+            $failed = true;
+        }
+
+        $this->assertTrue($failed, 'The deterministic provider request must fail at the network boundary.');
+        $attempt = DeliveryAttempt::query()->where('communication_id', $communication->id)
+            ->where('attempt', 2)->firstOrFail();
+        $this->assertSame('outcome_uncertain', $attempt->status);
+        $this->assertSame($expiresAt->getTimestamp(), $attempt->reconcile_after->getTimestamp());
+        $this->assertSame($startedAt->getTimestamp(), $communication->fresh()->delivery_idempotency_started_at->getTimestamp());
+        $this->assertSame($expiresAt->getTimestamp(), $communication->fresh()->delivery_idempotency_expires_at->getTimestamp());
+        $this->assertLessThan(120, now()->diffInSeconds($attempt->reconcile_after));
+        putenv('COMMUNICATION_WINDOW_KEY');
+    }
+
+    public function test_later_retry_pending_attempt_cannot_hide_expired_group_uncertainty_from_manual_operations(): void
+    {
+        [, $property, $actor] = $this->tenantEnvironment();
+        $startedAt = now()->subHours(25)->toImmutable();
+        $expiresAt = $startedAt->addHours(24);
+        $communication = $this->metadataCommunication($property, 'grouped-operations@example.com', 'grouped-operations');
+        $communication->forceFill([
+            'status' => 'retry_pending',
+            'delivery_idempotency_started_at' => $startedAt,
+            'delivery_idempotency_expires_at' => $expiresAt,
+        ])->save();
+        foreach ([
+            [1, 'outcome_uncertain', $startedAt],
+            [2, 'retry_pending', $startedAt->addHours(23)],
+        ] as [$number, $status, $attemptedAt]) {
+            DeliveryAttempt::query()->create([
+                'communication_id' => $communication->id, 'provider' => 'resend', 'status' => $status,
+                'kind' => $number === 1 ? 'initial' : 'retry',
+                'idempotency_key' => 'communication:'.$communication->id, 'attempt' => $number,
+                'retry_state' => $status, 'attempted_at' => $attemptedAt,
+                'reconcile_after' => $status === 'outcome_uncertain' ? $expiresAt : null,
+            ]);
+        }
+
+        foreach (['retry', 'newResend'] as $operation) {
+            try {
+                app(CommunicationOperationsService::class)->{$operation}($actor, $communication->fresh());
+                $this->fail("Expired grouped uncertainty must block {$operation}.");
+            } catch (DomainException $exception) {
+                $this->assertStringContainsString('requires reconciliation', $exception->getMessage());
+            }
+        }
+
+        $this->assertSame('reconciliation_required', $communication->fresh()->status);
+        $this->assertDatabaseHas('delivery_attempts', [
+            'communication_id' => $communication->id,
+            'attempt' => 1,
+            'status' => 'reconciliation_required',
+        ]);
+        $this->assertSame(1, Communication::query()->where('subject', $communication->subject)->count());
+    }
+
+    public function test_delivery_inspects_the_whole_idempotency_group_before_provider_mutation(): void
+    {
+        [, $property] = $this->tenantEnvironment(authenticate: false);
+        putenv('COMMUNICATION_GROUP_KEY=group-test-key');
+        CommunicationProviderConnection::query()->create([
+            'property_id' => $property->id, 'provider' => 'resend', 'account_id' => 'acct_group',
+            'endpoint_key' => 'provider-group-endpoint-key-0000000001',
+            'secret_ref' => 'env:COMMUNICATION_GROUP_KEY', 'webhook_secret_refs' => ['env:GROUP_WEBHOOK'],
+            'from_email' => 'mail@mail.example.com', 'from_name' => 'Inn',
+            'allowed_sender_domains' => ['mail.example.com'], 'verified_at' => now(), 'is_enabled' => true,
+        ]);
+        $startedAt = now()->subHours(25)->toImmutable();
+        $expiresAt = $startedAt->addHours(24);
+        $communication = $this->metadataCommunication($property, 'grouped-delivery@example.com', 'grouped-delivery');
+        $communication->forceFill([
+            'status' => 'retry_pending',
+            'delivery_idempotency_started_at' => $startedAt,
+            'delivery_idempotency_expires_at' => $expiresAt,
+        ])->save();
+        foreach ([[1, 'outcome_uncertain'], [2, 'retry_pending']] as [$number, $status]) {
+            DeliveryAttempt::query()->create([
+                'communication_id' => $communication->id, 'provider' => 'resend', 'status' => $status,
+                'kind' => $number === 1 ? 'initial' : 'retry',
+                'idempotency_key' => 'communication:'.$communication->id, 'attempt' => $number,
+                'retry_state' => $status, 'attempted_at' => $startedAt->addHours($number - 1),
+                'reconcile_after' => $status === 'outcome_uncertain' ? $expiresAt : null,
+            ]);
+        }
+        Http::fake(['api.resend.com/emails' => Http::response(['id' => 'must-not-send'], 200)]);
+
+        app(CommunicationDeliveryService::class)->deliver($communication);
+
+        Http::assertNothingSent();
+        $this->assertSame('reconciliation_required', $communication->fresh()->status);
+        $this->assertSame(2, DeliveryAttempt::query()->where('communication_id', $communication->id)->count());
+        putenv('COMMUNICATION_GROUP_KEY');
     }
 
     public function test_property_and_global_suppressions_are_isolated_and_cover_metadata_recipients(): void

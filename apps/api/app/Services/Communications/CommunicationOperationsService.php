@@ -14,7 +14,10 @@ use Illuminate\Support\Str;
 
 final class CommunicationOperationsService
 {
-    public function __construct(private readonly OutboxRecorder $outbox) {}
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+        private readonly CommunicationIdempotencyWindow $idempotencyWindow,
+    ) {}
 
     public function retry(User $actor, Communication $communication): Communication
     {
@@ -25,17 +28,13 @@ final class CommunicationOperationsService
 
         $result = DB::transaction(function () use ($actor, $communication): array {
             $locked = Communication::query()->whereKey($communication->id)->lockForUpdate()->firstOrFail();
-            $attempt = DeliveryAttempt::query()->where('communication_id', $locked->id)
-                ->orderByDesc('attempt')->lockForUpdate()->first();
-            if ($attempt?->status === 'outcome_uncertain'
-                && (($attempt->reconcile_after !== null && $attempt->reconcile_after->isPast())
-                    || $attempt->attempted_at->isBefore(now()->subHours((int) config('communications.provider.idempotency_window_hours', 24))))) {
-                $attempt->forceFill([
-                    'status' => 'reconciliation_required',
-                    'retry_state' => 'reconciliation_required',
-                    'safe_error' => 'Provider outcome remained uncertain beyond the idempotency window.',
-                ])->save();
-                $locked->forceFill(['status' => 'reconciliation_required'])->save();
+            $attempts = DeliveryAttempt::query()->where('communication_id', $locked->id)
+                ->where('idempotency_key', 'communication:'.$locked->id)
+                ->orderBy('attempt')->lockForUpdate()->get();
+            $now = now()->toImmutable();
+            $expiresAt = $this->idempotencyWindow->anchor($locked, $attempts, $now);
+            if ($this->idempotencyWindow->requiresReconciliation($attempts, $expiresAt, $now)) {
+                $this->idempotencyWindow->markReconciliationRequired($locked, $attempts, $expiresAt);
 
                 return ['communication' => $locked, 'reconciliation_required' => true];
             }
@@ -68,25 +67,42 @@ final class CommunicationOperationsService
     {
         $actor->can('newResend', $original) || abort(403);
 
-        return DB::transaction(function () use ($actor, $original): Communication {
+        $result = DB::transaction(function () use ($actor, $original): array {
+            $locked = Communication::query()->whereKey($original->id)->lockForUpdate()->firstOrFail();
+            $attempts = DeliveryAttempt::query()->where('communication_id', $locked->id)
+                ->where('idempotency_key', 'communication:'.$locked->id)
+                ->orderBy('attempt')->lockForUpdate()->get();
+            if (! $this->idempotencyWindow->hasAuthoritativeOutcome($attempts)
+                && $this->idempotencyWindow->hasUnresolvedUncertainty($attempts)) {
+                $now = now()->toImmutable();
+                $expiresAt = $this->idempotencyWindow->anchor($locked, $attempts, $now);
+                if ($this->idempotencyWindow->requiresReconciliation($attempts, $expiresAt, $now)) {
+                    $this->idempotencyWindow->markReconciliationRequired($locked, $attempts, $expiresAt);
+
+                    return ['communication' => $locked, 'blocked' => 'reconciliation'];
+                }
+
+                return ['communication' => $locked, 'blocked' => 'uncertain'];
+            }
+
             $copy = Communication::query()->create([
-                'property_id' => $original->property_id,
-                'guest_id' => $original->guest_id,
-                'reservation_id' => $original->reservation_id,
-                'channel' => $original->channel,
+                'property_id' => $locked->property_id,
+                'guest_id' => $locked->guest_id,
+                'reservation_id' => $locked->reservation_id,
+                'channel' => $locked->channel,
                 'direction' => 'outbound',
-                'purpose' => $original->purpose,
-                'template_key' => $original->template_key,
-                'template_version' => $original->template_version,
-                'locale' => $original->locale,
+                'purpose' => $locked->purpose,
+                'template_key' => $locked->template_key,
+                'template_version' => $locked->template_version,
+                'locale' => $locked->locale,
                 'status' => 'queued',
-                'subject' => $original->subject,
-                'body' => $original->body,
-                'content_checksum' => $original->content_checksum,
-                'automation_key' => 'manual-resend:'.$original->id.':'.Str::uuid(),
+                'subject' => $locked->subject,
+                'body' => $locked->body,
+                'content_checksum' => $locked->content_checksum,
+                'automation_key' => 'manual-resend:'.$locked->id.':'.Str::uuid(),
                 'metadata' => [
-                    ...($original->metadata ?? []),
-                    'resend_of_communication_id' => $original->id,
+                    ...($locked->metadata ?? []),
+                    'resend_of_communication_id' => $locked->id,
                     'resend_requested_by' => $actor->id,
                     'resend_requested_at' => now()->toIso8601String(),
                 ],
@@ -98,8 +114,16 @@ final class CommunicationOperationsService
                 'actor_id' => $actor->id,
             ]);
 
-            return $copy;
+            return ['communication' => $copy, 'blocked' => null];
         }, 3);
+        if ($result['blocked'] === 'reconciliation') {
+            throw new DomainException('The provider outcome is past the idempotency window and requires reconciliation.');
+        }
+        if ($result['blocked'] === 'uncertain') {
+            throw new DomainException('An uncertain provider outcome must be retried with its original identity or reconciled.');
+        }
+
+        return $result['communication'];
     }
 
     public function testSend(User $actor, Property $property, string $recipient, string $subject, string $body): Communication

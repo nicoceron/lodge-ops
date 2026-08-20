@@ -986,6 +986,7 @@ class DatabaseSeeder extends Seeder
             ]]],
             ['name' => 'Arrival preparation reminder', 'trigger' => 'reservation.arrival_approaching', 'actions' => [[
                 'type' => 'queue_communication',
+                'purpose' => 'pre_arrival',
                 'template_key' => 'arrival',
                 'subject' => 'Your lodge arrival is approaching',
                 'body' => 'Your arrival is {{payload.days_before}} day(s) away. Please review your travel details and contact us with any changes.',
