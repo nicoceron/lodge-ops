@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\IntegrationOperatorInputGuard;
 use App\Support\Tenancy\TenantContext;
 use DomainException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,16 @@ class IntegrationMapping extends TenantModel
     protected static function booted(): void
     {
         static::saving(function (self $mapping): void {
+            $admitted = app(IntegrationOperatorInputGuard::class)->admit([
+                'capability' => $mapping->capability,
+                'direction' => $mapping->direction,
+                'local_entity_type' => $mapping->local_entity_type,
+                'local_key' => $mapping->local_key,
+                'external_entity_type' => $mapping->external_entity_type,
+                'external_key' => $mapping->external_key,
+                'safe_facts' => $mapping->safe_facts ?? [],
+            ], 'mapping');
+            $mapping->safe_facts = $admitted['safe_facts'];
             $mapping->property_scope_key = $mapping->property_id ?: '00000000-0000-0000-0000-000000000000';
             $mapping->facts_checksum = hash('sha256', json_encode($mapping->safe_facts ?? [], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             if ($mapping->isDirty(['integration_connection_id', 'property_id', 'capability', 'direction'])) {

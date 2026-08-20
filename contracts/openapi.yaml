@@ -1906,6 +1906,35 @@ paths:
         - $ref: '#/components/parameters/Page'
       responses:
         '200': { description: Versioned mapping facts, validity and conflict state. }
+    post:
+      tags: [Integrations]
+      operationId: createIntegrationMappingVersion
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability, direction, local_entity_type, local_key, external_entity_type, external_key, transform_version]
+              properties:
+                property_id: { type: [string, 'null'], format: uuid }
+                capability: { type: string, maxLength: 80 }
+                direction: { type: string, enum: [inbound, outbound] }
+                local_entity_type: { type: string, maxLength: 120 }
+                local_key: { type: string, maxLength: 255 }
+                external_entity_type: { type: string, maxLength: 120 }
+                external_key: { type: string, maxLength: 255 }
+                transform_version: { type: integer, minimum: 1 }
+                safe_facts:
+                  type: object
+                  description: Operator facts admitted recursively; raw credentials, authentication headers and payment-card data are rejected.
+      responses:
+        '201': { description: Immutable mapping version created; any prior current version was closed and drift projected. }
+        '422': { description: Unsafe operator facts or invalid mapping input. }
   /integrations/{connection}/reconcile:
     post:
       tags: [Integrations]
@@ -1917,6 +1946,30 @@ paths:
       requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
       responses:
         '200': { description: Open dead letters projected into owned reconciliation work and operation audited. }
+  /integration-reconciliations/{reconciliation}/resolve:
+    post:
+      tags: [Integrations]
+      operationId: resolveIntegrationReconciliation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: reconciliation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution]
+              properties:
+                resolution:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                  description: Receipt-safe operator resolution; raw credentials, authentication headers and payment-card data are rejected.
+      responses:
+        '200': { description: Reconciliation resolved and operation audited. }
+        '422': { description: Unsafe or invalid resolution text. }
   /organizations:
     get:
       tags: [CRM]

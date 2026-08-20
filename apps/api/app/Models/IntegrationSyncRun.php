@@ -55,6 +55,12 @@ class IntegrationSyncRun extends TenantModel
         return $this->belongsTo(IntegrationConnection::class, 'integration_connection_id');
     }
 
+    /** @return BelongsTo<Property, $this> */
+    public function property(): BelongsTo
+    {
+        return $this->belongsTo(Property::class);
+    }
+
     /** @return HasMany<IntegrationSyncRunItem, $this> */
     public function items(): HasMany
     {

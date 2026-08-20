@@ -174,7 +174,9 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::get('integrations/{connection}/dead-letters', [IntegrationController::class, 'deadLetters']);
     Route::post('integration-dead-letters/{deadLetter}/replay', [IntegrationController::class, 'replayDeadLetter'])->middleware('idempotent');
     Route::get('integrations/{connection}/mappings', [IntegrationController::class, 'mappings']);
+    Route::post('integrations/{connection}/mappings', [IntegrationController::class, 'storeMapping'])->middleware('idempotent');
     Route::post('integrations/{connection}/reconcile', [IntegrationController::class, 'reconcile'])->middleware('idempotent');
+    Route::post('integration-reconciliations/{reconciliation}/resolve', [IntegrationController::class, 'resolveReconciliation'])->middleware('idempotent');
     Route::get('organizations', [ExtendedOperationsController::class, 'organizations']);
     Route::post('organizations', [ExtendedOperationsController::class, 'storeOrganization'])->middleware('idempotent');
     Route::get('opportunities', [ExtendedOperationsController::class, 'opportunities']);

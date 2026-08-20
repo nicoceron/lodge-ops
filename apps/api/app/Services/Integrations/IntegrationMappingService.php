@@ -25,6 +25,16 @@ final class IntegrationMappingService
         int $transformVersion,
         array $safeFacts = [],
     ): IntegrationMapping {
+        $admitted = app(IntegrationOperatorInputGuard::class)->admit([
+            'capability' => $capability,
+            'direction' => $direction,
+            'local_entity_type' => $localEntityType,
+            'local_key' => $localKey,
+            'external_entity_type' => $externalEntityType,
+            'external_key' => $externalKey,
+            'safe_facts' => $safeFacts,
+        ], 'mapping');
+        $safeFacts = $admitted['safe_facts'];
         if (! in_array($capability, $connection->capabilities ?? [], true)
             || (IntegrationConnectionService::CAPABILITY_DIRECTIONS[$capability] ?? null) !== $direction) {
             throw new DomainException('The mapping capability or direction is not granted by this connection.');

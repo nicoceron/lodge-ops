@@ -26,7 +26,18 @@ No provider-specific mapping or credential was added. No real OTA/accounting/com
 - `make lint`, API generation, API and web production builds, and `make contract` passed; the final contract contains 121 paths, 156 operations, and 112 resolved references.
 - Rebuilt Compose health and doctor passed. Playwright web passed 4/4; the client suite passed 8 journeys with one expected provider-mode skip.
 - Compose deterministic Checkout Pro UAT completed checkout, exact signed webhook receipt, worker processing, and an approved payment. Visible browser UAT confirmed that secret references and fixture details render only as configured markers and that connection, run, and mapping surfaces load under the property-scoped administrator session. See `remediation-uat.md`.
+- The additive P1 ordinary-browser receipt exercised the full Filament mutation journey: configure by secret reference, test, enable, mixed success/dead-letter run, capability and item inspection, replay, reconciliation, disable, and visible blocked-start state. See `p1-browser-mutation-uat.md`.
 - Composer and npm dependency audits, the diff/credential scan, and `git diff --check` passed before publication.
+
+## Additive P1 re-review repair gates
+
+- Focused operator-admission plus Filament inspection suite: 27 tests / 373 assertions before the final reconciliation-reason vector; the final targeted admission/Filament rerun passed 13 tests / 163 assertions.
+- Final full SQLite suite: 420 tests, 392 passed, 3,296 assertions, with 28 existing production-engine/provider skips.
+- Final full PostgreSQL suite: 420 tests / 3,425 assertions with one existing provider/environment skip. This includes the seven claim/item/event/cursor/disable/rotation/replay races and integration/commercial/tender migration round trips.
+- Focused integration/Filament (44 tests / 433 assertions), provider/payment (34 tests / 476 assertions), tender (23 tests / 194 assertions), and commercial (29 tests / 348 assertions across isolated rule and workflow groups) regressions passed; the complete SQLite and PostgreSQL orders passed as well.
+- `make lint`, PHPStan, web lint/typecheck, API/web production builds, and the 122-path / 158-operation / 112-reference OpenAPI contract passed.
+- Rebuilt Compose health/doctor passed. Public Playwright passed 4/4; authenticated closed-loop Playwright passed 8 journeys with one expected provider-mode skip.
+- Composer and both npm audits found no advisories. The staged-diff secret scan and final whitespace/status checks are recorded by the publication commit.
 
 ## References applied
 

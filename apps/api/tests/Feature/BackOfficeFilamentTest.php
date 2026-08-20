@@ -15,8 +15,14 @@ use App\Filament\Resources\ExchangeRates\Pages\ManageExchangeRates;
 use App\Filament\Resources\GeneratedDocuments\GeneratedDocumentResource;
 use App\Filament\Resources\IntegrationConnections\IntegrationConnectionResource;
 use App\Filament\Resources\IntegrationConnections\Pages\ManageIntegrationConnections;
+use App\Filament\Resources\IntegrationConnections\Pages\ViewIntegrationConnection;
+use App\Filament\Resources\IntegrationConnections\RelationManagers\CapabilitiesRelationManager;
 use App\Filament\Resources\IntegrationMappings\IntegrationMappingResource;
 use App\Filament\Resources\IntegrationMappings\Pages\ManageIntegrationMappings;
+use App\Filament\Resources\IntegrationReconciliations\Pages\ManageIntegrationReconciliations;
+use App\Filament\Resources\IntegrationRuns\IntegrationRunResource;
+use App\Filament\Resources\IntegrationRuns\Pages\ViewIntegrationRun;
+use App\Filament\Resources\IntegrationRuns\RelationManagers\ItemsRelationManager;
 use App\Filament\Resources\MessageTemplates\MessageTemplateResource;
 use App\Filament\Resources\Opportunities\OpportunityResource;
 use App\Filament\Resources\Organizations\OrganizationResource;
@@ -29,8 +35,11 @@ use App\Models\CommunicationSuppression;
 use App\Models\DocumentTemplate;
 use App\Models\GeneratedDocument;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationDeadLetter;
 use App\Models\IntegrationMapping;
 use App\Models\IntegrationReconciliation;
+use App\Models\IntegrationSyncRun;
+use App\Models\IntegrationSyncRunItem;
 use App\Models\MessageTemplate;
 use App\Models\Opportunity;
 use App\Models\Property;
@@ -38,6 +47,7 @@ use App\Models\Reservation;
 use App\Models\RetailSale;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
+use App\Models\Tenant;
 use App\Services\IntegrationConnectionService;
 use App\Services\MessageTemplateService;
 use App\Support\Tenancy\TenantContext;
@@ -285,6 +295,98 @@ class BackOfficeFilamentTest extends TestCase
         [, , $operations] = $this->tenantEnvironment(MembershipRole::Operations, authenticate: false);
         $this->actingAs($operations);
         $this->assertFalse(IntegrationMappingResource::canCreate());
+    }
+
+    public function test_mapping_and_reconciliation_filament_actions_reject_operator_credentials_without_writes(): void
+    {
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->prepareFilament($tenant, $membership, $user);
+        $connection = app(IntegrationConnectionService::class)->configure(
+            'Guarded mapping', 'webhook', [], 'env:GUARDED_MAPPING_SECRET', $property->id,
+            'contract_fake', 'reservations', 'guarded-mapping-account', 'sandbox', ['reservations.import'],
+        );
+        $mapping = [
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'capability' => 'reservations.import', 'direction' => 'inbound',
+            'local_entity_type' => 'reservation', 'local_key' => 'local-secret',
+            'external_entity_type' => 'booking', 'external_key' => 'external-secret',
+            'transform_version' => 1, 'safe_facts' => ['Authorization' => 'Bearer filament-secret-value'],
+        ];
+        Livewire::test(ManageIntegrationMappings::class)->callAction('create', $mapping);
+        $this->assertDatabaseMissing('integration_mappings', ['external_key' => 'external-secret']);
+
+        $reconciliation = IntegrationReconciliation::query()->create([
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'kind' => 'operator_review', 'status' => 'open', 'reason_code' => 'manual_review', 'safe_facts' => ['source' => 'filament'],
+        ]);
+        Livewire::test(ManageIntegrationReconciliations::class)
+            ->callTableAction('resolve', $reconciliation, ['resolution' => 'api_key=filament-resolution-secret'])
+            ->assertHasTableActionErrors();
+        Livewire::test(ManageIntegrationConnections::class)
+            ->callTableAction('reconcile', $connection, ['reason' => 'token=filament-reconciliation-secret'])
+            ->assertHasTableActionErrors();
+        $this->assertSame('open', $reconciliation->fresh()->status);
+        $this->assertNull($reconciliation->fresh()->resolution);
+        $this->assertDatabaseMissing('integration_operations', ['operation' => 'reconciliation_resolved']);
+    }
+
+    public function test_capability_and_item_inspection_is_scoped_read_only_and_visible_without_payloads(): void
+    {
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment(MembershipRole::Administrator, authenticate: false);
+        $this->prepareFilament($tenant, $membership, $user);
+        $connection = app(IntegrationConnectionService::class)->configure(
+            'Inspectable integration', 'webhook', [], 'env:INSPECTION_SECRET', $property->id,
+            'contract_fake', 'reservations', 'inspection-account', 'sandbox', ['reservations.import'],
+        );
+        $connection = app(IntegrationConnectionService::class)->enable($connection, $user->id, 'Enable inspection fixture.');
+        $capability = $connection->connectionCapabilities()->firstOrFail();
+        $capability->update(['last_error' => 'Safe capability warning', 'last_error_at' => now(), 'last_success_at' => now()]);
+        $run = IntegrationSyncRun::query()->create([
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'requested_by' => $user->id, 'capability' => 'reservations.import', 'direction' => 'inbound',
+            'trigger' => 'manual', 'status' => 'completed_with_errors', 'correlation_id' => 'inspect-correlation',
+            'idempotency_key' => 'inspect-idempotency', 'item_count' => 1, 'dead_letter_count' => 1,
+        ]);
+        $item = IntegrationSyncRunItem::query()->create([
+            'integration_sync_run_id' => $run->id, 'property_id' => $property->id, 'page_number' => 1,
+            'external_key' => 'inspect-external', 'payload_checksum' => str_repeat('a', 64),
+            'safe_payload' => ['private_internal_note' => 'must-not-render'], 'status' => 'dead_letter', 'attempt' => 2,
+            'idempotency_key' => 'inspect-item-idempotency', 'request_checksum' => str_repeat('b', 64),
+            'response_checksum' => str_repeat('c', 64), 'last_error' => 'Safe item failure',
+        ]);
+        $letter = IntegrationDeadLetter::query()->create([
+            'integration_connection_id' => $connection->id, 'property_id' => $property->id,
+            'integration_sync_run_item_id' => $item->id, 'reason_code' => 'inspection_fixture',
+            'safe_error' => 'Safe dead-letter failure', 'status' => 'open', 'replay_count' => 1,
+        ]);
+
+        Livewire::test(CapabilitiesRelationManager::class, ['ownerRecord' => $connection, 'pageClass' => ViewIntegrationConnection::class])
+            ->assertCanSeeTableRecords([$capability])->assertSee('Safe capability warning')->assertDontSee('env:INSPECTION_SECRET');
+        Livewire::test(ItemsRelationManager::class, ['ownerRecord' => $run, 'pageClass' => ViewIntegrationRun::class])
+            ->assertCanSeeTableRecords([$item])->assertSee('Safe item failure')->assertSee($letter->id)
+            ->assertSee('inspect-item-idemp')->assertDontSee('must-not-render')->assertDontSee('safe_payload');
+
+        foreach (MembershipRole::cases() as $role) {
+            $membership->update(['role' => $role]);
+            $membership->refresh();
+            app(TenantContext::class)->set($tenant, $membership);
+            $this->assertSame(in_array($role, [MembershipRole::Administrator, MembershipRole::Manager], true), IntegrationConnectionResource::canView($connection), $role->value);
+            $this->assertSame(in_array($role, [MembershipRole::Administrator, MembershipRole::Manager], true), IntegrationRunResource::canView($run), $role->value);
+        }
+
+        $membership->update(['role' => MembershipRole::Administrator]);
+        app(TenantContext::class)->set($tenant, $membership->fresh());
+        $otherTenant = Tenant::factory()->create();
+        app(TenantContext::class)->set($otherTenant);
+        $otherProperty = Property::factory()->create();
+        $otherConnection = IntegrationConnection::query()->create([
+            'property_id' => $otherProperty->id, 'name' => 'Other tenant integration', 'type' => 'webhook',
+            'provider' => 'contract_fake', 'product' => 'webhooks', 'external_account_id' => 'other-tenant-account',
+            'environment' => 'sandbox', 'status' => 'configured', 'configuration' => [], 'capabilities' => ['webhook.outbound'],
+        ]);
+        app(TenantContext::class)->set($tenant, $membership->fresh());
+        Filament::setTenant($tenant, isQuiet: true);
+        $this->get(IntegrationConnectionResource::getUrl('view', ['tenant' => $tenant, 'record' => $otherConnection]))->assertNotFound();
     }
 
     public function test_generated_documents_and_published_messages_are_immutable_audit_records(): void

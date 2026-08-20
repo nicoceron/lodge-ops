@@ -372,8 +372,22 @@ final class IntegrationRunService
                 'finished_at' => $next ? null : now(),
             ]);
             if (! $next) {
+                $completedAt = now();
                 $connection->update([
-                    'last_synced_at' => now(), 'last_success_at' => now(), 'last_error' => null, 'health_status' => $dead === 0 ? 'healthy' : 'degraded',
+                    'last_synced_at' => $completedAt, 'last_success_at' => $completedAt, 'last_error' => null, 'health_status' => $dead === 0 ? 'healthy' : 'degraded',
+                ]);
+                $capability = IntegrationConnectionCapability::query()
+                    ->where('integration_connection_id', $locked->integration_connection_id)
+                    ->where('capability', $locked->capability)
+                    ->where('direction', $locked->direction)
+                    ->lockForUpdate()
+                    ->first();
+                $capability?->update([
+                    'last_success_at' => $completedAt,
+                    'last_error_at' => $dead === 0 ? null : $completedAt,
+                    'last_error' => $dead === 0
+                        ? null
+                        : $items->firstWhere('status', 'dead_letter')?->last_error,
                 ]);
             }
 
@@ -401,6 +415,37 @@ final class IntegrationRunService
                 'latency_ms' => $result->latencyMs, 'request_checksum' => $result->requestChecksum,
                 'response_checksum' => $result->responseChecksum, 'finished_at' => now(), 'last_error' => null,
             ]);
+            if ($run->status === 'completed') {
+                IntegrationDeadLetter::query()->where('integration_sync_run_item_id', $locked->id)->update([
+                    'status' => 'resolved', 'resolved_at' => now(), 'resolution' => 'Replay succeeded.',
+                ]);
+                $successes = $run->items()->where('status', 'succeeded')->count();
+                $dead = $run->items()->where('status', 'dead_letter')->count();
+                $run->update([
+                    'success_count' => $successes,
+                    'error_count' => $dead,
+                    'dead_letter_count' => $dead,
+                ]);
+                $completedAt = now();
+                $connection->update([
+                    'last_synced_at' => $completedAt,
+                    'last_success_at' => $completedAt,
+                    'last_error' => null,
+                    'health_status' => $dead === 0 ? 'healthy' : 'degraded',
+                ]);
+                IntegrationConnectionCapability::query()
+                    ->where('integration_connection_id', $run->integration_connection_id)
+                    ->where('capability', $run->capability)
+                    ->where('direction', $run->direction)
+                    ->lockForUpdate()
+                    ->first()?->update([
+                        'last_success_at' => $completedAt,
+                        'last_error_at' => $dead === 0 ? null : $completedAt,
+                        'last_error' => $dead === 0
+                            ? null
+                            : $run->items()->where('status', 'dead_letter')->value('last_error'),
+                    ]);
+            }
 
             return $run->fresh();
         }, 3);
@@ -408,15 +453,6 @@ final class IntegrationRunService
             return;
         }
         if ($run->status === 'completed') {
-            IntegrationDeadLetter::query()->where('integration_sync_run_item_id', $item->id)->update([
-                'status' => 'resolved', 'resolved_at' => now(), 'resolution' => 'Replay succeeded.',
-            ]);
-            $run->update([
-                'success_count' => $run->items()->where('status', 'succeeded')->count(),
-                'error_count' => $run->items()->where('status', 'dead_letter')->count(),
-                'dead_letter_count' => $run->items()->where('status', 'dead_letter')->count(),
-            ]);
-
             return;
         }
         $this->finalizePage($run);

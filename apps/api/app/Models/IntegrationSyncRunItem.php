@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\Integrations\SafeIntegrationError;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property string $id
@@ -45,5 +46,11 @@ class IntegrationSyncRunItem extends TenantModel
     public function run(): BelongsTo
     {
         return $this->belongsTo(IntegrationSyncRun::class, 'integration_sync_run_id');
+    }
+
+    /** @return HasOne<IntegrationDeadLetter, $this> */
+    public function deadLetter(): HasOne
+    {
+        return $this->hasOne(IntegrationDeadLetter::class);
     }
 }

@@ -128,6 +128,10 @@ class IntegrationKernelTest extends TestCase
         $this->assertSame('completed', $run->fresh()->status);
         $letter = IntegrationDeadLetter::query()->sole();
         $this->assertSame('poison_item', $letter->reason_code);
+        $capability = $connection->connectionCapabilities()->sole();
+        $this->assertNotNull($capability->last_success_at);
+        $this->assertNotNull($capability->last_error_at);
+        $this->assertSame('Unknown room mapping; [redacted-auth] must not leak.', $capability->last_error);
 
         $port->poison = false;
         $runs->replay($letter, $user->id, 'Mapping corrected');
@@ -135,6 +139,8 @@ class IntegrationKernelTest extends TestCase
         $this->assertSame(1, $cursor->fresh()->version, 'A completed-page replay must not commit or rewind the cursor again.');
         $this->assertSame('resolved', $letter->fresh()->status);
         $this->assertSame(2, $run->fresh()->success_count);
+        $this->assertNull($capability->fresh()->last_error_at);
+        $this->assertNull($capability->fresh()->last_error);
     }
 
     public function test_run_idempotency_rejects_same_key_with_different_facts(): void

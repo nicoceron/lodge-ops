@@ -7,12 +7,14 @@ use App\Models\IntegrationConnection;
 use App\Models\IntegrationDeadLetter;
 use App\Models\IntegrationEvent;
 use App\Models\IntegrationMapping;
+use App\Models\IntegrationReconciliation;
 use App\Models\IntegrationSyncRun;
 use App\Services\IntegrationConnectionService;
 use App\Services\Integrations\EndpointKeyService;
 use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\Integrations\IntegrationEventService;
 use App\Services\Integrations\IntegrationHealthService;
+use App\Services\Integrations\IntegrationMappingService;
 use App\Services\Integrations\IntegrationReconciliationService;
 use App\Services\Integrations\IntegrationRunService;
 use App\Support\Tenancy\TenantContext;
@@ -161,6 +163,37 @@ class IntegrationController extends Controller
         return response()->json(['data' => IntegrationMapping::query()->where('integration_connection_id', $connection->id)->latest('valid_from')->paginate(50)]);
     }
 
+    public function storeMapping(Request $request, IntegrationConnection $connection, IntegrationMappingService $mappings): JsonResponse
+    {
+        $this->authorize('update', $connection);
+        $this->requiredIdempotencyKey($request);
+        $data = $request->validate([
+            'property_id' => ['nullable', 'uuid'],
+            'capability' => ['required', 'string', 'max:80'],
+            'direction' => ['required', Rule::in(['inbound', 'outbound'])],
+            'local_entity_type' => ['required', 'string', 'max:120'],
+            'local_key' => ['required', 'string', 'max:255'],
+            'external_entity_type' => ['required', 'string', 'max:120'],
+            'external_key' => ['required', 'string', 'max:255'],
+            'transform_version' => ['required', 'integer', 'min:1'],
+            'safe_facts' => ['sometimes', 'array'],
+        ]);
+        $mapping = $mappings->version(
+            $connection,
+            $data['property_id'] ?? null,
+            $data['capability'],
+            $data['direction'],
+            $data['local_entity_type'],
+            $data['local_key'],
+            $data['external_entity_type'],
+            $data['external_key'],
+            (int) $data['transform_version'],
+            $data['safe_facts'] ?? [],
+        );
+
+        return response()->json(['data' => $mapping], 201);
+    }
+
     public function reconcile(Request $request, IntegrationConnection $connection, IntegrationReconciliationService $reconciliations): JsonResponse
     {
         $this->authorize('update', $connection);
@@ -168,6 +201,15 @@ class IntegrationController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
 
         return response()->json(['data' => $reconciliations->reconcile($connection, $request->user()->id, $data['reason'])]);
+    }
+
+    public function resolveReconciliation(Request $request, IntegrationReconciliation $reconciliation, IntegrationReconciliationService $reconciliations): JsonResponse
+    {
+        $this->authorize('update', $reconciliation);
+        $this->requiredIdempotencyKey($request);
+        $data = $request->validate(['resolution' => ['required', 'string', 'min:3', 'max:500']]);
+
+        return response()->json(['data' => $reconciliations->resolve($reconciliation, $request->user()->id, $data['resolution'])]);
     }
 
     /** @return array<string,mixed> */

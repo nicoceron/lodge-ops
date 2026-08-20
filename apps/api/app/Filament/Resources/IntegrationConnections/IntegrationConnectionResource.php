@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\IntegrationConnections;
 
 use App\Filament\Resources\IntegrationConnections\Pages\ManageIntegrationConnections;
+use App\Filament\Resources\IntegrationConnections\Pages\ViewIntegrationConnection;
+use App\Filament\Resources\IntegrationConnections\RelationManagers\CapabilitiesRelationManager;
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\IntegrationConnection;
@@ -189,6 +191,14 @@ class IntegrationConnectionResource extends TenantResource
 
     public static function getPages(): array
     {
-        return ['index' => ManageIntegrationConnections::route('/')];
+        return [
+            'index' => ManageIntegrationConnections::route('/'),
+            'view' => ViewIntegrationConnection::route('/{record}'),
+        ];
+    }
+
+    public static function getRelations(): array
+    {
+        return [CapabilitiesRelationManager::class];
     }
 }

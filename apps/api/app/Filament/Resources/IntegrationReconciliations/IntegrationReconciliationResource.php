@@ -6,7 +6,7 @@ use App\Filament\Resources\IntegrationReconciliations\Pages\ManageIntegrationRec
 use App\Filament\Resources\TenantResource;
 use App\Filament\Support\InnPresentation;
 use App\Models\IntegrationReconciliation;
-use App\Services\Integrations\IntegrationOperationRecorder;
+use App\Services\Integrations\IntegrationReconciliationService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
@@ -44,10 +44,7 @@ class IntegrationReconciliationResource extends TenantResource
         ])->recordActions([
             Action::make('resolve')->authorize('update')->requiresConfirmation()->visible(fn (IntegrationReconciliation $record): bool => $record->status === 'open')
                 ->form([Textarea::make('resolution')->required()->minLength(3)->maxLength(500)])
-                ->action(function (IntegrationReconciliation $record, array $data): void {
-                    $record->update(['status' => 'resolved', 'resolved_by' => auth()->id(), 'resolved_at' => now(), 'resolution' => $data['resolution']]);
-                    IntegrationOperationRecorder::record($record->connection()->firstOrFail(), 'reconciliation_resolved', auth()->id(), $data['resolution'], ['reconciliation_id' => $record->id]);
-                }),
+                ->action(fn (IntegrationReconciliation $record, array $data): IntegrationReconciliation => app(IntegrationReconciliationService::class)->resolve($record, auth()->id(), $data['resolution'])),
         ])->defaultSort('created_at', 'desc');
     }
 
