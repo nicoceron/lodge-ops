@@ -136,6 +136,11 @@ class Reservation extends TenantModel
         return $this->hasMany(Payment::class);
     }
 
+    public function tenderDetails(): HasMany
+    {
+        return $this->hasMany(PaymentTenderDetail::class);
+    }
+
     public function voucherRedemptions(): HasMany
     {
         return $this->hasMany(VoucherRedemption::class);

@@ -160,16 +160,22 @@ class GuestPortalService
                 'reservation_id' => $access->reservation_id,
                 'guest_id' => $access->guest_id,
                 'file_name' => mb_substr($upload->getClientOriginalName(), 0, 255),
+                'original_name' => mb_substr($upload->getClientOriginalName(), 0, 255),
                 'content_type' => $contentType,
+                'detected_mime' => $contentType,
                 'size_bytes' => $sizeBytes,
                 'sha256' => $sha256,
                 'storage_path' => $storagePath,
+                'disk' => 'local',
+                'storage_key' => $storagePath,
                 'status' => 'review_pending',
                 'amount_minor' => $amountMinor,
                 'currency' => $currency,
                 'transfer_reference' => trim((string) ($data['transfer_reference'] ?? '')) ?: null,
                 'scan_status' => 'accepted',
+                'scan_state' => 'accepted',
                 'submitted_at' => $submittedAt,
+                'scanned_at' => $submittedAt,
             ]);
         } catch (QueryException $exception) {
             Storage::disk('local')->delete($storagePath);

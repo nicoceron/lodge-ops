@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { Browser, BrowserContext, expect, Locator, Page, test } from "@playwright/test";
 import { signIn } from "./helpers/auth";
@@ -17,9 +18,17 @@ function localDateTime(daysFromNow: number, hour: number): string {
 }
 
 function runArtisan(...arguments_: string[]): void {
+  const apiContainer = process.env.INN_API_CONTAINER;
+
+  if (apiContainer) {
+    execFileSync("docker", ["exec", apiContainer, "php", "artisan", ...arguments_], { stdio: "inherit" });
+
+    return;
+  }
+
   execFileSync(
     "docker",
-    ["compose", "exec", "-T", "api", "php", "artisan", ...arguments_],
+    ["compose", "-p", process.env.INN_COMPOSE_PROJECT ?? "inn", "exec", "-T", "api", "php", "artisan", ...arguments_],
     { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" },
   );
 }
@@ -69,8 +78,8 @@ test("P3-02 closes the staff, guest, finance, stay, folio, and survey loop", asy
   test.setTimeout(300_000);
   if (!baseURL) throw new Error("P3-02 requires an API base URL.");
 
-  const run = Date.now();
-  const stayOffset = 400 + (run % 10_000);
+  const run = randomUUID();
+  const stayOffset = 400 + (Date.now() % 10_000);
   const arrival = localDateTime(stayOffset, 15);
   const departure = localDateTime(stayOffset + 2, 11);
   const guestEmail = `p3-02-${run}@example.test`;
@@ -115,7 +124,10 @@ test("P3-02 closes the staff, guest, finance, stay, folio, and survey loop", asy
     await expect(page.getByRole("button", { name: "Check in", exact: true })).toBeVisible();
     await clickHeaderAction(page, "Move room");
     const roomAssignment = page.getByRole("dialog", { name: "Move room" });
-    await roomAssignment.getByRole("combobox", { name: "Current assignment*" }).selectOption({ index: 1 });
+    const currentAssignment = roomAssignment.getByRole("combobox", { name: "Current assignment*" });
+    await expect(currentAssignment).toBeVisible();
+    await currentAssignment.selectOption({ index: 1 });
+    await expect(roomAssignment.getByRole("combobox", { name: "New resource*" })).toBeEnabled();
     await chooseOption(roomAssignment, "New resource*", "River Cabin");
     await roomAssignment.getByRole("textbox", { name: "Move reason" }).fill("P3-02 assign exact stay place");
     await roomAssignment.getByRole("button", { name: "Submit", exact: true }).click();

@@ -77,7 +77,6 @@ class ProjectionPropertyIsolationTest extends TestCase
         ]);
         Payment::query()->create([
             'reservation_id' => $reservation->id,
-            'provider' => 'manual',
             'status' => PaymentStatus::Succeeded,
             'method' => 'cash',
             'currency' => 'ARS',

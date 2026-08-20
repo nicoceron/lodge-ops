@@ -71,6 +71,7 @@ use App\Models\VoucherRedemptionEvent;
 use App\Observers\TenantAuditObserver;
 use App\Services\Documents\SpatieDocumentRenderer;
 use App\Services\Fiscal\DatabaseFiscalSourceSnapshotFactory;
+use App\Services\Payments\SensitivePaymentDataGuard;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -87,6 +88,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
+        $this->app->scoped(SensitivePaymentDataGuard::class, fn (): SensitivePaymentDataGuard => new SensitivePaymentDataGuard);
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
         $this->app->bind(FiscalSourceSnapshotFactory::class, DatabaseFiscalSourceSnapshotFactory::class);

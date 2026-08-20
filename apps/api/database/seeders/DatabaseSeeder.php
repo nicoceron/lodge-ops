@@ -549,27 +549,31 @@ class DatabaseSeeder extends Seeder
         }
 
         $arrivalPayment = Payment::query()->updateOrCreate(
-            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-ARRIVAL-DEPOSIT'],
+            ['reservation_id' => $arrival->id, 'method' => 'bank_transfer'],
             [
-                'reservation_id' => $arrival->id,
                 'status' => PaymentStatus::Succeeded,
-                'method' => 'bank_transfer',
                 'currency' => 'USD',
                 'amount_minor' => 743_750,
                 'processed_at' => $today->subDays(20),
-                'metadata' => ['evidence' => 'demo-wire-confirmation.pdf'],
+                'metadata' => [
+                    'evidence' => 'demo-wire-confirmation.pdf',
+                    'manual_processor_alias' => 'manual_seed',
+                    'manual_transaction_reference' => 'DEMO-ARRIVAL-DEPOSIT',
+                ],
             ],
         );
         $inHousePayment = Payment::query()->updateOrCreate(
-            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-INHOUSE-PAID'],
+            ['reservation_id' => $inHouse->id, 'method' => 'bank_transfer'],
             [
-                'reservation_id' => $inHouse->id,
                 'status' => PaymentStatus::Succeeded,
-                'method' => 'bank_transfer',
                 'currency' => 'USD',
                 'amount_minor' => 2_189_600,
                 'processed_at' => $today->subDays(5),
-                'metadata' => ['evidence' => 'demo-paid-in-full.pdf'],
+                'metadata' => [
+                    'evidence' => 'demo-paid-in-full.pdf',
+                    'manual_processor_alias' => 'manual_seed',
+                    'manual_transaction_reference' => 'DEMO-INHOUSE-PAID',
+                ],
             ],
         );
         app(FolioService::class)->postPayment($arrivalPayment, null);
@@ -737,15 +741,17 @@ class DatabaseSeeder extends Seeder
                 $paymentRatio = [1.0, 0.6, 0.0][$index];
                 if ($paymentRatio > 0) {
                     $payment = Payment::query()->updateOrCreate(
-                        ['provider' => 'manual_seed', 'provider_reference' => sprintf('TREND-PAYMENT-%02d', $sequence)],
+                        ['reservation_id' => $reservation->id, 'method' => $index === 0 ? 'card' : 'bank_transfer'],
                         [
-                            'reservation_id' => $reservation->id,
                             'status' => PaymentStatus::Succeeded,
-                            'method' => $index === 0 ? 'card' : 'bank_transfer',
                             'currency' => 'USD',
                             'amount_minor' => (int) round($reservation->total_minor * $paymentRatio),
                             'processed_at' => $month->addDays(1 + ($index * 7))->addHours(10),
-                            'metadata' => ['scenario' => 'dashboard_trend'],
+                            'metadata' => [
+                                'scenario' => 'dashboard_trend',
+                                'manual_processor_alias' => 'manual_seed',
+                                'manual_transaction_reference' => sprintf('TREND-PAYMENT-%02d', $sequence),
+                            ],
                         ],
                     );
                     app(FolioService::class)->postPayment($payment, null);
@@ -933,15 +939,17 @@ class DatabaseSeeder extends Seeder
             ],
         );
         $arsPayment = Payment::query()->updateOrCreate(
-            ['provider' => 'manual_seed', 'provider_reference' => 'DEMO-ARS-PAID'],
+            ['reservation_id' => $arsReservation->id, 'method' => 'bank_transfer'],
             [
-                'reservation_id' => $arsReservation->id,
                 'status' => PaymentStatus::Succeeded,
-                'method' => 'bank_transfer',
                 'currency' => 'ARS',
                 'amount_minor' => $arsReservation->total_minor,
                 'processed_at' => $arsEndsAt,
-                'metadata' => ['scenario' => 'multi_currency_demo'],
+                'metadata' => [
+                    'scenario' => 'multi_currency_demo',
+                    'manual_processor_alias' => 'manual_seed',
+                    'manual_transaction_reference' => 'DEMO-ARS-PAID',
+                ],
             ],
         );
         app(FolioService::class)->postPayment($arsPayment, null);

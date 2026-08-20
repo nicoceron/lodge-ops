@@ -102,6 +102,9 @@ final class ReservationChangeActions
             ->color('info')
             ->authorize('reallocate')
             ->visible(fn (Reservation $record): bool => in_array($record->status, [ReservationStatus::Hold, ReservationStatus::Confirmed, ReservationStatus::CheckedIn], true))
+            ->fillForm(fn (Reservation $record): array => [
+                'allocation_id' => $record->allocations()->where('status', '!=', AllocationStatus::Released)->orderBy('created_at')->value('id'),
+            ])
             ->schema([
                 Select::make('allocation_id')->label('Current assignment')->live()
                     ->options(fn (Reservation $record): array => $record->allocations()->with(['resource', 'requestedCategory'])
@@ -116,7 +119,7 @@ final class ReservationChangeActions
                         return Resource::query()->where('property_id', $record->property_id)
                             ->when($allocation?->requested_category_id, fn ($query, $category) => $query->where('category_id', $category))
                             ->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all();
-                    })->required()->searchable(),
+                    })->disabled(fn (Get $get): bool => blank($get('allocation_id')))->required()->searchable(),
                 Textarea::make('reason')->label('Move reason')->maxLength(500)->rows(3),
             ])
             ->action(function (Reservation $record, array $data): void {

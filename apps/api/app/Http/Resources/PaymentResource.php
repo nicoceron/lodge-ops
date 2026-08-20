@@ -11,23 +11,26 @@ class PaymentResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $finance = $request->user()?->can('viewFinance', Payment::class) === true;
+
         return [
             'id' => $this->id,
             'reservation_id' => $this->reservation_id,
             'status' => $this->status->value,
             'method' => $this->method,
+            'channel' => $this->channel->value,
+            'entry_mode' => $this->entry_mode->value,
             'origin' => $this->origin->value,
-            'provider' => $this->provider,
-            'provider_reference' => $this->provider_reference,
-            'evidence_url' => $this->evidence_url,
-            'evidence_note' => $this->evidence_note,
+            'provider' => $finance ? $this->provider : null,
+            'provider_reference' => $finance ? $this->provider_reference : null,
+            'reference' => $finance ? $this->receipt_safe_reference : null,
             'currency' => $this->currency,
             'amount_minor' => $this->amount_minor,
             'processed_at' => $this->processed_at,
             'reconciled_at' => $this->reconciled_at,
             'reversed_at' => $this->reversed_at,
             'reversal_reason' => $this->reversal_reason,
-            'metadata' => $this->metadata,
+            'metadata' => $finance ? $this->metadata : null,
             'created_at' => $this->created_at,
         ];
     }

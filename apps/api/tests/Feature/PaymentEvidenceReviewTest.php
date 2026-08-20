@@ -83,8 +83,7 @@ class PaymentEvidenceReviewTest extends TestCase
         Filament::setCurrentPanel(Filament::getPanel('admin'));
         Filament::setTenant($tenant, isQuiet: true);
         $this->get(route('filament.admin.payment-evidence.download', ['tenant' => $tenant, 'evidence' => $evidence]))
-            ->assertOk()
-            ->assertHeader('x-content-type-options', 'nosniff');
+            ->assertConflict();
     }
 
     public function test_sales_cannot_review_transfer_evidence(): void
@@ -98,6 +97,45 @@ class PaymentEvidenceReviewTest extends TestCase
         $this->assertFalse($user->can('review', $evidence));
         $this->assertFalse($user->can('download', $evidence));
         $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_more_information_evidence_remains_privately_downloadable_to_authorized_reviewers(): void
+    {
+        [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Finance, authenticate: false);
+        $this->actingAs($user);
+        $guest = Guest::factory()->create();
+        $reservation = Reservation::factory()->create(['property_id' => $property->id, 'primary_guest_id' => $guest->id]);
+        $evidence = $this->evidence($reservation, $guest, 10_000);
+        Storage::fake('local');
+        Storage::disk('local')->put($evidence->storage_path, 'receipt');
+
+        app(ReviewPaymentEvidence::class)->requestMoreInformation($evidence, 'Please upload the full bank confirmation.', $user->id);
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        Filament::setTenant($tenant, isQuiet: true);
+
+        $this->get(route('filament.admin.payment-evidence.download', ['tenant' => $tenant, 'evidence' => $evidence]))
+            ->assertOk()
+            ->assertHeader('content-disposition');
+        $this->assertDatabaseHas('guest_payment_evidence', [
+            'id' => $evidence->id,
+            'status' => PaymentEvidenceStatus::MoreInformationRequired->value,
+        ]);
+    }
+
+    public function test_more_information_download_policy_is_explicit_for_every_role(): void
+    {
+        foreach (MembershipRole::cases() as $role) {
+            [, $property, $user] = $this->tenantEnvironment($role, authenticate: false);
+            $guest = Guest::factory()->create();
+            $reservation = Reservation::factory()->create(['property_id' => $property->id, 'primary_guest_id' => $guest->id]);
+            $evidence = $this->evidence($reservation, $guest, 10_000);
+            $evidence->update(['status' => PaymentEvidenceStatus::MoreInformationRequired]);
+            $this->assertSame(
+                in_array($role, [MembershipRole::Administrator, MembershipRole::Manager, MembershipRole::Finance], true),
+                $user->can('download', $evidence),
+                $role->value,
+            );
+        }
     }
 
     private function evidence(Reservation $reservation, Guest $guest, int $amount): GuestPaymentEvidence

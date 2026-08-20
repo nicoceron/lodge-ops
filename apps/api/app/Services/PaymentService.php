@@ -5,9 +5,13 @@ namespace App\Services;
 use App\Data\Payments\ProviderPayment;
 use App\Enums\DepositStatus;
 use App\Enums\DocumentKind;
+use App\Enums\FolioStatus;
+use App\Enums\PaymentChannel;
+use App\Enums\PaymentEntryMode;
 use App\Enums\PaymentOrigin;
 use App\Enums\PaymentRequestState;
 use App\Enums\PaymentStatus;
+use App\Enums\ReservationStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\Deposit;
 use App\Models\Payment;
@@ -81,6 +85,8 @@ final class PaymentService
                 'reservation_id' => $reservation->id,
                 'status' => PaymentStatus::Succeeded,
                 'method' => 'mercado_pago_checkout_pro',
+                'channel' => PaymentChannel::OnlineCheckout,
+                'entry_mode' => PaymentEntryMode::ProviderReported,
                 'origin' => PaymentOrigin::Provider,
                 'provider' => $lockedAttempt->provider,
                 'environment' => $lockedAttempt->environment,
@@ -127,16 +133,83 @@ final class PaymentService
         );
     }
 
+    public function recordFrontDesk(
+        Reservation $reservation,
+        PaymentChannel $channel,
+        int $amountMinor,
+        ?int $actorId,
+        ?string $depositId = null,
+    ): Payment {
+        return DB::transaction(function () use ($reservation, $channel, $amountMinor, $actorId, $depositId): Payment {
+            $lockedReservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if (! in_array($channel, [PaymentChannel::BankTransfer, PaymentChannel::Cash, PaymentChannel::ExternalTerminal, PaymentChannel::ManualOther], true)) {
+                throw new DomainException('Only staff-recorded tender channels are accepted by the front-desk command.');
+            }
+            if ($amountMinor <= 0) {
+                throw new DomainException('The payment amount must be greater than zero.');
+            }
+            if ($lockedReservation->folio_status === FolioStatus::Closed
+                || in_array($lockedReservation->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true)) {
+                throw new DomainException('Payments cannot be posted to a closed, cancelled, or no-show reservation.');
+            }
+            $outstanding = max(0, $this->folio->summary($lockedReservation)['balance_minor']);
+            if ($amountMinor > $outstanding) {
+                throw new DomainException('The payment exceeds the remaining reservation balance.');
+            }
+            $deposit = $depositId === null ? null : Deposit::query()->lockForUpdate()->findOrFail($depositId);
+            if ($deposit !== null) {
+                if ($deposit->reservation_id !== $lockedReservation->id || $deposit->currency !== $lockedReservation->currency || $deposit->status !== DepositStatus::Due) {
+                    throw new DomainException('Only a due deposit in the reservation currency may be selected.');
+                }
+                if ($amountMinor < $deposit->amount_minor) {
+                    throw new DomainException('The payment does not cover the selected deposit.');
+                }
+            }
+
+            $payment = Payment::query()->create([
+                'reservation_id' => $lockedReservation->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => $channel->legacyMethod(),
+                'channel' => $channel,
+                'entry_mode' => PaymentEntryMode::StaffRecorded,
+                'origin' => PaymentOrigin::Manual,
+                'currency' => $lockedReservation->currency,
+                'amount_minor' => $amountMinor,
+                'processed_at' => now(),
+                'reconciled_at' => now(),
+                'recorded_by' => $actorId,
+                'reconciled_by' => $actorId,
+                'metadata' => ['classification_source' => 'front_desk_command'],
+            ]);
+            $this->folio->postPayment($payment->load('reservation'), $actorId);
+            if ($deposit !== null) {
+                $deposit->update(['payment_id' => $payment->id, 'status' => DepositStatus::Paid, 'paid_at' => now()]);
+            }
+            $this->outbox->record('payment', $payment->id, 'payment.succeeded', [
+                'payment_id' => $payment->id,
+                'reservation_id' => $lockedReservation->id,
+                'deposit_id' => $deposit?->id,
+                'amount_minor' => $amountMinor,
+                'channel' => $channel->value,
+                'origin' => PaymentOrigin::Manual->value,
+            ]);
+
+            return $payment->fresh(['reservation', 'deposits']);
+        }, 3);
+    }
+
     /** @param array<string, mixed> $data */
     public function recordManual(array $data, ?int $actorId, bool $capture = false): Payment
     {
         return DB::transaction(function () use ($data, $actorId, $capture): Payment {
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($data['reservation_id']);
 
-            if (! empty($data['provider']) && ! empty($data['provider_reference'])) {
+            $manualProcessor = trim((string) ($data['provider'] ?? '')) ?: null;
+            $manualReference = trim((string) ($data['provider_reference'] ?? '')) ?: null;
+            if ($manualProcessor !== null && $manualReference !== null) {
                 $existing = Payment::query()
-                    ->where('provider', $data['provider'])
-                    ->where('provider_reference', $data['provider_reference'])
+                    ->where('metadata->manual_processor_alias', $manualProcessor)
+                    ->where('metadata->manual_transaction_reference', $manualReference)
                     ->first();
                 if ($existing !== null) {
                     return $existing;
@@ -147,17 +220,26 @@ final class PaymentService
                 ...Arr::only($data, [
                     'reservation_id',
                     'method',
-                    'provider',
-                    'provider_reference',
                     'evidence_url',
                     'evidence_note',
                     'amount_minor',
-                    'metadata',
                 ]),
                 'origin' => PaymentOrigin::Manual,
+                'channel' => match ($data['method']) {
+                    'bank_transfer' => PaymentChannel::BankTransfer,
+                    'cash' => PaymentChannel::Cash,
+                    'card' => PaymentChannel::ExternalTerminal,
+                    default => PaymentChannel::ManualOther,
+                },
+                'entry_mode' => PaymentEntryMode::StaffRecorded,
                 'currency' => $reservation->currency,
                 'status' => PaymentStatus::Pending,
                 'recorded_by' => $actorId,
+                'metadata' => [
+                    ...((array) ($data['metadata'] ?? [])),
+                    'manual_processor_alias' => $manualProcessor,
+                    'manual_transaction_reference' => $manualReference,
+                ],
             ]);
 
             $this->outbox->record('payment', $payment->id, 'payment.created', [
