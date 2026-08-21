@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $circuit_failure_count
  * @property string|null $secret_reference
  * @property string|null $payment_webhook_key SHA-256 endpoint-key hash; never a raw key.
+ * @property string $status
  * @property CarbonImmutable|null $revoked_at
  * @property CarbonImmutable|null $circuit_opened_at
  * @property CarbonImmutable|null $throttled_until

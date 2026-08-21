@@ -66,6 +66,7 @@ analyse-api:
 contract:
 	cd apps/api && php artisan route:list --json > /tmp/inn-routes.json
 	ruby scripts/verify-openapi.rb contracts/openapi.yaml /tmp/inn-routes.json
+	ruby scripts/verify-direct-booking-contract.rb
 
 verify: build-api lint contract test
 

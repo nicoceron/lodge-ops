@@ -1,0 +1,25 @@
+{
+  "data": {
+    "order_reference": "01K3A6S2V4T8N9R7W1X0Y3Z5QM",
+    "state": "quoted",
+    "state_version": 2,
+    "quote_expires_at": "2026-09-01T12:20:00Z",
+    "arrival_date": "2026-09-10",
+    "departure_date": "2026-09-13",
+    "timezone": "America/Argentina/Ushuaia",
+    "total": {"amount_minor": 360000, "currency": "USD"},
+    "deposit": {"amount_minor": 180000, "currency": "USD"},
+    "lines": [
+      {"type": "nightly_rate", "description": "Habitación lodge · Sep 10, 2026", "service_on": "2026-09-10", "amount": {"amount_minor": 120000, "currency": "USD"}},
+      {"type": "nightly_rate", "description": "Habitación lodge · Sep 11, 2026", "service_on": "2026-09-11", "amount": {"amount_minor": 120000, "currency": "USD"}},
+      {"type": "nightly_rate", "description": "Habitación lodge · Sep 12, 2026", "service_on": "2026-09-12", "amount": {"amount_minor": 120000, "currency": "USD"}}
+    ],
+    "policies": [
+      {"kind": "terms", "version": 2, "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      {"kind": "privacy", "version": 4, "checksum": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      {"kind": "cancellation", "version": 3, "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      {"kind": "no_show", "version": 2, "checksum": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+      {"kind": "marketing_consent", "version": 1, "checksum": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+    ]
+  }
+}

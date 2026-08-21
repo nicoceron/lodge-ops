@@ -20,7 +20,8 @@ final class SensitivePaymentDataGuard
             if ($this->isGeneratedStorageLocator($path, $text)) {
                 continue;
             }
-            if ($this->containsSensitiveAuthenticationData($text)) {
+            $withoutUuids = preg_replace('/(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![0-9a-f])/i', '', $text) ?? $text;
+            if ($this->containsSensitiveAuthenticationData($withoutUuids)) {
                 throw ValidationException::withMessages([
                     $path => 'Do not store card verification codes, PINs, expiry data, or magnetic-stripe/chip track data in Inn.',
                 ]);
@@ -32,7 +33,6 @@ final class SensitivePaymentDataGuard
             if (preg_match('/(?:^|\.)(?:deduplication|idempotency)_key$/i', $path) === 1 && preg_match('/\A[0-9a-f]{64}\z/i', $text) === 1) {
                 continue;
             }
-            $withoutUuids = preg_replace('/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i', '', $text) ?? $text;
             preg_match_all('/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/', $withoutUuids, $matches);
             foreach ($matches[0] as $candidate) {
                 $digits = preg_replace('/\D/', '', $candidate) ?? '';

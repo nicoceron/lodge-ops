@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "booking_unavailable",
+    "message": "Direct booking is temporarily unavailable for this property.",
+    "correlation_id": "contract-fixture-50300001",
+    "retryable": true
+  }
+}

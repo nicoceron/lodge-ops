@@ -1,0 +1,11 @@
+{
+  "data": {
+    "kind": "cancellation",
+    "locale": "es-AR",
+    "version": 3,
+    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "title": "Política de cancelación",
+    "body": "Las condiciones aplicables a esta reserva se muestran antes de confirmar.",
+    "effective_at": "2026-08-20T12:00:00Z"
+  }
+}

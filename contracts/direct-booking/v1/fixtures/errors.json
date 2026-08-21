@@ -1,0 +1,15 @@
+{
+  "validation_error": {"status": 422, "retryable": false},
+  "unavailable": {"status": 409, "retryable": true},
+  "quote_stale": {"status": 409, "retryable": true},
+  "hold_expired": {"status": 410, "retryable": true},
+  "conflict": {"status": 409, "retryable": true},
+  "idempotency_conflict": {"status": 409, "retryable": false},
+  "rate_limited": {"status": 429, "retryable": true},
+  "bot_rejected": {"status": 403, "retryable": true},
+  "payment_pending": {"status": 409, "retryable": true},
+  "payment_failed": {"status": 409, "retryable": true},
+  "paid_needs_review": {"status": 409, "retryable": false},
+  "not_found": {"status": 404, "retryable": false},
+  "booking_unavailable": {"status": 503, "retryable": true}
+}

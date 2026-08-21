@@ -1,0 +1,607 @@
+openapi: 3.1.2
+info:
+  title: Inn Direct Booking Contract
+  version: 1.0.0
+  description: >-
+    Frozen P3-07F public contract. Property dates are YYYY-MM-DD values in the
+    advertised IANA timezone. Money is integer minor units with an explicit ISO
+    4217 currency. Browser returns and client/provider fields are never financial,
+    inventory, reservation, or confirmation authority.
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+
+x-inn-contract-version: '2026-08-20'
+x-cache-policy:
+  published-content: public, max-age=60, stale-while-revalidate=300
+  availability-and-orders: no-store, private
+x-state-machine:
+  started: { quoted: pricing_service, expired: scheduler }
+  quoted: { held: inventory_service, expired: scheduler }
+  held: { payment_pending: payment_orchestrator, awaiting_manual_payment: payment_orchestrator, expired: scheduler }
+  payment_pending: { payment_pending: payment_orchestrator, paid_pending_confirmation: provider_authoritative_lookup, payment_failed: provider_authoritative_lookup, paid_needs_review: provider_authoritative_lookup, expired: scheduler }
+  awaiting_manual_payment: { evidence_pending: guest_evidence_service, expired: scheduler }
+  evidence_pending: { finance_review: [evidence_scanner, scheduler], evidence_rejected: evidence_scanner }
+  finance_review: { confirmed: finance_review, evidence_rejected: finance_review, refunded: refund_service }
+  paid_pending_confirmation: { confirmed: reservation_service, paid_needs_review: reservation_service }
+  payment_failed: { payment_pending: payment_orchestrator, expired: scheduler }
+  evidence_rejected: { awaiting_manual_payment: payment_orchestrator, expired: scheduler }
+  expired: { started: recovery_service, paid_needs_review: provider_authoritative_lookup, expired: scheduler }
+  paid_needs_review: { confirmed: finance_review, refunded: refund_service }
+  confirmed: { canceled: cancellation_service, refunded: refund_service, confirmed: scheduler }
+  canceled: { refunded: refund_service, canceled: scheduler }
+  refunded: { refunded: scheduler }
+x-events:
+  envelope: '#/components/schemas/DirectBookingEvent'
+  names:
+    - direct_booking.order.started
+    - direct_booking.order.quoted
+    - direct_booking.order.held
+    - direct_booking.order.payment_pending
+    - direct_booking.order.awaiting_manual_payment
+    - direct_booking.order.evidence_pending
+    - direct_booking.order.finance_review
+    - direct_booking.order.paid_pending_confirmation
+    - direct_booking.order.confirmed
+    - direct_booking.order.expired
+    - direct_booking.order.payment_failed
+    - direct_booking.order.paid_needs_review
+    - direct_booking.order.evidence_rejected
+    - direct_booking.order.canceled
+    - direct_booking.order.refunded
+    - direct_booking.order.pii_scrubbed
+x-fixtures:
+  manifest: './fixtures/manifest.json'
+  state-catalog: './fixtures/order-states.json'
+  error-catalog: './fixtures/errors.json'
+
+components:
+  headers:
+    CorrelationId:
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 128 }
+    NoStore:
+      required: true
+      schema: { type: string, const: 'no-store, private' }
+    PublishedCache:
+      required: true
+      schema: { type: string, const: 'public, max-age=60, stale-while-revalidate=300' }
+    ContentLanguage:
+      required: true
+      schema: { type: string, maxLength: 12 }
+    IdempotencyReplayed:
+      required: false
+      schema: { type: string, const: 'true' }
+    RetryAfter:
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Property:
+      description: Safe, launch-ready property and bookable projection; never exact inventory.
+      headers:
+        X-Correlation-ID: { $ref: '#/components/headers/CorrelationId' }
+        Cache-Control: { $ref: '#/components/headers/PublishedCache' }
+        Content-Language: { $ref: '#/components/headers/ContentLanguage' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PropertyEnvelope' }
+          examples: { default: { $ref: './fixtures/property.json' } }
+    Policy:
+      description: A real immutable published policy version; undefined text is a generic 404.
+      headers:
+        X-Correlation-ID: { $ref: '#/components/headers/CorrelationId' }
+        Cache-Control: { $ref: '#/components/headers/PublishedCache' }
+        Content-Language: { $ref: '#/components/headers/ContentLanguage' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PolicyEnvelope' }
+          examples: { default: { $ref: './fixtures/policy.json' } }
+    Availability:
+      description: Category/program aggregates and bookability without resource identity or exact counts.
+      headers: &noStoreHeaders
+        X-Correlation-ID: { $ref: '#/components/headers/CorrelationId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AvailabilityEnvelope' }
+          examples: { default: { $ref: './fixtures/availability.json' } }
+    OrderBegun:
+      description: Session token is returned only at issue or rotation and must not be logged.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderBegunEnvelope' }
+          examples: { default: { $ref: './fixtures/order-begun.json' } }
+    Quote:
+      description: Server-priced quote; caller-supplied prices and currency conversion are ignored/rejected.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuoteEnvelope' }
+          examples: { default: { $ref: './fixtures/quote.json' } }
+    Held:
+      description: Atomic inventory hold created from the server quote.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderStatusEnvelope' }
+          examples: { default: { $ref: './fixtures/order-held.json' } }
+    OrderStatus:
+      description: Safe state projection. Provider metadata, internal IDs, notes, and guest contact are absent.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderStatusEnvelope' }
+          examples: { default: { $ref: './fixtures/order-held.json' } }
+    Checkout:
+      description: App-owned payment request with a replaceable hosted redirect when that method is enabled.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CheckoutEnvelope' }
+          examples: { default: { $ref: './fixtures/checkout.json' } }
+    EvidencePending:
+      description: Evidence accepted for scanning/review; it is not a payment or confirmation.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderStatusEnvelope' }
+          examples: { default: { $ref: './fixtures/evidence-pending.json' } }
+    OrderRecovered:
+      description: Expired session recovered with re-priced availability and a rotated token.
+      headers:
+        <<: *noStoreHeaders
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderBegunEnvelope' }
+    Confirmation:
+      description: Confirmation exists only after authoritative payment/manual review and reservation-domain confirmation.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConfirmationEnvelope' }
+          examples: { default: { $ref: './fixtures/confirmation.json' } }
+    Validation: { $ref: '#/components/responses/Error422' }
+    Conflict: { $ref: '#/components/responses/Error409' }
+    HoldExpired: { $ref: '#/components/responses/Error410' }
+    BotRejected: { $ref: '#/components/responses/Error403' }
+    NotFound: { $ref: '#/components/responses/Error404' }
+    RateLimited:
+      description: Progressive abuse control. Retry-After is safe to expose.
+      headers:
+        <<: *noStoreHeaders
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { rate_limited: { $ref: './fixtures/error-rate-limited.json' } }
+    BookingUnavailable: { $ref: '#/components/responses/Error503' }
+    Error403:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { bot_rejected: { $ref: './fixtures/error-bot-rejected.json' } }
+    Error404:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { not_found: { $ref: './fixtures/error-not-found.json' } }
+    Error409:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples:
+            unavailable: { $ref: './fixtures/error-unavailable.json' }
+            quote_stale: { $ref: './fixtures/error-quote-stale.json' }
+            conflict: { $ref: './fixtures/error-conflict.json' }
+            idempotency_conflict: { $ref: './fixtures/error-idempotency-conflict.json' }
+            payment_pending: { $ref: './fixtures/error-payment-pending.json' }
+            payment_failed: { $ref: './fixtures/error-payment-failed.json' }
+            paid_needs_review: { $ref: './fixtures/error-paid-needs-review.json' }
+    Error410:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { hold_expired: { $ref: './fixtures/error-hold-expired.json' } }
+    Error422:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { validation_error: { $ref: './fixtures/error-validation.json' } }
+    Error503:
+      description: Safe direct-booking error.
+      headers: *noStoreHeaders
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { booking_unavailable: { $ref: './fixtures/error-booking-unavailable.json' } }
+
+  schemas:
+    LocalDate:
+      type: string
+      format: date
+      description: Property-local calendar date in YYYY-MM-DD form; never an inferred browser timezone date.
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+    Money:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, currency]
+      properties:
+        amount_minor: { type: integer }
+        currency: { $ref: '#/components/schemas/Currency' }
+    Media:
+      type: object
+      additionalProperties: false
+      required: [key, url, mime_type, alt]
+      properties:
+        key: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        url: { type: string, maxLength: 500, pattern: '^(public-media://|https://)' }
+        mime_type: { type: string, maxLength: 100 }
+        alt: { type: string, minLength: 1, maxLength: 500 }
+        width: { type: [integer, 'null'], minimum: 1 }
+        height: { type: [integer, 'null'], minimum: 1 }
+    Bookable:
+      type: object
+      additionalProperties: false
+      required: [key, kind, name, summary, media]
+      properties:
+        key: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        kind: { type: string, enum: [category, program] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        summary: { type: [string, 'null'], maxLength: 2000 }
+        media: { type: array, items: { $ref: '#/components/schemas/Media' } }
+    PaymentCapability:
+      type: object
+      additionalProperties: false
+      required: [method, currency]
+      properties:
+        method: { type: string, enum: [hosted_checkout, manual_bank_transfer] }
+        currency: { $ref: '#/components/schemas/Currency' }
+    PropertyEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [slug, name, summary, locale, timezone, supported_locales, supported_currencies, accessible_fallback_url, media, bookables, payment_capabilities]
+          properties:
+            slug: { type: string, maxLength: 80 }
+            name: { type: string, maxLength: 200 }
+            summary: { type: [string, 'null'], maxLength: 2000 }
+            locale: { type: string, maxLength: 12 }
+            timezone: { type: string, maxLength: 80 }
+            supported_locales: { type: array, minItems: 1, uniqueItems: true, items: { type: string, maxLength: 12 } }
+            supported_currencies: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/Currency' } }
+            accessible_fallback_url: { type: string, format: uri, pattern: '^https://[^?#]+$' }
+            media: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Media' } }
+            bookables: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Bookable' } }
+            payment_capabilities: { type: array, minItems: 1, items: { $ref: '#/components/schemas/PaymentCapability' } }
+    PolicyEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [kind, locale, version, checksum, title, body, effective_at]
+          properties:
+            kind: { type: string, enum: [terms, privacy, cancellation, no_show, marketing_consent] }
+            locale: { type: string, maxLength: 12 }
+            version: { type: integer, minimum: 1 }
+            checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            body: { type: string, minLength: 1 }
+            effective_at: { type: string, format: date-time }
+    Occupancy:
+      type: object
+      additionalProperties: false
+      required: [adults, children, infants]
+      properties:
+        adults: { type: integer, minimum: 1, maximum: 50 }
+        children: { type: integer, minimum: 0, maximum: 50 }
+        infants: { type: integer, minimum: 0, maximum: 20 }
+    AvailabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [arrival_date, departure_date, occupancy, currency, locale]
+      properties:
+        arrival_date: { $ref: '#/components/schemas/LocalDate' }
+        departure_date: { $ref: '#/components/schemas/LocalDate' }
+        occupancy: { $ref: '#/components/schemas/Occupancy' }
+        category_key: { type: [string, 'null'], pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        program_key: { type: [string, 'null'], pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        locale: { type: string, maxLength: 12 }
+    AvailabilityEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [arrival_date, departure_date, timezone, currency, options]
+          properties:
+            arrival_date: { $ref: '#/components/schemas/LocalDate' }
+            departure_date: { $ref: '#/components/schemas/LocalDate' }
+            timezone: { type: string, maxLength: 80 }
+            currency: { $ref: '#/components/schemas/Currency' }
+            options:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [key, kind, bookable]
+                properties:
+                  key: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+                  kind: { type: string, enum: [category, program] }
+                  bookable: { type: boolean }
+    BeginOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [locale, currency, turnstile_token, turnstile_action]
+      properties:
+        locale: { type: string, maxLength: 12 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        turnstile_token: { type: string, minLength: 1, maxLength: 2048, writeOnly: true }
+        turnstile_action: { type: string, const: direct_booking_begin }
+        attribution:
+          type: object
+          additionalProperties: false
+          properties:
+            utm_source: { type: string, maxLength: 200 }
+            utm_medium: { type: string, maxLength: 200 }
+            utm_campaign: { type: string, maxLength: 200 }
+            utm_content: { type: string, maxLength: 200 }
+            utm_term: { type: string, maxLength: 200 }
+            referrer_host: { type: string, maxLength: 200 }
+            landing_path: { type: string, maxLength: 200 }
+    OrderState:
+      type: string
+      enum: [started, quoted, held, payment_pending, awaiting_manual_payment, evidence_pending, finance_review, paid_pending_confirmation, confirmed, expired, payment_failed, paid_needs_review, evidence_rejected, canceled, refunded]
+    OrderBegunEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order_reference, session_token, recovery_token, state, state_version, locale, currency, session_expires_at, recovery_expires_at]
+          properties:
+            order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+            session_token: { type: string, pattern: '^[A-Za-z0-9]{64}$', readOnly: true }
+            recovery_token: { type: string, pattern: '^[A-Za-z0-9]{64}$', readOnly: true }
+            state: { $ref: '#/components/schemas/OrderState' }
+            state_version: { type: integer, minimum: 1 }
+            locale: { type: string, maxLength: 12 }
+            currency: { $ref: '#/components/schemas/Currency' }
+            session_expires_at: { type: string, format: date-time }
+            recovery_expires_at: { type: string, format: date-time }
+    QuoteRequest:
+      allOf:
+        - $ref: '#/components/schemas/AvailabilityRequest'
+        - type: object
+          required: [expected_state_version]
+          properties:
+            expected_state_version: { type: integer, minimum: 1 }
+            optional_service_keys: { type: array, uniqueItems: true, items: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' } }
+            voucher_code: { type: [string, 'null'], minLength: 4, maxLength: 80, writeOnly: true }
+    QuoteEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order_reference, state, state_version, quote_expires_at, arrival_date, departure_date, timezone, total, deposit, lines, policies]
+          properties:
+            order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+            state: { type: string, const: quoted }
+            state_version: { type: integer, minimum: 2 }
+            quote_expires_at: { type: string, format: date-time }
+            arrival_date: { $ref: '#/components/schemas/LocalDate' }
+            departure_date: { $ref: '#/components/schemas/LocalDate' }
+            timezone: { type: string, maxLength: 80 }
+            total: { $ref: '#/components/schemas/Money' }
+            deposit: { $ref: '#/components/schemas/Money' }
+            lines:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [type, description, amount]
+                properties:
+                  type: { type: string, enum: [nightly_rate, service, included_service, optional_service, promotion, tax] }
+                  description: { type: string, maxLength: 300 }
+                  service_on: { oneOf: [{ $ref: '#/components/schemas/LocalDate' }, { type: 'null' }] }
+                  amount: { $ref: '#/components/schemas/Money' }
+            policies:
+              type: array
+              minItems: 4
+              items:
+                type: object
+                additionalProperties: false
+                required: [kind, version, checksum]
+                properties:
+                  kind: { type: string, enum: [terms, privacy, cancellation, no_show, marketing_consent] }
+                  version: { type: integer, minimum: 1 }
+                  checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+    ConsentDecision:
+      type: object
+      additionalProperties: false
+      required: [version, checksum, accepted]
+      properties:
+        version: { type: integer, minimum: 1 }
+        checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+        accepted: { type: boolean }
+    HoldRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_state_version, guest, consents, turnstile_token, turnstile_action]
+      properties:
+        expected_state_version: { type: integer, minimum: 1 }
+        guest:
+          type: object
+          additionalProperties: false
+          required: [first_name, email]
+          properties:
+            first_name: { type: string, minLength: 1, maxLength: 100, writeOnly: true }
+            last_name: { type: [string, 'null'], maxLength: 100, writeOnly: true }
+            email: { type: string, format: email, maxLength: 254, writeOnly: true }
+            phone: { type: [string, 'null'], maxLength: 40, writeOnly: true }
+        consents:
+          type: object
+          additionalProperties: false
+          required: [terms, privacy, cancellation, no_show]
+          properties:
+            terms: { $ref: '#/components/schemas/ConsentDecision' }
+            privacy: { $ref: '#/components/schemas/ConsentDecision' }
+            cancellation: { $ref: '#/components/schemas/ConsentDecision' }
+            no_show: { $ref: '#/components/schemas/ConsentDecision' }
+            marketing_consent: { $ref: '#/components/schemas/ConsentDecision' }
+        turnstile_token: { type: string, minLength: 1, maxLength: 2048, writeOnly: true }
+        turnstile_action: { type: string, const: direct_booking_hold }
+    OrderStatusEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order_reference, state, state_version, session_expires_at, quote_expires_at, hold_expires_at, checkout_expires_at, payment_capabilities, actions]
+          properties:
+            order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+            state: { $ref: '#/components/schemas/OrderState' }
+            state_version: { type: integer, minimum: 1 }
+            session_expires_at: { type: string, format: date-time }
+            quote_expires_at: { type: [string, 'null'], format: date-time }
+            hold_expires_at: { type: [string, 'null'], format: date-time }
+            checkout_expires_at: { type: [string, 'null'], format: date-time }
+            payment_capabilities: { type: array, items: { $ref: '#/components/schemas/PaymentCapability' } }
+            actions: { type: array, uniqueItems: true, items: { type: string, enum: [quote, hold, checkout, submit_manual_evidence, retry_payment, recover, view_confirmation, contact_property] } }
+            safe_failure_code: { type: [string, 'null'], enum: [null, unavailable, quote_stale, hold_expired, payment_pending, payment_failed, paid_needs_review] }
+    CheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_state_version, method]
+      properties:
+        expected_state_version: { type: integer, minimum: 1 }
+        method: { type: string, enum: [hosted_checkout, manual_bank_transfer] }
+    PaymentRetryRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_state_version]
+      properties:
+        expected_state_version: { type: integer, minimum: 1 }
+    CheckoutEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order_reference, state, state_version, method, hold_expires_at, checkout_expires_at]
+          properties:
+            order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+            state: { $ref: '#/components/schemas/OrderState' }
+            state_version: { type: integer, minimum: 1 }
+            method: { type: string, enum: [hosted_checkout, manual_bank_transfer] }
+            checkout_url: { type: [string, 'null'], format: uri, pattern: '^https://' }
+            hold_expires_at: { type: string, format: date-time }
+            checkout_expires_at: { type: string, format: date-time }
+    ManualEvidenceRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_state_version, evidence]
+      properties:
+        expected_state_version: { type: integer, minimum: 1 }
+        evidence: { type: string, format: binary, writeOnly: true }
+    RecoverRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_state_version]
+      properties:
+        expected_state_version: { type: integer, minimum: 1 }
+        arrival_date: { $ref: '#/components/schemas/LocalDate' }
+        departure_date: { $ref: '#/components/schemas/LocalDate' }
+    ConfirmationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [order_reference, confirmation_number, state, arrival_date, departure_date, timezone, total]
+          properties:
+            order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+            confirmation_number: { type: string, maxLength: 80 }
+            state: { type: string, const: confirmed }
+            arrival_date: { $ref: '#/components/schemas/LocalDate' }
+            departure_date: { $ref: '#/components/schemas/LocalDate' }
+            timezone: { type: string, maxLength: 80 }
+            total: { $ref: '#/components/schemas/Money' }
+    ErrorCode:
+      type: string
+      enum: [validation_error, unavailable, quote_stale, hold_expired, conflict, idempotency_conflict, rate_limited, bot_rejected, payment_pending, payment_failed, paid_needs_review, not_found, booking_unavailable]
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, correlation_id, retryable]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string, maxLength: 300 }
+            correlation_id: { type: string, minLength: 16, maxLength: 128 }
+            retryable: { type: boolean }
+            fields:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string, maxLength: 200 }
+    DirectBookingEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, event_name, occurred_at, order_reference, state, state_version, correlation_id]
+      properties:
+        event_id: { type: string, format: uuid }
+        event_name: { type: string, pattern: '^direct_booking\.order\.[a-z_]+$' }
+        occurred_at: { type: string, format: date-time }
+        order_reference: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        state: { $ref: '#/components/schemas/OrderState' }
+        state_version: { type: integer, minimum: 1 }
+        correlation_id: { type: string, minLength: 16, maxLength: 128 }
+        safe_reason_code: { type: [string, 'null'], maxLength: 80 }

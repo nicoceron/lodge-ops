@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "hold_expired",
+    "message": "The inventory hold has expired.",
+    "correlation_id": "contract-fixture-41000001",
+    "retryable": true
+  }
+}

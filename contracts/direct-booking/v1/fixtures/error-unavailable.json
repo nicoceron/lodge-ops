@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "unavailable",
+    "message": "The requested item is not available for these dates.",
+    "correlation_id": "contract-fixture-40900002",
+    "retryable": true
+  }
+}

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\DirectBooking\BotVerifier;
 use App\Contracts\Documents\DocumentRenderer;
 use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
 use App\Contracts\Integrations\SecretReferenceResolver;
@@ -23,6 +24,15 @@ use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DirectBookingOrder;
+use App\Models\DirectBookingOrderConsent;
+use App\Models\DirectBookingOrderEvent;
+use App\Models\DirectBookingPaymentCapability;
+use App\Models\DirectBookingPaymentInstruction;
+use App\Models\DirectBookingPropertySetting;
+use App\Models\DirectBookingPublication;
+use App\Models\DirectBookingPublicItem;
+use App\Models\DirectBookingPublicMedia;
 use App\Models\DocumentGenerationRequest;
 use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
@@ -81,6 +91,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\VoucherRedemptionEvent;
 use App\Observers\TenantAuditObserver;
+use App\Services\DirectBooking\CloudflareTurnstileVerifier;
 use App\Services\Documents\SpatieDocumentRenderer;
 use App\Services\Fiscal\DatabaseFiscalSourceSnapshotFactory;
 use App\Services\Integrations\CapabilityPortRegistry;
@@ -104,6 +115,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
         $this->app->scoped(SensitivePaymentDataGuard::class, fn (): SensitivePaymentDataGuard => new SensitivePaymentDataGuard);
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
+        $this->app->bind(BotVerifier::class, CloudflareTurnstileVerifier::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
         $this->app->bind(SecretReferenceResolver::class, EnvironmentSecretReferenceResolver::class);
         $this->app->singleton(CapabilityPortRegistry::class);
@@ -142,6 +154,35 @@ class AppServiceProvider extends ServiceProvider
             ->by('integration-webhook:'.$request->ip()));
         RateLimiter::for('commercial-voucher', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('commercial-voucher:'.$request->ip()));
+        RateLimiter::for('direct-booking-read', fn (Request $request): array => [
+            Limit::perMinute((int) config('direct-booking.rate_limits.read_per_minute', 60))
+                ->by('direct-booking:read:ip:'.$request->ip()),
+            Limit::perMinute(300)->by('direct-booking:read:property:'.$request->route('propertySlug')),
+        ]);
+        RateLimiter::for('direct-booking-search', fn (Request $request): array => [
+            Limit::perMinute((int) config('direct-booking.rate_limits.search_per_minute', 20))
+                ->by('direct-booking:search:ip:'.$request->ip()),
+            Limit::perMinute(120)->by('direct-booking:search:property:'.$request->route('propertySlug')),
+        ]);
+        RateLimiter::for('direct-booking-mutation', function (Request $request): array {
+            $session = hash('sha256', (string) $request->bearerToken());
+
+            return [
+                Limit::perMinute((int) config('direct-booking.rate_limits.mutation_per_minute', 10))
+                    ->by('direct-booking:mutation:ip:'.$request->ip()),
+                Limit::perMinute(60)->by('direct-booking:mutation:property:'.$request->route('propertySlug')),
+                Limit::perMinute(30)->by('direct-booking:mutation:session:'.$session),
+            ];
+        });
+        RateLimiter::for('direct-booking-hold', function (Request $request): array {
+            $session = hash('sha256', (string) $request->bearerToken());
+
+            return [
+                Limit::perHour((int) config('direct-booking.rate_limits.holds_per_hour', 5))
+                    ->by('direct-booking:hold:session:'.$session),
+                Limit::perHour(20)->by('direct-booking:hold:ip:'.$request->ip()),
+            ];
+        });
 
         ResetPassword::createUrlUsing(
             fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
@@ -163,6 +204,15 @@ class AppServiceProvider extends ServiceProvider
             DeliveryAttempt::class,
             Deposit::class,
             DepositPolicy::class,
+            DirectBookingOrder::class,
+            DirectBookingOrderConsent::class,
+            DirectBookingOrderEvent::class,
+            DirectBookingPaymentCapability::class,
+            DirectBookingPaymentInstruction::class,
+            DirectBookingPropertySetting::class,
+            DirectBookingPublication::class,
+            DirectBookingPublicItem::class,
+            DirectBookingPublicMedia::class,
             DocumentGenerationRequest::class,
             DocumentTemplate::class,
             ExchangeRate::class,

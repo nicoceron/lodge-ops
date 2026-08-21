@@ -11,7 +11,12 @@ use LogicException;
 
 /**
  * @property BookingQuoteStatus $status
+ * @property string $id
+ * @property string $property_id
  * @property string $rate_plan_id
+ * @property string $currency
+ * @property int $total_minor
+ * @property string $checksum
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable $ends_at
  * @property CarbonImmutable $expires_at
@@ -57,11 +62,13 @@ class BookingQuote extends TenantModel
         ];
     }
 
+    /** @return BelongsTo<Property, $this> */
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
     }
 
+    /** @return BelongsTo<RatePlan, $this> */
     public function ratePlan(): BelongsTo
     {
         return $this->belongsTo(RatePlan::class);

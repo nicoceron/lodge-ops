@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "not_found",
+    "message": "The requested booking resource was not found.",
+    "correlation_id": "contract-fixture-00000001",
+    "retryable": false
+  }
+}

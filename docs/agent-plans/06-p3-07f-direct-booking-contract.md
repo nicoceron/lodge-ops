@@ -56,3 +56,30 @@
 - [Cloudflare Turnstile server validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
 - [OWASP API Security Top 10](https://owasp.org/API-Security/)
 - [OpenAPI specification](https://spec.openapis.org/oas/) and [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+
+## Implementation record — 2026-08-20
+
+Implemented on `codex/p3-07f-direct-booking-contract` from post-commercial/tender `main` (`028cde9d1c0235f654385e651121bdac7fa6035f`). The foundation owns only the frozen contract boundary:
+
+- 12 versioned public routes and schemas, 15-state/authority machine, 13 safe errors, cache/header/locale/currency/property-local-date semantics and exact idempotency requirements;
+- migrations `2026_08_20_060001` and forward-only hardening `060002` for property publication/readiness, safe public bookable/media sources, localized payment capabilities, independently expiring hashed session/recovery credentials, property-inclusive references, separate immutable consent snapshots and transition/maintenance events;
+- bounded holds, late-payment/recovery/competing-payment decisions, token rotation/revocation, attribution/IP minimization, singleton expiry/retention maintenance and PostgreSQL concurrency tests;
+- deterministic mock router plus screen/state/error fixtures, threat model and same-origin Laravel/Livewire ADR.
+
+Independent review hardening freezes a dedicated locked payment-request issuance seam for held reservations; atomically aligned reservation/order/request hold extensions; late accepted-manual-evidence Finance/refund handling; same-tenant cross-property database negatives; schema-validated safe projections; exact kind/locale/effective/media/provider readiness; UUID-bound Turnstile verification; and a dedicated PII-scrub maintenance event that preserves confirmation facts and cleans or defers abandoned provisional Guest PII. Follow-up re-review hardening makes rotation/revocation share a lock and prevents stale resurrection, makes required Turnstile configuration a launch gate and transport exceptions safe, replaces partial state/error catalogs with full semantic envelopes and action parity, enforces exact publication/item kind at model/database/projection boundaries, and makes the `060002` rollback guard inspect every new live fact before DDL. Final hardening preserves PAN/SAD detection while safely recognizing underscore-prefixed UUID references, serializes retention cleanup against recovery and late-payment review with order-to-reservation-to-Guest locks, gives all 13 errors distinct schema-valid OpenAPI/mock envelopes, rejects item copy without an item at model and database boundaries, and documents the required Turnstile environment names.
+
+The 12 route handlers intentionally return safe `503 booking_unavailable` responses. Agent 07 must connect existing availability, commercial, reservation, payment and evidence services and existing exact-response idempotency persistence before any booking-workflow claim. Agent 08 consumes DTOs/fixtures only and does not calculate inventory, money or state.
+
+### Verified gates
+
+- Direct contract: 12 paths, 15 full state envelopes, 13 errors, 25 fixtures; exact transition-authority, public-action and complete error-envelope parity checked.
+- Aggregate route/OpenAPI parity after merging integration-kernel `main` (`7ddd9ca08144ead0fd53c0bbc51185c123d0837a`): 134 paths, 170 operations, 118 resolved references.
+- SQLite focused: 18 passed / 168 assertions; 5 PostgreSQL-only tests skipped intentionally.
+- PostgreSQL focused including state/idempotency, revoke/rotate and both maintenance-versus-recovery/review row-lock races: 23 passed / 197 assertions.
+- Commercial, integration-kernel, payment, tender and reservation compatibility pass inside both complete engine suites.
+- Full SQLite: 409 passed / 3,422 assertions; 34 PostgreSQL-only tests skipped intentionally.
+- Full PostgreSQL: 443 tests / 3,635 assertions; one platform-specific skip.
+- The full-suite investigation also fixed a nondeterministic false positive where audit snapshots containing nested JSON were scanned as one opaque string, allowing numeric checksum runs to resemble a PAN. The guard now recursively scans typed nested fields, still rejects PANs in nested guest content, and treats only exact ID/hash/checksum/generated-storage/UUID facts as non-card facts; underscore-prefixed UUID references are explicitly covered without weakening PAN/SAD rejection.
+- Pint: 896 files pass. PHPStan: no errors. API build: pass after mounting the existing Composer vendor volume and an isolated Linux Node dependency volume into the Node build container.
+
+Final full-suite, diff/secret scan, commit, PR and CI receipts belong in [`docs/evidence/p3-07f/README.md`](../evidence/p3-07f/README.md). This record does not claim a working public booking journey.

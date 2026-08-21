@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\BookingQuoteController;
 use App\Http\Controllers\Api\V1\CalendarController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DepositController;
+use App\Http\Controllers\Api\V1\DirectBookingContractController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ExtendedOperationsController;
 use App\Http\Controllers\Api\V1\FinanceProjectionController;
@@ -46,6 +47,23 @@ Route::post('v1/payment-webhooks/{webhookKey}', PaymentWebhookController::class)
     ->where('webhookKey', '[A-Za-z0-9_-]{32,128}')
     ->middleware('throttle:payment-webhook')
     ->name('payment-webhooks.receive');
+
+Route::prefix('v1/direct-booking/properties/{propertySlug}')->where(['propertySlug' => '[a-z0-9]+(?:-[a-z0-9]+)*'])->group(function (): void {
+    Route::get('/', [DirectBookingContractController::class, 'property'])->middleware('throttle:direct-booking-read');
+    Route::get('policies/{policyKind}', [DirectBookingContractController::class, 'policy'])
+        ->whereIn('policyKind', ['terms', 'privacy', 'cancellation', 'no_show', 'marketing_consent'])
+        ->middleware('throttle:direct-booking-read');
+    Route::post('availability', [DirectBookingContractController::class, 'availability'])->middleware('throttle:direct-booking-search');
+    Route::post('orders', [DirectBookingContractController::class, 'begin'])->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/quote', [DirectBookingContractController::class, 'quote'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/hold', [DirectBookingContractController::class, 'hold'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware(['throttle:direct-booking-mutation', 'throttle:direct-booking-hold']);
+    Route::get('orders/{orderReference}', [DirectBookingContractController::class, 'status'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-read');
+    Route::post('orders/{orderReference}/checkout', [DirectBookingContractController::class, 'checkout'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/payments/retry', [DirectBookingContractController::class, 'retryPayment'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/manual-payment-evidence', [DirectBookingContractController::class, 'manualEvidence'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/recover', [DirectBookingContractController::class, 'recover'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::get('orders/{orderReference}/confirmation', [DirectBookingContractController::class, 'confirmation'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-read');
+});
 
 Route::post('v1/integration-webhooks/{endpointKey}', IntegrationWebhookController::class)
     ->where('endpointKey', '[A-Za-z0-9]{48,128}')
