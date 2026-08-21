@@ -546,6 +546,7 @@ components:
             payment_capabilities: { type: array, items: { $ref: '#/components/schemas/PaymentCapability' } }
             actions: { type: array, uniqueItems: true, items: { type: string, enum: [quote, hold, checkout, submit_manual_evidence, retry_payment, recover, view_confirmation, contact_property] } }
             safe_failure_code: { type: [string, 'null'], enum: [null, unavailable, quote_stale, hold_expired, payment_pending, payment_failed, paid_needs_review] }
+            confirmation_number: { type: [string, 'null'], maxLength: 80 }
     CheckoutRequest:
       type: object
       additionalProperties: false

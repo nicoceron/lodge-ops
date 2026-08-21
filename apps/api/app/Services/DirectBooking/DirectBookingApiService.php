@@ -354,6 +354,14 @@ final class DirectBookingApiService
     public function checkout(DirectBookingPropertySetting $setting, DirectBookingOrder $order, array $data, string $retryIdentity): array
     {
         $this->assertReady($setting);
+        $reservation = $order->reservation()->first();
+        if ($order->state === DirectBookingOrderState::Expired
+            || $order->hold_expires_at?->isFuture() !== true
+            || $reservation === null
+            || $reservation->status !== ReservationStatus::Hold
+            || $reservation->hold_expires_at?->isFuture() !== true) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::HoldExpired, DirectBookingErrorCode::HoldExpired->publicMessage());
+        }
         $method = DirectBookingPaymentMethod::from($data['method']);
         $capability = DirectBookingPaymentCapability::query()
             ->where('property_id', $setting->property_id)->where('currency', $order->currency)
@@ -736,7 +744,7 @@ final class DirectBookingApiService
             default => ['contact_property'],
         };
 
-        return [
+        $projection = [
             'order_reference' => $order->public_reference,
             'state' => $order->state->value,
             'state_version' => $order->state_version,
@@ -748,6 +756,12 @@ final class DirectBookingApiService
             'actions' => $actions,
             'safe_failure_code' => $order->safe_failure_code?->value,
         ];
+        if ($order->state === DirectBookingOrderState::Confirmed && $order->reservation_id !== null) {
+            $order->loadMissing('reservation');
+            $projection['confirmation_number'] = $order->reservation?->confirmation_number;
+        }
+
+        return $projection;
     }
 
     /** @return array<string, mixed> */

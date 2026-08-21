@@ -62,6 +62,17 @@ final class IssueDirectBookingPaymentRequest
         return DB::transaction(function () use ($order, $expectedVersion, $retryIdentity): array {
             $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
             $supersedes = null;
+            $reservation = $locked->reservation_id === null
+                ? null
+                : Reservation::query()->lockForUpdate()->find($locked->reservation_id);
+            if ($locked->state === DirectBookingOrderState::Expired
+                || $locked->hold_expires_at?->isFuture() !== true
+                || $reservation === null
+                || $reservation->status !== ReservationStatus::Hold
+                || $reservation->hold_expires_at?->isFuture() !== true
+                || ! $reservation->hold_expires_at->equalTo($locked->hold_expires_at)) {
+                throw new DirectBookingContractException(DirectBookingErrorCode::HoldExpired, 'The quote, deposit schedule, and authoritative hold no longer agree.');
+            }
             if ($locked->payment_request_id !== null) {
                 $request = $locked->paymentRequest()->lockForUpdate()->firstOrFail();
                 if ($locked->state === DirectBookingOrderState::PaymentFailed) {
