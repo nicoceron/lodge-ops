@@ -7,6 +7,7 @@ use App\Enums\MembershipRole;
 use App\Enums\ResourceKind;
 use App\Models\Allocation;
 use App\Models\OperationalTask;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
@@ -37,11 +38,14 @@ class CalendarProjectionService
             throw ValidationException::withMessages(['end' => 'Calendar windows may not exceed 92 days.']);
         }
 
-        $membershipPropertyId = $this->context->membership()?->property_id;
+        $membershipPropertyId = $this->context->propertyScopeId();
         if ($membershipPropertyId !== null && $requestedPropertyId !== null && $requestedPropertyId !== $membershipPropertyId) {
             throw ValidationException::withMessages(['property_id' => 'The property is outside your active membership scope.']);
         }
         $propertyId = $membershipPropertyId ?? $requestedPropertyId;
+        $timezone = $propertyId === null
+            ? $this->context->tenant()->timezone
+            : (Property::query()->whereKey($propertyId)->value('timezone') ?? $this->context->tenant()->timezone);
         $isGuide = $role === MembershipRole::Guide;
         $guideResourceIds = $isGuide
             ? Resource::query()
@@ -68,6 +72,8 @@ class CalendarProjectionService
             ->when($propertyId, fn ($query) => $query->whereHas('reservation', fn ($query) => $query->where('property_id', $propertyId)))
             ->when($isGuide, fn ($query) => $query->whereIn('resource_id', $guideResourceIds))
             ->get();
+        $allocationsByReservation = $allocations->groupBy('reservation_id');
+        $allocationsByResource = $allocations->whereNotNull('resource_id')->groupBy('resource_id');
         $events = collect();
 
         Reservation::query()
@@ -79,8 +85,9 @@ class CalendarProjectionService
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
             ->get()
-            ->each(function (Reservation $reservation) use ($events, $allocations): void {
+            ->each(function (Reservation $reservation) use ($events, $allocationsByReservation): void {
                 $title = $reservation->confirmation_number;
+                $reservationAllocations = $allocationsByReservation->get($reservation->id, collect());
 
                 if ($this->visibility->canSeeGuestIdentity() && $reservation->primaryGuest) {
                     $title = trim("{$reservation->primaryGuest->first_name} {$reservation->primaryGuest->last_name}");
@@ -101,11 +108,9 @@ class CalendarProjectionService
                         'display_color' => $reservation->program->display_color,
                     ] : null,
                     'display_color' => $reservation->program?->display_color,
-                    'is_buyout' => $allocations
-                        ->where('reservation_id', $reservation->id)
+                    'is_buyout' => $reservationAllocations
                         ->contains(fn (Allocation $allocation): bool => $allocation->resource?->isBuyout() === true),
-                    'resource_ids' => $allocations
-                        ->where('reservation_id', $reservation->id)
+                    'resource_ids' => $reservationAllocations
                         ->pluck('resource_id')
                         ->filter()
                         ->unique()
@@ -181,12 +186,14 @@ class CalendarProjectionService
             ->filter(fn (array $event) => collect($event['resource_ids'])->isEmpty())
             ->count();
 
+        $conflictFacts = $this->conflictFacts($allocations, $blocks);
+
         return [
             'data' => $events->sortBy('start')->values(),
             'range' => [
                 'start' => $start->toIso8601String(),
                 'end' => $end->toIso8601String(),
-                'timezone' => $this->context->tenant()->timezone,
+                'timezone' => $timezone,
             ],
             'resources' => $resources->map(fn (Resource $resource): array => [
                 'id' => $resource->id,
@@ -199,7 +206,12 @@ class CalendarProjectionService
                 'capacity' => $resource->capacity,
                 'user_id' => $resource->user_id,
                 'is_buyout' => $resource->isBuyout(),
-                'utilization_percent' => $this->utilization($resource, $allocations, $start, $end),
+                'utilization_percent' => $this->utilization(
+                    $resource,
+                    $allocationsByResource->get($resource->id, collect()),
+                    $start,
+                    $end,
+                ),
             ]),
             'allocations' => $allocations->map(fn (Allocation $allocation): array => [
                 'id' => $allocation->id,
@@ -212,19 +224,20 @@ class CalendarProjectionService
                 'quantity' => $allocation->quantity,
             ]),
             'summary' => [
-                'hard_conflicts' => $this->hardConflicts($allocations, $blocks),
+                'hard_conflicts' => $conflictFacts->count(),
+                'hard_conflict_reservation_ids' => $conflictFacts->flatMap(fn (array $fact) => $fact['reservation_ids'])->filter()->unique()->values()->all(),
+                'hard_conflict_facts' => $conflictFacts->values()->all(),
                 'unassigned_reservations' => $unassignedReservations,
                 'suggestions' => $unassignedReservations,
             ],
         ];
     }
 
-    /** @param Collection<int, Allocation> $allocations */
-    private function utilization(Resource $resource, Collection $allocations, CarbonImmutable $start, CarbonImmutable $end): int
+    /** @param Collection<int, Allocation> $resourceAllocations */
+    private function utilization(Resource $resource, Collection $resourceAllocations, CarbonImmutable $start, CarbonImmutable $end): int
     {
         $rangeSeconds = max(1, $start->diffInSeconds($end));
-        $usedSeconds = $allocations
-            ->where('resource_id', $resource->id)
+        $usedSeconds = $resourceAllocations
             ->sum(function (Allocation $allocation) use ($start, $end): int {
                 $allocationStart = $allocation->starts_at->greaterThan($start) ? $allocation->starts_at : $start;
                 $allocationEnd = $allocation->ends_at->lessThan($end) ? $allocation->ends_at : $end;
@@ -239,9 +252,9 @@ class CalendarProjectionService
      * @param  Collection<int, Allocation>  $allocations
      * @param  Collection<int, ResourceBlock>  $blocks
      */
-    private function hardConflicts(Collection $allocations, Collection $blocks): int
+    private function conflictFacts(Collection $allocations, Collection $blocks): Collection
     {
-        $conflicts = 0;
+        $facts = collect();
 
         foreach ($allocations->whereNotNull('resource_id')->groupBy('resource_id') as $resourceAllocations) {
             $ordered = $resourceAllocations->sortBy('starts_at')->values();
@@ -251,7 +264,11 @@ class CalendarProjectionService
                 $resource = $allocation->getRelation('resource');
                 $capacity = max(1, $resource instanceof Resource ? $resource->capacity : 1);
                 if ($active->sum('quantity') + $allocation->quantity > $capacity) {
-                    $conflicts++;
+                    $facts->push([
+                        'type' => 'capacity_overlap',
+                        'resource_id' => $allocation->resource_id,
+                        'reservation_ids' => $active->pluck('reservation_id')->push($allocation->reservation_id)->filter()->unique()->values()->all(),
+                    ]);
                 }
                 $active->push($allocation);
             }
@@ -264,7 +281,16 @@ class CalendarProjectionService
                 && $candidate->resource?->property_id === $buyout->resource?->property_id
                 && $candidate->starts_at < $buyout->ends_at
                 && $candidate->ends_at > $buyout->starts_at)) {
-                $conflicts++;
+                $facts->push([
+                    'type' => 'property_buyout_overlap',
+                    'resource_id' => $buyout->resource_id,
+                    'reservation_ids' => $allocations->filter(fn (Allocation $candidate): bool => $candidate->id === $buyout->id
+                        || ($candidate->reservation_id !== $buyout->reservation_id
+                            && $candidate->resource?->property_id === $buyout->resource?->property_id
+                            && $candidate->starts_at < $buyout->ends_at
+                            && $candidate->ends_at > $buyout->starts_at))
+                        ->pluck('reservation_id')->filter()->unique()->values()->all(),
+                ]);
             }
         }
 
@@ -279,10 +305,22 @@ class CalendarProjectionService
                     && $allocation->starts_at < $block->ends_at
                     && $allocation->ends_at > $block->starts_at;
             })) {
-                $conflicts++;
+                $facts->push([
+                    'type' => $block->resource->isBuyout() ? 'property_buyout_block' : 'resource_block',
+                    'resource_id' => $block->resource_id,
+                    'resource_block_id' => $block->id,
+                    'reservation_ids' => $allocations->filter(function (Allocation $allocation) use ($block): bool {
+                        $resource = $allocation->resource;
+                        $samePropertyBuyout = $resource->property_id === $block->resource->property_id
+                            && ($block->resource->isBuyout() || $resource->isBuyout());
+
+                        return ($allocation->resource_id === $block->resource_id || $samePropertyBuyout)
+                            && $allocation->starts_at < $block->ends_at && $allocation->ends_at > $block->starts_at;
+                    })->pluck('reservation_id')->filter()->unique()->values()->all(),
+                ]);
             }
         }
 
-        return $conflicts;
+        return $facts->unique(fn (array $fact): string => $fact['type'].'|'.($fact['resource_id'] ?? '').'|'.implode(',', $fact['reservation_ids']))->values();
     }
 }

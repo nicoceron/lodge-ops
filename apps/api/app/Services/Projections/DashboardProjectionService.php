@@ -88,15 +88,15 @@ class DashboardProjectionService
             ->distinct()
             ->count('resource_id');
         $openTasks = $this->taskQuery()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->count();
         $overdueTasks = $this->taskQuery()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->where('due_at', '<', $now->utc())
             ->count();
         $tasks = $this->taskQuery()
             ->with('assignee:id,name')
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->orderByRaw("case priority when 'urgent' then 1 when 'high' then 2 when 'normal' then 3 else 4 end")
             ->orderBy('due_at')
             ->limit(4)
@@ -202,7 +202,7 @@ class DashboardProjectionService
                 ->when($propertyId, fn (Builder $scope) => $scope->where('property_id', $propertyId)))
             ->get(['resource_id', 'starts_at', 'ends_at']);
         $work = $this->taskQuery()
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->where('due_at', '>=', $rangeStartUtc)
             ->where('due_at', '<', $rangeEndUtc)
             ->get(['due_at']);

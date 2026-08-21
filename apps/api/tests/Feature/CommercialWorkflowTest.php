@@ -5,10 +5,15 @@ namespace Tests\Feature;
 use App\Enums\FolioLineType;
 use App\Enums\MembershipRole;
 use App\Exceptions\CommercialWorkflowException;
+use App\Models\FolioLine;
 use App\Models\Guest;
 use App\Models\Program;
 use App\Models\Proposal;
+use App\Models\RatePlan;
+use App\Models\RateRule;
 use App\Models\Reservation;
+use App\Models\Resource;
+use App\Services\BookingQuoteService;
 use App\Services\FolioService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,30 +39,31 @@ class CommercialWorkflowTest extends TestCase
             'currency' => 'USD',
             'is_active' => true,
         ]);
+        $category = $this->category($property, 'room');
+        $room = Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 3]);
+        $plan = RatePlan::query()->create(['property_id' => $property->id, 'name' => 'Proposal plan', 'currency' => 'USD', 'maximum_occupancy' => 3]);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 25_000]);
+        $plan->forceFill(['state' => 'published', 'published_at' => now()])->save();
+        $quote = app(BookingQuoteService::class)->create([
+            'property_id' => $property->id, 'program_id' => $program->id,
+            'rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'resource_id' => $room->id,
+            'starts_at' => now()->addMonth(), 'ends_at' => now()->addMonth()->addDays(4),
+            'adults' => 2, 'children' => 1,
+        ]);
         $payload = [
             'property_id' => $property->id,
-            'program_id' => $program->id,
+            'booking_quote_id' => $quote->id,
             'primary_guest_id' => $guest->id,
-            'starts_at' => now()->addMonth()->toIso8601String(),
-            'ends_at' => now()->addMonth()->addDays(4)->toIso8601String(),
-            'adults' => 2,
-            'children' => 1,
-            'currency' => 'USD',
             'title' => 'Patagonia family stay',
-            'tax_minor' => 19000,
             'expires_at' => now()->addWeek()->toIso8601String(),
-            'lines' => [
-                ['description' => 'Suite · four nights', 'quantity_thousandths' => 4000, 'unit_amount_minor' => 25000],
-                ['description' => 'Private transfer', 'quantity_thousandths' => 1000, 'unit_amount_minor' => 15000],
-            ],
         ];
 
         $created = $this->withHeader('X-Tenant-ID', $tenant->id)
             ->postJson('/api/v1/proposals', $payload)
             ->assertCreated()
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.snapshot.subtotal_minor', 115000)
-            ->assertJsonPath('data.total_minor', 134000)
+            ->assertJsonPath('data.snapshot.subtotal_minor', $quote->subtotal_minor)
+            ->assertJsonPath('data.total_minor', $quote->total_minor)
             ->json('data');
 
         $this->withHeader('X-Tenant-ID', $tenant->id)
@@ -67,7 +73,7 @@ class CommercialWorkflowTest extends TestCase
             ->assertJsonPath('data.snapshot.guest.email', $guest->email);
 
         $this->withHeader('X-Tenant-ID', $tenant->id)
-            ->patchJson("/api/v1/proposals/{$created['id']}", ['tax_minor' => 1])
+            ->patchJson("/api/v1/proposals/{$created['id']}", ['notes' => 'late mutation'])
             ->assertConflict();
 
         app(TenantContext::class)->set($tenant);
@@ -93,8 +99,8 @@ class CommercialWorkflowTest extends TestCase
         $reservation = $this->withHeader('X-Tenant-ID', $tenant->id)
             ->postJson("/api/v1/proposals/{$revision['id']}/convert")
             ->assertCreated()
-            ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.total_minor', 134000)
+            ->assertJsonPath('data.status', 'hold')
+            ->assertJsonPath('data.total_minor', $quote->total_minor)
             ->json('data');
 
         $this->assertDatabaseHas('proposals', [
@@ -106,24 +112,10 @@ class CommercialWorkflowTest extends TestCase
             'id' => $reservation['id'],
             'program_id' => $program->id,
         ]);
-        $this->assertDatabaseHas('folio_lines', [
-            'reservation_id' => $reservation['id'],
-            'description' => 'Suite · four nights',
-            'gross_amount_minor' => 100_000,
-        ]);
-        $this->assertDatabaseHas('folio_lines', [
-            'reservation_id' => $reservation['id'],
-            'description' => 'Private transfer',
-            'gross_amount_minor' => 15_000,
-        ]);
-        $this->assertDatabaseHas('folio_lines', [
-            'reservation_id' => $reservation['id'],
-            'description' => 'Proposal tax',
-            'gross_amount_minor' => 19_000,
-        ]);
         app(TenantContext::class)->set($tenant);
+        $this->assertGreaterThan(0, FolioLine::query()->where('reservation_id', $reservation['id'])->count());
         $converted = Reservation::query()->findOrFail($reservation['id']);
-        $this->assertSame(134_000, app(FolioService::class)->summary($converted)['balance_minor']);
+        $this->assertSame($quote->total_minor, app(FolioService::class)->summary($converted)['balance_minor']);
         $this->assertSame(0, app(FolioService::class)->summary($converted)['ledger_delta_minor']);
     }
 

@@ -3,8 +3,12 @@
 namespace App\Filament\Resources\Guests\Tables;
 
 use App\Models\Guest;
+use App\Services\GuestMergeService;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -62,6 +66,26 @@ class GuestsTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
+                Action::make('merge')
+                    ->label('Merge duplicate')
+                    ->icon('heroicon-o-arrows-pointing-in')
+                    ->color('warning')
+                    ->visible(fn (Guest $record): bool => $record->merged_into_id === null)
+                    ->schema([
+                        Select::make('target_guest_id')
+                            ->label('Keep this canonical guest')
+                            ->helperText('Stays, proposals, communications, companion links, and portal history move to the canonical profile. The duplicate becomes a PII-cleared audit tombstone.')
+                            ->options(fn (Guest $record): array => Guest::query()->whereKeyNot($record->id)->whereNull('merged_into_id')
+                                ->orderBy('last_name')->orderBy('first_name')->get()
+                                ->mapWithKeys(fn (Guest $guest): array => [$guest->id => trim("{$guest->first_name} {$guest->last_name}").($guest->email ? " · {$guest->email}" : '')])->all())
+                            ->searchable()->required(),
+                    ])
+                    ->requiresConfirmation()
+                    ->action(function (Guest $record, array $data): void {
+                        $target = Guest::query()->findOrFail($data['target_guest_id']);
+                        app(GuestMergeService::class)->merge($record, $target);
+                        Notification::make()->success()->title('Duplicate guest merged')->body('The canonical profile now owns the operational history; an audit alias was retained.')->send();
+                    }),
             ])
             ->defaultSort('last_name')
             ->striped()

@@ -23,7 +23,7 @@ class AllocationController extends Controller
         $this->authorize('view', $reservation);
         $this->assertMembershipProperty($reservation);
 
-        return new AllocationResource($service->create($reservation, $request->validated()));
+        return new AllocationResource($service->create($reservation, $request->validated(), $request->user()?->id));
     }
 
     public function update(
@@ -36,7 +36,7 @@ class AllocationController extends Controller
         $this->authorize('update', $allocation);
         $this->assertMembershipProperty($reservation);
 
-        return new AllocationResource($service->update($reservation, $allocation, $request->validated()));
+        return new AllocationResource($service->update($reservation, $allocation, $request->validated(), $request->user()?->id));
     }
 
     public function destroy(
@@ -47,7 +47,7 @@ class AllocationController extends Controller
         abort_unless($allocation->reservation_id === $reservation->id, 404);
         $this->authorize('delete', $allocation);
         $this->assertMembershipProperty($reservation);
-        $service->release($reservation, $allocation);
+        $service->release($reservation, $allocation, auth()->id(), 'Allocation released through the API.');
 
         return response()->noContent();
     }

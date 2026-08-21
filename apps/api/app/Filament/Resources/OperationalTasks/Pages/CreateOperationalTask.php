@@ -2,18 +2,17 @@
 
 namespace App\Filament\Resources\OperationalTasks\Pages;
 
-use App\Enums\TaskStatus;
 use App\Filament\Resources\OperationalTasks\OperationalTaskResource;
+use App\Services\TaskLifecycleService;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 
 class CreateOperationalTask extends CreateRecord
 {
     protected static string $resource = OperationalTaskResource::class;
 
-    protected function mutateFormDataBeforeCreate(array $data): array
+    protected function handleRecordCreation(array $data): Model
     {
-        $data['completed_at'] = $data['status'] === TaskStatus::Done->value ? now() : null;
-
-        return $data;
+        return app(TaskLifecycleService::class)->create($data, auth()->id());
     }
 }

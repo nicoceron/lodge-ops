@@ -158,13 +158,13 @@ class AllocationsRelationManager extends RelationManager
                 CreateAction::make()
                     ->visible(fn (): bool => in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
                     ->using(fn (array $data): Allocation => app(AllocationWorkflowService::class)
-                        ->create($this->ownerReservation(), $data)),
+                        ->create($this->ownerReservation(), $data, auth()->id(), 'Allocation created through the reservation workbench.')),
             ])
             ->recordActions([
                 EditAction::make()
                     ->visible(fn (): bool => in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
                     ->using(fn (Allocation $record, array $data): Allocation => app(AllocationWorkflowService::class)
-                        ->update($this->ownerReservation(), $record, $data)),
+                        ->update($this->ownerReservation(), $record, $data, auth()->id(), 'Allocation updated through the reservation workbench.')),
                 Action::make('release')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
@@ -173,7 +173,7 @@ class AllocationsRelationManager extends RelationManager
                     ->visible(fn (Allocation $record): bool => $record->status !== AllocationStatus::Released
                         && in_array($this->ownerReservation()->status, [ReservationStatus::Draft, ReservationStatus::Hold], true))
                     ->action(fn (Allocation $record) => app(AllocationWorkflowService::class)
-                        ->release($this->ownerReservation(), $record)),
+                        ->release($this->ownerReservation(), $record, auth()->id(), 'Allocation released through the reservation workbench.')),
             ])
             ->defaultSort('starts_at');
     }

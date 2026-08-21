@@ -2,20 +2,18 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
-use App\Models\Membership;
 use App\Models\OperationalTask;
-use App\Models\Reservation;
 use App\Models\User;
 use App\Services\OperationalTaskAccess;
+use App\Services\TaskLifecycleService;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Http\Response;
 
 class TaskController extends Controller
 {
@@ -44,31 +42,11 @@ class TaskController extends Controller
     public function store(StoreTaskRequest $request): TaskResource
     {
         $this->authorize('create', OperationalTask::class);
-        $data = $request->validated();
-        $membershipPropertyId = app(TenantContext::class)->membership()?->property_id;
-        abort_if($membershipPropertyId !== null && $data['property_id'] !== $membershipPropertyId, 403);
-        if (isset($data['reservation_id'])) {
-            abort_unless(Reservation::query()
-                ->whereKey($data['reservation_id'])
-                ->where('property_id', $data['property_id'])
-                ->exists(), 403);
-        }
-        if (isset($data['assignee_id'])) {
-            abort_unless(Membership::query()
-                ->where('user_id', $data['assignee_id'])
-                ->where('is_active', true)
-                ->where(fn ($query) => $query
-                    ->whereNull('property_id')
-                    ->orWhere('property_id', $data['property_id']))
-                ->exists(), 403);
-        }
-        $task = OperationalTask::query()->create($this->withCompletionTimestamp([
-            'status' => TaskStatus::Todo->value,
-            'priority' => 'normal',
-            ...$data,
-        ]));
 
-        return new TaskResource($task->load('assignee'));
+        return new TaskResource(app(TaskLifecycleService::class)->create(
+            $request->validated(),
+            $request->user()?->id,
+        ));
     }
 
     public function show(OperationalTask $task): TaskResource
@@ -81,27 +59,23 @@ class TaskController extends Controller
     public function update(UpdateTaskRequest $request, OperationalTask $task): TaskResource
     {
         $this->authorize('update', $task);
-        $task->update($this->withCompletionTimestamp($request->validated(), $task));
 
-        return new TaskResource($task->fresh()->load('assignee'));
+        return new TaskResource(app(TaskLifecycleService::class)->updateDetails(
+            $task,
+            $request->validated(),
+            $request->user()?->id,
+        ));
     }
 
-    public function destroy(OperationalTask $task): Response
+    public function destroy(Request $request, OperationalTask $task): JsonResponse
     {
         $this->authorize('delete', $task);
-        $task->delete();
+        $data = $request->validate([
+            'expected_revision' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+        $cancelled = app(TaskLifecycleService::class)->transition($task, 'cancel', $data, $request->user()?->id);
 
-        return response()->noContent();
-    }
-
-    private function withCompletionTimestamp(array $data, ?OperationalTask $task = null): array
-    {
-        if (($data['status'] ?? null) === TaskStatus::Done->value && $task?->completed_at === null) {
-            $data['completed_at'] = now();
-        } elseif (array_key_exists('status', $data) && $data['status'] !== TaskStatus::Done->value) {
-            $data['completed_at'] = null;
-        }
-
-        return $data;
+        return response()->json(['data' => (new TaskResource($cancelled))->resolve($request)]);
     }
 }

@@ -6,19 +6,28 @@ use App\Enums\AllocationStatus;
 use App\Enums\MembershipRole;
 use App\Enums\ResourceKind;
 use App\Filament\Resources\Reservations\ReservationResource;
+use App\Models\Allocation;
+use App\Models\Membership;
 use App\Models\OperationalTask;
+use App\Models\Program;
+use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
 use App\Models\ResourceBlock;
 use App\Models\ServiceOccurrence;
 use App\Models\User;
+use App\Services\AllocationWorkflowService;
 use App\Services\Projections\CalendarProjectionService;
+use App\Services\ReallocateResource;
+use App\Services\SharedResourceAttentionService;
 use App\Support\Projections\StaffProjectionVisibility;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 
 class MasterCalendar extends Page
 {
@@ -42,33 +51,101 @@ class MasterCalendar extends Page
 
     public string $kind = 'all';
 
+    public string $reservationState = 'all';
+
+    public string $programId = '';
+
+    public string $boundary = 'all';
+
+    public string $attention = 'all';
+
+    public string $housekeeping = 'all';
+
     public int $rangeDays = 14;
+
+    public function assignAttention(string $reservationId, string $categoryId, string $resourceId, ?string $allocationId = null): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        $resource = Resource::query()->findOrFail($resourceId);
+        Gate::authorize('reallocate', $reservation);
+        $allocationId = filled($allocationId) ? $allocationId : null;
+        if ($allocationId === null) {
+            app(AllocationWorkflowService::class)->create($reservation, [
+                'requested_category_id' => $categoryId, 'resource_id' => $resource->id,
+                'starts_at' => $reservation->starts_at, 'ends_at' => $reservation->ends_at, 'quantity' => 1,
+            ], auth()->id(), 'Shared-resource attention workbench assignment.', true);
+        } else {
+            app(ReallocateResource::class)->handle($reservation, Allocation::query()->findOrFail($allocationId), $resource, auth()->id(), reason: 'Shared-resource attention workbench.');
+        }
+        Notification::make()->success()->title('Shared resource assigned')->send();
+    }
+
+    public function swapAttention(string $reservationId, string $allocationId, string $targetResourceId, string $swapAllocationId): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        Gate::authorize('reallocate', $reservation);
+        app(ReallocateResource::class)->handle(
+            $reservation, Allocation::query()->findOrFail($allocationId), Resource::query()->findOrFail($targetResourceId),
+            auth()->id(), Allocation::query()->findOrFail($swapAllocationId), 'Shared-resource attention workbench swap.',
+        );
+        Notification::make()->success()->title('Shared resources swapped')->send();
+    }
+
+    public function releaseAttention(string $reservationId, string $allocationId): void
+    {
+        $this->assertMayManageAttention();
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        $allocation = Allocation::query()->where('reservation_id', $reservation->id)->findOrFail($allocationId);
+        Gate::authorize('delete', $allocation);
+        app(AllocationWorkflowService::class)->release(
+            $reservation,
+            $allocation,
+            auth()->id(),
+            'Shared-resource attention workbench release.',
+            true,
+        );
+        Notification::make()->success()->title('Shared resource released')->send();
+    }
 
     public function mount(): void
     {
-        $timezone = app(TenantContext::class)->tenant()->timezone;
+        $context = app(TenantContext::class);
+        $this->propertyId = $context->propertyScopeId();
+        $timezone = $this->calendarTimezone();
+        $membership = $context->membership();
+        abort_unless($membership instanceof Membership, 403);
+        $preferences = $membership->calendar_preferences ?? [];
+        $savedRange = (int) ($preferences['range_days'] ?? 14);
+        $savedLens = (string) ($preferences['lens'] ?? 'all');
+        $savedKind = (string) ($preferences['kind'] ?? 'all');
+        $savedAttention = (string) ($preferences['attention'] ?? 'all');
+        $this->rangeDays = in_array($savedRange, [7, 14, 30], true) ? $savedRange : 14;
+        $this->lens = in_array($savedLens, ['all', 'stays', 'activities', 'tasks', 'blocks'], true) ? $savedLens : 'all';
+        $this->kind = in_array($savedKind, ['all', 'place', 'asset', 'crew'], true) ? $savedKind : 'all';
+        $this->attention = in_array($savedAttention, ['all', 'unassigned', 'conflicted'], true) ? $savedAttention : 'all';
         $this->start = CarbonImmutable::now($timezone)->startOfDay()->toDateString();
         $this->end = CarbonImmutable::now($timezone)->addDays($this->rangeDays - 1)->toDateString();
-        $this->propertyId = app(TenantContext::class)->membership()?->property_id;
     }
 
     public function previousRange(): void
     {
-        $timezone = app(TenantContext::class)->tenant()->timezone;
+        $timezone = $this->calendarTimezone();
         $start = CarbonImmutable::parse($this->start, $timezone)->subDays($this->rangeDays);
         $this->setWindow($start);
     }
 
     public function nextRange(): void
     {
-        $timezone = app(TenantContext::class)->tenant()->timezone;
+        $timezone = $this->calendarTimezone();
         $start = CarbonImmutable::parse($this->start, $timezone)->addDays($this->rangeDays);
         $this->setWindow($start);
     }
 
     public function goToToday(): void
     {
-        $this->setWindow(CarbonImmutable::now(app(TenantContext::class)->tenant()->timezone));
+        $this->setWindow(CarbonImmutable::now($this->calendarTimezone()));
     }
 
     public function setRange(int $days): void
@@ -76,8 +153,26 @@ class MasterCalendar extends Page
         $this->rangeDays = in_array($days, [7, 14, 30], true) ? $days : 14;
         $this->setWindow(CarbonImmutable::parse(
             $this->start,
-            app(TenantContext::class)->tenant()->timezone,
+            $this->calendarTimezone(),
         ));
+        $this->persistPreferences();
+    }
+
+    public function updated(string $property): void
+    {
+        if (in_array($property, ['lens', 'kind', 'attention'], true)) {
+            $this->persistPreferences();
+        }
+    }
+
+    private function persistPreferences(): void
+    {
+        app(TenantContext::class)->membership()?->update(['calendar_preferences' => [
+            'range_days' => $this->rangeDays,
+            'lens' => $this->lens,
+            'kind' => $this->kind,
+            'attention' => $this->attention,
+        ]]);
     }
 
     private function setWindow(CarbonImmutable $start): void
@@ -103,16 +198,16 @@ class MasterCalendar extends Page
     protected function getViewData(): array
     {
         $context = app(TenantContext::class);
-        $timezone = $context->tenant()->timezone;
+        $timezone = $this->calendarTimezone();
         $start = CarbonImmutable::parse($this->start ?: 'today', $timezone)->startOfDay()->utc();
-        $end = CarbonImmutable::parse($this->end ?: $this->start, $timezone)->endOfDay()->utc();
+        $end = CarbonImmutable::parse($this->end ?: $this->start, $timezone)->addDay()->startOfDay()->utc();
 
         if ($end->lessThanOrEqualTo($start) || $start->diffInDays($end) > 92) {
             $end = $start->addDays(14);
         }
 
         $membership = $context->membership();
-        $propertyId = $membership?->property_id ?? $this->propertyId;
+        $propertyId = $context->propertyScopeId() ?? $this->propertyId;
         $isGuide = $membership?->role === MembershipRole::Guide;
         $guideResourceIds = $isGuide
             ? Resource::query()
@@ -131,6 +226,11 @@ class MasterCalendar extends Page
                 'allocations.resource:id,is_buyout,attributes',
             ])
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($this->reservationState !== 'all', fn ($query) => $query->where('status', $this->reservationState))
+            ->when($this->programId !== '', fn ($query) => $query->where('program_id', $this->programId))
+            ->when($this->boundary === 'arrivals', fn ($query) => $query->where('starts_at', '>=', $start)->where('starts_at', '<', $end))
+            ->when($this->boundary === 'departures', fn ($query) => $query->where('ends_at', '>=', $start)->where('ends_at', '<', $end))
+            ->when($this->attention === 'unassigned', fn ($query) => $query->whereDoesntHave('allocations', fn ($query) => $query->where('status', '!=', AllocationStatus::Released)))
             ->when($isGuide, fn ($query) => $query->whereHas('allocations', fn ($query) => $query
                 ->whereIn('resource_id', $guideResourceIds)
                 ->where('status', '!=', AllocationStatus::Released)))
@@ -152,9 +252,13 @@ class MasterCalendar extends Page
         $user = request()->user();
         abort_unless($user instanceof User, 403);
         $projection = app(CalendarProjectionService::class)->build($start, $end, $user, $propertyId);
+        if ($this->attention === 'conflicted') {
+            $events = $events->where('type', 'Reservation')
+                ->whereIn('id', $projection['summary']['hard_conflict_reservation_ids'])->values();
+        }
         $localStart = $start->timezone($timezone)->startOfDay();
         $localEnd = $end->timezone($timezone)->startOfDay();
-        $days = collect(range(0, $localStart->diffInDays($localEnd)))
+        $days = collect(range(0, max(0, $localStart->diffInDays($localEnd) - 1)))
             ->map(function (int $offset) use ($events, $localStart): array {
                 $day = $localStart->addDays($offset);
                 $dayStart = $day->utc();
@@ -168,9 +272,11 @@ class MasterCalendar extends Page
 
         return [
             'timezone' => $timezone,
-            'properties' => $membership?->property_id === null
+            'properties' => $context->propertyScopeId() === null
                 ? $context->tenant()->properties()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 : collect(),
+            'programOptions' => Program::query()->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+                ->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'events' => $events,
             'days' => $days,
             'programs' => $allEvents
@@ -180,10 +286,18 @@ class MasterCalendar extends Page
                 ->values(),
             'buyouts' => $allEvents->where('is_buyout', true)->values(),
             'allocationSummary' => $projection['summary'],
+            'attentionRows' => $isGuide ? collect() : app(SharedResourceAttentionService::class)->build(
+                $start, $end, $propertyId, $projection['summary']['hard_conflict_reservation_ids'],
+            ),
             'resources' => collect($projection['resources']),
             'resourceGroups' => $this->resourceRows($days, $propertyId, $isGuide, $guideResourceIds),
             'today' => CarbonImmutable::now($timezone)->toDateString(),
         ];
+    }
+
+    private function assertMayManageAttention(): void
+    {
+        abort_unless(app(TenantContext::class)->membership()?->role?->canScheduleOperations() === true, 403);
     }
 
     /**
@@ -203,6 +317,7 @@ class MasterCalendar extends Page
         /** @var Collection<int, array<string, mixed>> $events */
         $events = collect();
         $reservations->each(fn (Reservation $reservation) => $events->push([
+            'id' => $reservation->id,
             'type' => 'Reservation',
             'title' => $visibility->canSeeGuestIdentity() && $reservation->primaryGuest
                 ? trim("{$reservation->primaryGuest->first_name} {$reservation->primaryGuest->last_name}")
@@ -228,6 +343,7 @@ class MasterCalendar extends Page
             ->where('ends_at', '>', $start)
             ->get()
             ->each(fn (ResourceBlock $block) => $events->push([
+                'id' => $block->id,
                 'type' => 'Resource block',
                 'title' => $block->reason,
                 'reference' => $block->resource->name,
@@ -251,6 +367,7 @@ class MasterCalendar extends Page
             ->where('ends_at', '>', $start)
             ->get()
             ->each(fn (ServiceOccurrence $occurrence) => $events->push([
+                'id' => $occurrence->id,
                 'type' => 'Activity',
                 'title' => $occurrence->program->name,
                 'reference' => $occurrence->meeting_point,
@@ -273,6 +390,7 @@ class MasterCalendar extends Page
             ->where('due_at', '<', $end)
             ->get()
             ->each(fn (OperationalTask $task) => $events->push([
+                'id' => $task->id,
                 'type' => 'Task',
                 'title' => $task->title,
                 'reference' => $task->priority,
@@ -318,6 +436,7 @@ class MasterCalendar extends Page
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->when($isGuide, fn ($query) => $query->whereIn('id', $guideResourceIds))
             ->when($this->kind !== 'all', fn ($query) => $query->whereHas('category', fn ($category) => $category->where('kind', $this->kind)))
+            ->when($this->housekeeping !== 'all', fn ($query) => $query->where('housekeeping_status', $this->housekeeping))
             ->where('is_active', true)
             ->orderBy('name')
             ->get()
@@ -391,6 +510,16 @@ class MasterCalendar extends Page
         return is_string($color) && preg_match('/^#[0-9a-f]{6}$/i', $color) === 1
             ? strtoupper($color)
             : null;
+    }
+
+    private function calendarTimezone(): string
+    {
+        $context = app(TenantContext::class);
+        $propertyId = $context->propertyScopeId() ?? $this->propertyId;
+
+        return $propertyId === null
+            ? $context->tenant()->timezone
+            : (Property::query()->whereKey($propertyId)->value('timezone') ?? $context->tenant()->timezone);
     }
 
     protected function getHeaderActions(): array

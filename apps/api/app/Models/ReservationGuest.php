@@ -7,6 +7,7 @@ use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
+/** @property array<string, mixed>|null $operational_preferences */
 class ReservationGuest extends Pivot
 {
     use BelongsToTenant, HasUuid;
@@ -16,6 +17,11 @@ class ReservationGuest extends Pivot
     protected $table = 'reservation_guests';
 
     protected $guarded = ['id', 'tenant_id'];
+
+    protected function casts(): array
+    {
+        return ['sort_order' => 'integer', 'operational_preferences' => 'array'];
+    }
 
     public function reservation(): BelongsTo
     {

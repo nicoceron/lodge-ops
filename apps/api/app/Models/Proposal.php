@@ -32,6 +32,11 @@ class Proposal extends TenantModel
         return $this->belongsTo(Reservation::class);
     }
 
+    public function bookingQuote(): BelongsTo
+    {
+        return $this->belongsTo(BookingQuote::class);
+    }
+
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
@@ -56,6 +61,8 @@ class Proposal extends TenantModel
 
             if ($proposal->isDirty([
                 'reference',
+                'booking_quote_id',
+                'inquiry_source',
                 'version',
                 'property_id',
                 'primary_guest_id',

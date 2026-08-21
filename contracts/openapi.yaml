@@ -64,6 +64,12 @@ paths:
           in: query
           required: true
           schema: { type: string, format: date }
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+        - { name: resource_kind, in: query, schema: { type: string, enum: [place, asset, crew] } }
+        - { name: reservation_status, in: query, schema: { type: string } }
+        - { name: program_id, in: query, schema: { type: string, format: uuid } }
+        - { name: boundary, in: query, schema: { type: string, enum: [arrival, departure] } }
+        - { name: attention, in: query, schema: { type: string, enum: [conflicted, unassigned] } }
       responses:
         '200':
           description: Unified reservation, activity, task, and resource-block events for a date range.
@@ -226,6 +232,18 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /guests/duplicates/search:
+    get:
+      tags: [Guests]
+      operationId: searchDuplicateGuests
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: email, in: query, schema: { type: string, format: email } }
+        - { name: phone, in: query, schema: { type: string } }
+        - { name: name, in: query, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /guests/{guest}/history:
     get:
       tags: [Guests]
@@ -1153,7 +1171,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskInput' }
+            schema: { $ref: '#/components/schemas/TaskUpdateInput' }
       responses:
         '200':
           description: Task updated.
@@ -1167,7 +1185,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskInput' }
+            schema: { $ref: '#/components/schemas/TaskUpdateInput' }
       responses:
         '200':
           description: Task replaced.
@@ -1177,9 +1195,17 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Tasks]
-      operationId: deleteTask
+      operationId: cancelTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCancelInput' }
       responses:
-        '204': { description: Task deleted. }
+        '200':
+          description: Task cancelled through the audited revisioned lifecycle; the task and events are retained.
+          content: { application/json: { schema: { $ref: '#/components/schemas/TaskEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /payments:
     get:
       tags: [Payments]
@@ -1553,9 +1579,15 @@ paths:
       operationId: createProposal
       parameters:
         - $ref: '#/components/parameters/TenantId'
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProposalCreateInput' }
       responses:
-        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '201':
+          description: Versioned proposal created from an authoritative server-priced booking quote.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '422': { $ref: '#/components/responses/ValidationError' }
   /proposals/{proposal}:
     parameters:
@@ -1565,21 +1597,35 @@ paths:
       tags: [Proposals]
       operationId: getProposal
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Proposal detail, including whether legacy pricing makes it read-only and nonconvertible.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Proposals]
       operationId: updateProposal
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProposalUpdateInput' }
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Draft proposal metadata updated without altering authoritative quote or price facts.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '409': { $ref: '#/components/responses/Conflict' }
     put:
       tags: [Proposals]
       operationId: replaceProposal
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProposalUpdateInput' }
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Draft proposal metadata replaced without altering authoritative quote or price facts.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '409': { $ref: '#/components/responses/Conflict' }
   /proposals/{proposal}/send:
     post:
@@ -1590,7 +1636,9 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
         - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Server-priced proposal marked sent.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '409': { $ref: '#/components/responses/Conflict' }
   /proposals/{proposal}/revise:
     post:
@@ -1601,7 +1649,9 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
         - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '201': { $ref: '#/components/responses/GenericSuccess' }
+        '201':
+          description: New proposal version created from the same immutable server quote.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProposalEnvelope' } } }
         '409': { $ref: '#/components/responses/Conflict' }
   /proposals/{proposal}/convert:
     post:
@@ -1612,7 +1662,12 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
         - { name: proposal, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '200':
+          description: Idempotent replay returned the existing reservation committed from this quote.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ReservationEnvelope' } } }
+        '201':
+          description: Quote committed exactly once to capacity hold and reservation.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ReservationEnvelope' } } }
         '409': { $ref: '#/components/responses/Conflict' }
   /deposits:
     get:
@@ -2237,6 +2292,198 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '410': { description: Export expired or purged. }
 
+  /reservations/{reservation}/companions:
+    put:
+      tags: [Reservations]
+      operationId: replaceReservationCompanions
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_revision, companions]
+              properties:
+                expected_revision: { type: integer, minimum: 1 }
+                companions:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [guest_id]
+                    properties:
+                      guest_id: { type: string, format: uuid }
+                      dietary: { type: string, maxLength: 500 }
+                      allergies: { type: string, maxLength: 500 }
+                      meal_notes: { type: string, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /tasks/{task}/transition:
+    post:
+      tags: [Tasks]
+      operationId: transitionOperationalTask
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskTransitionInput' }
+      responses:
+        '200':
+          description: Revisioned lifecycle transition recorded with an append-only task event.
+          content: { application/json: { schema: { $ref: '#/components/schemas/TaskEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates:
+    post:
+      tags: [Operations]
+      operationId: createChecklistTemplate
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecklistTemplateInput' }
+      responses:
+        '201':
+          description: Checklist template created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistTemplateEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates/{checklistTemplate}/publish:
+    post:
+      tags: [Operations]
+      operationId: publishChecklistTemplateVersion
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: checklistTemplate, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecklistPublishInput' }
+      responses:
+        '201':
+          description: Immutable published checklist version and ordered items created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistVersionEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /checklist-templates/{checklistTemplate}/retire:
+    post:
+      tags: [Operations]
+      operationId: retireChecklistTemplate
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: checklistTemplate, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericSuccess' }
+  /reservations/{reservation}/checklist-exceptions:
+    post:
+      tags: [Operations]
+      operationId: createReservationChecklistException
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecklistExceptionInput' }
+      responses:
+        '201':
+          description: Reservation-scoped checklist exception created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistExceptionEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/checklist-exceptions/{exception}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: exception, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [Operations]
+      operationId: updateReservationChecklistException
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecklistExceptionInput' }
+      responses:
+        '200':
+          description: Reservation-scoped checklist exception edited or reordered after applicability validation.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistExceptionEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Operations]
+      operationId: deleteReservationChecklistException
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Reservation-scoped checklist exception removed.
+          content: { application/json: { schema: { $ref: '#/components/schemas/DeletionEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /reservations/{reservation}/checklists/generate:
+    post:
+      tags: [Operations]
+      operationId: generateReservationChecklist
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecklistGenerateInput' }
+      responses:
+        '200':
+          description: Checklist generated while preserving started, failed, escalated, and blocked work.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ChecklistGenerationEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /calendar/preferences:
+    put:
+      tags: [Calendar]
+      operationId: updateCalendarPreferences
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalendarPreferences' }
+      responses:
+        '200':
+          description: Membership calendar preferences saved.
+          content: { application/json: { schema: { $ref: '#/components/schemas/CalendarPreferencesEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /operational-kpis:
+    get:
+      tags: [Finance]
+      operationId: reconcileOperationalKpis
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: start, in: query, required: true, schema: { type: string, format: date } }
+        - { name: end, in: query, required: true, schema: { type: string, format: date } }
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Provisional KPI definitions and reconciled values, separated by currency, pending explicit client approval.
+          content: { application/json: { schema: { $ref: '#/components/schemas/OperationalKpiEnvelope' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /direct-booking/properties/{propertySlug}:
     get:
       tags: [Direct Booking]
@@ -3146,9 +3393,30 @@ components:
           items: { $ref: '#/components/schemas/CalendarAllocation' }
         summary:
           type: object
-          required: [hard_conflicts, unassigned_reservations, suggestions]
+          required: [hard_conflicts, hard_conflict_reservation_ids, hard_conflict_facts, unassigned_reservations, suggestions]
           properties:
             hard_conflicts: { type: integer, minimum: 0 }
+            hard_conflict_reservation_ids:
+              type: array
+              uniqueItems: true
+              items: { type: string, format: uuid }
+            hard_conflict_facts:
+              type: array
+              items:
+                type: object
+                required: [type, reservation_ids]
+                properties:
+                  type: { type: string, enum: [capacity_overlap, property_buyout_overlap, resource_block, property_buyout_block] }
+                  reservation_ids:
+                    type: array
+                    uniqueItems: true
+                    items: { type: string, format: uuid }
+                  allocation_ids:
+                    type: array
+                    uniqueItems: true
+                    items: { type: string, format: uuid }
+                  resource_id: { type: [string, 'null'], format: uuid }
+                  resource_block_id: { type: [string, 'null'], format: uuid }
             unassigned_reservations: { type: integer, minimum: 0 }
             suggestions: { type: integer, minimum: 0 }
     CalendarResource:
@@ -3617,6 +3885,291 @@ components:
       required: [reference]
       properties:
         reference: { type: string, maxLength: 255 }
+    ProposalCreateInput:
+      type: object
+      additionalProperties: false
+      required: [property_id, booking_quote_id]
+      properties:
+        property_id: { type: string, format: uuid }
+        booking_quote_id: { type: string, format: uuid, description: Authoritative unexpired server-priced quote. }
+        inquiry_source: { type: [string, 'null'], enum: [email, whatsapp, phone, walk_in, partner, web, other_approved, null] }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        title: { type: [string, 'null'], maxLength: 255 }
+        notes: { type: [string, 'null'], maxLength: 10000 }
+        expires_at: { type: [string, 'null'], format: date-time }
+    ProposalUpdateInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        inquiry_source: { type: [string, 'null'], enum: [email, whatsapp, phone, walk_in, partner, web, other_approved, null] }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        title: { type: [string, 'null'], maxLength: 255 }
+        notes: { type: [string, 'null'], maxLength: 10000 }
+        expires_at: { type: [string, 'null'], format: date-time }
+    Proposal:
+      type: object
+      required: [id, reference, version, status, property_id, booking_quote_id, pricing_mode, convertible, starts_at, ends_at, adults, children, currency, total_minor, tax_minor, snapshot]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, sent, accepted, rejected, expired] }
+        property_id: { type: string, format: uuid }
+        primary_guest_id: { type: [string, 'null'], format: uuid }
+        reservation_id: { type: [string, 'null'], format: uuid }
+        booking_quote_id: { type: [string, 'null'], format: uuid }
+        pricing_mode: { type: string, enum: [server_quote, legacy_manual_read_only] }
+        convertible: { type: boolean }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        adults: { type: integer, minimum: 0 }
+        children: { type: integer, minimum: 0 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        total_minor: { type: integer }
+        tax_minor: { type: integer }
+        snapshot: { type: object, additionalProperties: true, readOnly: true }
+        expires_at: { type: [string, 'null'], format: date-time }
+        sent_at: { type: [string, 'null'], format: date-time }
+        accepted_at: { type: [string, 'null'], format: date-time }
+        converted_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    ProposalEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Proposal' }
+    ChecklistTemplateInput:
+      type: object
+      additionalProperties: false
+      required: [property_id, name, role]
+      properties:
+        property_id: { type: string, format: uuid }
+        program_id: { type: [string, 'null'], format: uuid }
+        name: { type: string, maxLength: 160 }
+        role: { type: string, enum: [operations, guide, kitchen, housekeeping] }
+    ChecklistTemplate:
+      type: object
+      required: [id, property_id, name, role, state, latest_version]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        program_id: { type: [string, 'null'], format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [operations, guide, kitchen, housekeeping] }
+        state: { type: string, enum: [draft, published, retired] }
+        latest_version: { type: integer, minimum: 0 }
+    ChecklistTemplateEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ChecklistTemplate' }
+    ChecklistItemInput:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        priority: { type: [string, 'null'], enum: [low, normal, high, urgent, null] }
+        due_offset_minutes: { type: [integer, 'null'], minimum: -525600, maximum: 525600 }
+    ChecklistPublishInput:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ChecklistItemInput' }
+    ChecklistTemplateItem:
+      type: object
+      required: [id, checklist_template_version_id, title, priority, due_offset_minutes, sort_order]
+      properties:
+        id: { type: string, format: uuid }
+        checklist_template_version_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        due_offset_minutes: { type: integer }
+        sort_order: { type: integer, minimum: 0 }
+    ChecklistTemplateVersion:
+      type: object
+      required: [id, checklist_template_id, version, state, items]
+      properties:
+        id: { type: string, format: uuid }
+        checklist_template_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        state: { type: string, enum: [published, retired] }
+        published_at: { type: [string, 'null'], format: date-time }
+        retired_at: { type: [string, 'null'], format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChecklistTemplateItem' }
+    ChecklistVersionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ChecklistTemplateVersion' }
+    ChecklistExceptionInput:
+      type: object
+      additionalProperties: false
+      required: [operation]
+      properties:
+        checklist_template_item_id: { type: [string, 'null'], format: uuid }
+        operation: { type: string, enum: [add, edit, remove, reorder] }
+        title: { type: [string, 'null'], maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        priority: { type: [string, 'null'], enum: [low, normal, high, urgent, null] }
+        due_offset_minutes: { type: [integer, 'null'], minimum: -525600, maximum: 525600 }
+        sort_order: { type: integer, minimum: 0, maximum: 1000 }
+    ChecklistException:
+      type: object
+      required: [id, reservation_id, operation, sort_order]
+      properties:
+        id: { type: string, format: uuid }
+        reservation_id: { type: string, format: uuid }
+        checklist_template_item_id: { type: [string, 'null'], format: uuid }
+        operation: { type: string, enum: [add, edit, remove, reorder] }
+        title: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        priority: { type: [string, 'null'], enum: [low, normal, high, urgent, null] }
+        due_offset_minutes: { type: [integer, 'null'] }
+        sort_order: { type: integer, minimum: 0 }
+    ChecklistExceptionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ChecklistException' }
+    ChecklistGenerateInput:
+      type: object
+      additionalProperties: false
+      required: [version_id]
+      properties:
+        version_id: { type: string, format: uuid }
+    ChecklistGenerationEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [created, superseded, generation]
+          properties:
+            created: { type: integer, minimum: 0 }
+            superseded: { type: integer, minimum: 0 }
+            generation: { type: integer, minimum: 1 }
+    DeletionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [deleted]
+          properties:
+            deleted: { type: boolean, const: true }
+    CalendarPreferences:
+      type: object
+      additionalProperties: false
+      properties:
+        range_days: { type: integer, enum: [7, 14, 30, 90] }
+        lens: { type: string, enum: [all, stays, activities, tasks, blocks] }
+        kind: { type: string, enum: [all, place, asset, crew] }
+        status:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 32 }
+        attention: { type: string, enum: [all, conflicted, unassigned] }
+    CalendarPreferencesEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/CalendarPreferences' }
+    OperationalKpiDefinition:
+      type: object
+      additionalProperties: false
+      required: [key, numerator, denominator, timezone, currency, exclusions, reconciliation]
+      properties:
+        key: { type: string }
+        numerator: { type: string }
+        denominator: { type: string }
+        timezone: { type: string }
+        currency: { type: string }
+        exclusions: { type: string }
+        reconciliation: { type: string }
+    OperationalKpiCurrencyRow:
+      type: object
+      additionalProperties: false
+      required: [currency, revenue_minor, booked_minor, deposit_received_minor, outstanding_minor, adr_minor, disclosure, reconciliation]
+      properties:
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        revenue_minor: { type: integer }
+        booked_minor: { type: integer }
+        deposit_received_minor: { type: integer }
+        outstanding_minor: { type: integer, minimum: 0 }
+        adr_minor: { type: [integer, 'null'] }
+        disclosure: { type: string }
+        reconciliation:
+          type: object
+          additionalProperties: false
+          required: [booked_less_deposits_minor, reported_outstanding_minor, overpayment_minor, balanced]
+          properties:
+            booked_less_deposits_minor: { type: integer }
+            reported_outstanding_minor: { type: integer, minimum: 0 }
+            overpayment_minor: { type: integer, minimum: 0 }
+            balanced: { type: boolean }
+    OperationalKpiReport:
+      type: object
+      additionalProperties: false
+      required: [status, range, definitions, values, reconciliation]
+      properties:
+        status: { type: string, const: provisional_client_approval_required }
+        range:
+          type: object
+          additionalProperties: false
+          required: [local_start, local_end, timezone, property_id, utc_start, utc_end_exclusive]
+          properties:
+            local_start: { type: string, format: date }
+            local_end: { type: string, format: date }
+            timezone: { type: string }
+            property_id: { type: [string, 'null'], format: uuid }
+            utc_start: { type: string, format: date-time }
+            utc_end_exclusive: { type: string, format: date-time }
+        definitions:
+          type: array
+          items: { $ref: '#/components/schemas/OperationalKpiDefinition' }
+        values:
+          type: object
+          additionalProperties: false
+          required: [reservation_volume, occupied_room_nights, available_room_nights, occupancy_percent, arrivals, departures, tasks_total, tasks_overdue, kitchen_guest_count, currencies]
+          properties:
+            reservation_volume: { type: integer, minimum: 0 }
+            occupied_room_nights: { type: integer, minimum: 0 }
+            available_room_nights: { type: integer, minimum: 0 }
+            occupancy_percent: { type: [number, 'null'], minimum: 0 }
+            arrivals: { type: integer, minimum: 0 }
+            departures: { type: integer, minimum: 0 }
+            tasks_total: { type: integer, minimum: 0 }
+            tasks_overdue: { type: integer, minimum: 0 }
+            kitchen_guest_count: { type: integer, minimum: 0 }
+            currencies:
+              type: array
+              items: { $ref: '#/components/schemas/OperationalKpiCurrencyRow' }
+        reconciliation:
+          type: object
+          additionalProperties: false
+          required: [occupancy_balanced, currency_rows_balanced, source_tables]
+          properties:
+            occupancy_balanced: { type: boolean }
+            currency_rows_balanced: { type: boolean }
+            source_tables:
+              type: array
+              items: { type: string, enum: [reservations, resources, folio_lines, payments, operational_tasks] }
+    OperationalKpiEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/OperationalKpiReport' }
     Reservation:
       type: object
       required: [id, property_id, confirmation_number, status, starts_at, ends_at, adults, children, currency, subtotal_minor, tax_minor, total_minor, folio_status, revision]
@@ -3701,7 +4254,7 @@ components:
         links: { type: object, additionalProperties: true }
     Task:
       type: object
-      required: [id, property_id, title, status, priority]
+      required: [id, property_id, title, status, priority, revision, generation, overdue]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
@@ -3709,12 +4262,25 @@ components:
         assignee_id: { type: [integer, 'null'] }
         title: { type: string }
         description: { type: [string, 'null'] }
-        status: { type: string, enum: [todo, in_progress, blocked, done, cancelled] }
+        status: { type: string, enum: [todo, in_progress, blocked, failed, done, cancelled, superseded] }
         priority: { type: string, enum: [low, normal, high, urgent] }
         due_at: { type: [string, 'null'], format: date-time }
         completed_at: { type: [string, 'null'], format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        failed_at: { type: [string, 'null'], format: date-time }
+        failure_reason: { type: [string, 'null'] }
+        reopened_at: { type: [string, 'null'], format: date-time }
+        escalated_at: { type: [string, 'null'], format: date-time }
+        escalation_reason: { type: [string, 'null'] }
+        superseded_at: { type: [string, 'null'], format: date-time }
+        cancellation_reason: { type: [string, 'null'] }
+        revision: { type: integer, minimum: 1 }
+        generation: { type: integer, minimum: 0 }
+        overdue: { type: boolean }
+        metadata: { type: [object, 'null'], additionalProperties: true }
     TaskInput:
       type: object
+      additionalProperties: false
       required: [property_id, title]
       properties:
         property_id: { type: string, format: uuid }
@@ -3722,9 +4288,37 @@ components:
         assignee_id: { type: [integer, 'null'] }
         title: { type: string, maxLength: 255 }
         description: { type: [string, 'null'] }
-        status: { type: string, enum: [todo, in_progress, blocked, done, cancelled] }
         priority: { type: string, enum: [low, normal, high, urgent] }
         due_at: { type: [string, 'null'], format: date-time }
+        metadata: { type: [object, 'null'], maxProperties: 100, additionalProperties: true }
+    TaskUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        title: { type: string, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 10000 }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        due_at: { type: [string, 'null'], format: date-time }
+        metadata: { type: [object, 'null'], maxProperties: 100, additionalProperties: true }
+    TaskTransitionInput:
+      type: object
+      additionalProperties: false
+      required: [action, expected_revision]
+      properties:
+        action: { type: string, enum: [assign, start, complete, fail, reopen, escalate, cancel] }
+        expected_revision: { type: integer, minimum: 1 }
+        assignee_id: { type: [integer, 'null'] }
+        reason: { type: [string, 'null'], maxLength: 2000 }
+        reservation_reopen_authorized: { type: boolean, description: Explicit manager authority required to reopen a task attached to a cancelled, no-show, or checked-out reservation. }
+    TaskCancelInput:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, reason]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
     TaskEnvelope:
       type: object
       required: [data]

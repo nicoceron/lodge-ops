@@ -138,7 +138,9 @@ class TenantIsolationTest extends TestCase
                 'title' => 'Prepare allergen-safe service',
             ])->assertForbidden();
         $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
-            ->putJson("/api/v1/tasks/{$kitchenTask->id}", ['status' => 'done'])
+            ->postJson("/api/v1/tasks/{$kitchenTask->id}/transition", [
+                'action' => 'complete', 'expected_revision' => 1,
+            ])
             ->assertOk()
             ->assertJsonPath('data.status', 'done');
         $tasks = $this->withHeader('X-Tenant-ID', $kitchenTenant->id)
@@ -159,7 +161,6 @@ class TenantIsolationTest extends TestCase
         $this->postJson('/api/v1/tasks', [
             'property_id' => $otherProperty->id,
             'title' => 'Cross-property task',
-            'status' => 'todo',
             'priority' => 'normal',
         ])->assertStatus(400);
 
@@ -167,7 +168,6 @@ class TenantIsolationTest extends TestCase
             'property_id' => $property->id,
             'reservation_id' => $otherReservation->id,
             'title' => 'Mismatched reservation task',
-            'status' => 'todo',
             'priority' => 'normal',
         ])->assertStatus(400);
     }

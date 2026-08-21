@@ -19,6 +19,7 @@ final class ReallocateResource
         private readonly HousekeepingService $housekeeping,
         private readonly ReservationChangeRecorder $changes,
         private readonly OutboxRecorder $outbox,
+        private readonly AllocationWorkflowService $workflow,
     ) {}
 
     public function handle(
@@ -33,9 +34,7 @@ final class ReallocateResource
             $reservationIds = collect([$reservation->id, $swapWith?->reservation_id])->filter()->unique()->sort()->values();
             $lockedReservations = Reservation::query()->whereIn('id', $reservationIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $primary = $lockedReservations->get($reservation->id);
-            if (! in_array($primary->status, [ReservationStatus::Hold, ReservationStatus::Confirmed, ReservationStatus::CheckedIn], true)) {
-                throw ValidationException::withMessages(['status' => 'Resources may only be reassigned for held, confirmed, or checked-in reservations.']);
-            }
+            $this->workflow->assertOperationallyActive($primary);
 
             $allocationIds = collect([$allocation->id, $swapWith?->id])->filter()->unique()->sort()->values();
             $lockedAllocations = Allocation::query()->whereIn('id', $allocationIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -57,9 +56,7 @@ final class ReallocateResource
                     || $other->status === AllocationStatus::Released || $other->resource_id !== $target->id) {
                     throw ValidationException::withMessages(['swap_allocation_id' => 'The swap allocation is no longer active on the target resource.']);
                 }
-                if (! in_array($otherReservation->status, [ReservationStatus::Hold, ReservationStatus::Confirmed, ReservationStatus::CheckedIn], true)) {
-                    throw ValidationException::withMessages(['swap_allocation_id' => 'The other reservation cannot be moved in its current state.']);
-                }
+                $this->workflow->assertOperationallyActive($otherReservation);
                 if ($current->resource_id === null || $current->starts_at->notEqualTo($other->starts_at) || $current->ends_at->notEqualTo($other->ends_at)) {
                     throw ValidationException::withMessages(['swap_allocation_id' => 'A swap requires matching stay intervals and two assigned resources.']);
                 }
@@ -102,7 +99,7 @@ final class ReallocateResource
             if ($swapWith !== null) {
                 $otherReservation->update(['revision' => $otherReservation->revision + 1]);
                 $otherReservation->unsetRelation('allocations');
-                $this->changes->record($otherReservation, 'resource_swapped', [
+                $otherChange = $this->changes->record($otherReservation, 'resource_swapped', [
                     'actor_id' => $actorId,
                     'before_snapshot' => $otherBefore,
                     'after_snapshot' => $this->changes->snapshot($otherReservation->fresh('allocations')),
@@ -114,6 +111,13 @@ final class ReallocateResource
                         'from_resource_id' => $other->resource_id,
                         'to_resource_id' => $oldResourceId,
                     ],
+                ]);
+                $this->outbox->record('reservation', $otherReservation->id, 'reservation.resource_reallocated', [
+                    'reservation_id' => $otherReservation->id,
+                    'change_id' => $otherChange->id,
+                    'from_resource_id' => $other->resource_id,
+                    'to_resource_id' => $oldResourceId,
+                    'swap' => true,
                 ]);
                 if ($otherReservation->status === ReservationStatus::CheckedIn) {
                     $this->housekeeping->update(Resource::query()->findOrFail($other->resource_id), HousekeepingStatus::Dirty, $actorId);

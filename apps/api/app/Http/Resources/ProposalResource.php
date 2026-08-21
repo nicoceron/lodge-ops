@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Proposal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,14 +10,24 @@ class ProposalResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $proposal = $this->resource;
+        if (! $proposal instanceof Proposal) {
+            return [];
+        }
+        $status = $this->status->value;
+        $bookingQuoteId = $proposal->getAttribute('booking_quote_id');
+
         return [
             'id' => $this->id,
             'reference' => $this->reference,
             'version' => $this->version,
-            'status' => $this->status->value,
+            'status' => $status,
             'property_id' => $this->property_id,
             'primary_guest_id' => $this->primary_guest_id,
             'reservation_id' => $this->reservation_id,
+            'booking_quote_id' => $bookingQuoteId,
+            'pricing_mode' => $bookingQuoteId === null ? 'legacy_manual_read_only' : 'server_quote',
+            'convertible' => $bookingQuoteId !== null && $status === 'sent',
             'starts_at' => $this->starts_at,
             'ends_at' => $this->ends_at,
             'adults' => $this->adults,

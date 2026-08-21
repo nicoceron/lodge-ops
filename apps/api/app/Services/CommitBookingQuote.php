@@ -37,7 +37,12 @@ final class CommitBookingQuote
         return DB::transaction(function () use ($quote, $guestId, $guestData, $companionIds, $source, $notes): Reservation {
             $locked = BookingQuote::query()->with('lines')->lockForUpdate()->findOrFail($quote->id);
             if ($locked->status === BookingQuoteStatus::Committed && $locked->reservation_id !== null) {
-                return Reservation::query()->findOrFail($locked->reservation_id);
+                $reservation = Reservation::query()->findOrFail($locked->reservation_id);
+                if ($guestId === null || $reservation->primary_guest_id !== $guestId) {
+                    throw ValidationException::withMessages(['guest_id' => 'This committed quote belongs to a different guest identity.']);
+                }
+
+                return $reservation;
             }
             if ($locked->status !== BookingQuoteStatus::Pending || ! $locked->expires_at->isFuture()) {
                 throw ValidationException::withMessages(['rate_plan_id' => 'This quote expired. Refresh the price and availability.']);

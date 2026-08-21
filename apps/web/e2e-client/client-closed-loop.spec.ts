@@ -262,16 +262,21 @@ test("P3-02 closes the staff, guest, finance, stay, folio, and survey loop", asy
     await operations.page.reload();
     await expect(operations.page.getByRole("button", { name: "Check out", exact: true })).toBeVisible();
 
+    const taskTitle = `Complete P3-02 welcome task ${run}`;
     await operations.page.goto("/manage/workspace/demo-lodge/operational-tasks/create");
-    await operations.page.getByRole("textbox", { name: "Title*" }).fill(`Complete P3-02 welcome task ${run}`);
+    await operations.page.getByRole("textbox", { name: "Title*" }).fill(taskTitle);
     await chooseOption(operations.page, "Property id*", "Estancia Viento Sur");
     await chooseOption(operations.page, "Reservation", confirmation);
     await operations.page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(operations.page).toHaveURL(/\/operational-tasks\/[0-9a-f-]{36}$/);
-    await operations.page.getByRole("link", { name: "Edit", exact: true }).click();
-    await chooseOption(operations.page, "Status*", "Done");
-    await operations.page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(operations.page.getByText("Done", { exact: true }).first()).toBeVisible();
+    await operations.page.goto("/manage/workspace/demo-lodge/operational-tasks");
+    await operations.page.getByRole("searchbox", { name: "Search", exact: true }).fill(taskTitle);
+    const taskRow = operations.page.getByRole("row").filter({ hasText: taskTitle });
+    await taskRow.getByRole("button", { name: "Complete", exact: true }).click();
+    const completeDialog = operations.page.getByRole("alertdialog", { name: "Complete" });
+    await completeDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(operations.page.getByText("Task complete recorded", { exact: true })).toBeVisible();
+    await expect(taskRow.getByRole("button", { name: "Reopen", exact: true })).toBeVisible();
 
     await operations.page.goto("/manage/workspace/demo-lodge/folio-lines");
     await operations.page.getByRole("button", { name: "Post folio entry", exact: true }).click();

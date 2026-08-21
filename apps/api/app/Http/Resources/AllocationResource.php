@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Allocation;
 use App\Models\ResourceCategory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -9,6 +10,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * @property string|null $requested_category_id
  * @property ResourceCategory|null $requestedCategory
+ *
+ * @mixin Allocation
  */
 class AllocationResource extends JsonResource
 {
@@ -24,6 +27,7 @@ class AllocationResource extends JsonResource
             'starts_at' => $this->starts_at,
             'ends_at' => $this->ends_at,
             'quantity' => $this->quantity,
+            'revision' => $this->revision,
             'requested_category' => $this->whenLoaded('requestedCategory', fn () => $this->requestedCategory ? [
                 'id' => $this->requestedCategory->id,
                 'name' => $this->requestedCategory->name,

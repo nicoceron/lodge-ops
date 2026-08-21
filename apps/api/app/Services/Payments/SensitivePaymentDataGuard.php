@@ -27,6 +27,10 @@ final class SensitivePaymentDataGuard
                 ]);
             }
 
+            if ($this->isGeneratedHash($path, $text)) {
+                continue;
+            }
+
             if (preg_match('/(?:^|\.)(?:id|[a-z_]+_id|phone|sha256|[a-z_]*(?:checksum|hash))$/i', $path) === 1) {
                 continue;
             }
@@ -88,6 +92,12 @@ final class SensitivePaymentDataGuard
             || preg_match('/(?:exp(?:iry|iration)?|valid\s*(?:thru|through))\s*[:=#-]?\s*(?:0[1-9]|1[0-2])[\/-](?:\d{2}|\d{4})/i', $value) === 1
             || preg_match('/(?<!\d)(?:0[1-9]|1[0-2])\/(?:\d{2}|\d{4})(?!\d)/', $value) === 1
             || preg_match('/(?:track\s*[12]\s*[:=#-]?\s*)?(?:%B|;)[0-9]{12,19}[\^=D]/i', $value) === 1;
+    }
+
+    private function isGeneratedHash(string $path, string $value): bool
+    {
+        return preg_match('/(?:^|\.)(?:document_email_key|command_key)$/i', $path) === 1
+            && preg_match('/\A[0-9a-f]{64}\z/i', $value) === 1;
     }
 
     private function isGeneratedStorageLocator(string $path, string $value): bool

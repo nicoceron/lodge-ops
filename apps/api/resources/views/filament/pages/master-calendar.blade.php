@@ -37,6 +37,61 @@
                     </x-filament::input.wrapper>
                 </label>
                 <label class="space-y-1 text-sm font-medium">
+                    <span>Reservation state</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="reservationState">
+                            <option value="all">All states</option>
+                            @foreach (\App\Enums\ReservationStatus::cases() as $status)
+                                <option value="{{ $status->value }}">{{ str($status->value)->headline() }}</option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Program</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="programId">
+                            <option value="">All programs</option>
+                            @foreach ($programOptions as $programOption)
+                                <option value="{{ $programOption->id }}">{{ $programOption->name }}</option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Stay boundary</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="boundary">
+                            <option value="all">Any overlap</option>
+                            <option value="arrivals">Arrivals</option>
+                            <option value="departures">Departures</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Attention</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="attention">
+                            <option value="all">All records</option>
+                            <option value="unassigned">Unassigned stays</option>
+                            <option value="conflicted">Hard conflicts</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
+                    <span>Housekeeping</span>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model.live="housekeeping">
+                            <option value="all">All readiness</option>
+                            <option value="clean">Clean</option>
+                            <option value="dirty">Dirty</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="inspected">Inspected</option>
+                            <option value="out_of_service">Out of service</option>
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+                <label class="space-y-1 text-sm font-medium">
                     <span>Through</span>
                     <x-filament::input.wrapper>
                         <x-filament::input type="date" wire:model.live="end" />
@@ -135,6 +190,82 @@
                 <div class="mt-1 text-sm text-gray-500">Stays requiring planning attention</div>
             </x-filament::section>
         </div>
+
+        @if ($attentionRows->isNotEmpty())
+            <x-filament::section
+                heading="Shared-resource attention workbench"
+                description="Required and conflicted guide, horse, boat, and vehicle assignments. Recommendations are availability-ranked and every mutation rechecks capacity under lock."
+            >
+                <div class="space-y-3">
+                    @foreach ($attentionRows as $row)
+                        <div class="rounded-xl border border-gray-200 p-4 dark:border-white/10" wire:key="attention-{{ $row['reservation_id'] }}-{{ $row['category_id'] }}">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div class="font-semibold">{{ $row['reference'] }} · {{ $row['category'] }}</div>
+                                    <div class="mt-1 text-sm text-gray-500">Required {{ $row['required'] }} · assigned {{ $row['assigned'] }}</div>
+                                </div>
+                                <x-filament::badge :color="match ($row['attention_state']) { 'conflicted' => 'danger', 'healthy' => 'success', default => 'warning' }">
+                                    {{ str($row['attention_state'])->headline() }}
+                                </x-filament::badge>
+                            </div>
+                            <ol class="mt-3 space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                                @foreach ($row['reasons'] as $reason)<li>{{ $reason }}</li>@endforeach
+                            </ol>
+                            @if ($row['missing'] > 0)
+                                <div class="mt-4 rounded-lg border border-warning-300 bg-warning-50 p-3 dark:border-warning-500/40 dark:bg-warning-950/20" data-testid="missing-slot">
+                                    <div class="text-sm font-semibold text-warning-800 dark:text-warning-200">
+                                        Missing {{ $row['missing'] }} {{ \Illuminate\Support\Str::plural('assignment', $row['missing']) }}
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        @foreach ($row['missing_suggestions'] as $suggestion)
+                                            <button
+                                                type="button"
+                                                class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
+                                                wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $row['missing_allocation_id'] ?? '' }}')"
+                                            >Assign {{ $suggestion['name'] }}</button>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                            <div class="mt-4 space-y-3">
+                                @foreach ($row['assignments'] as $assignment)
+                                    <div class="rounded-lg border border-gray-200 p-3 dark:border-white/10" wire:key="assignment-{{ $assignment['allocation_id'] }}">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-sm font-semibold">{{ $assignment['resource'] }} · quantity {{ $assignment['quantity'] }}</div>
+                                            <x-filament::button
+                                                size="sm"
+                                                color="danger"
+                                                wire:click="releaseAttention('{{ $row['reservation_id'] }}', '{{ $assignment['allocation_id'] }}')"
+                                                wire:confirm="Release this assignment?"
+                                            >Release</x-filament::button>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-2">
+                                            @foreach ($assignment['suggestions'] as $suggestion)
+                                                <button
+                                                    type="button"
+                                                    class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
+                                                    wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $assignment['allocation_id'] }}')"
+                                                >Move to {{ $suggestion['name'] }}</button>
+                                            @endforeach
+                                            @if ($assignment['swap'])
+                                                <x-filament::button
+                                                    size="sm"
+                                                    color="warning"
+                                                    wire:click="swapAttention('{{ $row['reservation_id'] }}', '{{ $assignment['allocation_id'] }}', '{{ $assignment['swap']['resource_id'] }}', '{{ $assignment['swap']['allocation_id'] }}')"
+                                                >Swap assignments</x-filament::button>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            @if ($row['missing'] > 0 && $row['missing_suggestions'] === [])
+                                <div class="mt-3 text-sm text-danger-600">No conflict-free matching resource is currently available.</div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </x-filament::section>
+        @endif
 
         @if ($resourceGroups->isNotEmpty())
             <x-filament::section

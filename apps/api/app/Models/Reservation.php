@@ -50,6 +50,7 @@ use LogicException;
  * @property-read Collection<int, ReservationChange> $changes
  * @property-read Collection<int, GeneratedDocument> $generatedDocuments
  * @property-read Collection<int, GuestPortalProfile> $guestPortalProfiles
+ * @property-read Collection<int, Guest> $guests
  */
 class Reservation extends TenantModel
 {
@@ -116,11 +117,13 @@ class Reservation extends TenantModel
         return $this->belongsTo(Guest::class, 'primary_guest_id');
     }
 
+    /** @return BelongsToMany<Guest, $this, ReservationGuest, 'pivot'> */
     public function guests(): BelongsToMany
     {
         return $this->belongsToMany(Guest::class, 'reservation_guests')
             ->using(ReservationGuest::class)
-            ->withPivot(['id', 'tenant_id', 'role'])
+            ->withPivot(['id', 'tenant_id', 'role', 'sort_order', 'operational_preferences'])
+            ->orderByPivot('sort_order')
             ->withTimestamps();
     }
 
@@ -222,6 +225,12 @@ class Reservation extends TenantModel
     public function guestPortalAcknowledgements(): HasMany
     {
         return $this->hasMany(GuestPortalAcknowledgement::class);
+    }
+
+    /** @return HasMany<ReservationChecklistException, $this> */
+    public function checklistExceptions(): HasMany
+    {
+        return $this->hasMany(ReservationChecklistException::class)->orderBy('sort_order');
     }
 
     public function guestPaymentEvidence(): HasMany
