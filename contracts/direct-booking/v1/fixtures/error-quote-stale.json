@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "quote_stale",
+    "message": "The authoritative quote has expired and must be refreshed.",
+    "correlation_id": "contract-fixture-40900003",
+    "retryable": true
+  }
+}

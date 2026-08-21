@@ -56,6 +56,24 @@ class DirectBookingSchemaTest extends TestCase
             'state' => 'draft', 'title' => 'Wrong kind', 'checksum' => str_repeat('f', 64),
             'created_at' => now(), 'updated_at' => now(),
         ]));
+        foreach (['category', 'program'] as $kind) {
+            $this->assertRejected(fn () => DB::table('direct_booking_publications')->insert([
+                'id' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'property_id' => $property->id,
+                'public_item_id' => null, 'kind' => $kind, 'locale' => 'en', 'version' => 1,
+                'state' => 'draft', 'title' => 'Missing item', 'checksum' => str_repeat('e', 64),
+                'created_at' => now(), 'updated_at' => now(),
+            ]));
+        }
+        try {
+            DirectBookingPublication::query()->create([
+                'property_id' => $property->id, 'public_item_id' => null,
+                'kind' => DirectBookingPublicationKind::Category, 'locale' => 'en', 'version' => 1,
+                'state' => DirectBookingPublicationState::Draft, 'title' => 'Missing item',
+            ]);
+            $this->fail('The model must reject category copy without a public item.');
+        } catch (\LogicException) {
+            $this->addToAssertionCount(1);
+        }
         $this->assertRejected(fn () => DB::table('direct_booking_public_items')->insert([
             'id' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'property_id' => $property->id,
             'kind' => 'category', 'resource_category_id' => $category->id, 'program_id' => null,

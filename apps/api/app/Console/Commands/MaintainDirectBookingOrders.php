@@ -91,10 +91,22 @@ class MaintainDirectBookingOrders extends Command
             ->orderBy('id')->limit((int) $this->option('batch'))->get()
             ->each(function (DirectBookingOrder $order) use ($states, &$count): void {
                 DB::transaction(function () use ($order, $states, &$count): void {
-                    $this->cleanOrDeferProvisionalGuest($order);
+                    $locked = DirectBookingOrder::query()->lockForUpdate()->find($order->id);
+                    if ($locked === null
+                        || ! in_array($locked->state, [
+                            DirectBookingOrderState::Expired,
+                            DirectBookingOrderState::Confirmed,
+                            DirectBookingOrderState::Canceled,
+                            DirectBookingOrderState::Refunded,
+                        ], true)
+                        || $locked->retained_until->isFuture()
+                        || $locked->pii_scrubbed_at !== null) {
+                        return;
+                    }
+                    $this->cleanOrDeferProvisionalGuest($locked);
                     $result = $states->recordPiiScrubbed(
-                        $order,
-                        'cleanup:'.$order->public_reference.':'.$order->state_version,
+                        $locked,
+                        'cleanup:'.$locked->public_reference.':'.$locked->state_version,
                     );
                     DB::table('direct_booking_order_consents')
                         ->where('direct_booking_order_id', $result->order->id)
@@ -111,8 +123,10 @@ class MaintainDirectBookingOrders extends Command
         if ($order->state !== DirectBookingOrderState::Expired || $order->reservation_id === null) {
             return;
         }
-        $reservation = $order->reservation()->with('primaryGuest')->lockForUpdate()->first();
-        $guest = $reservation?->primaryGuest;
+        $reservation = $order->reservation()->lockForUpdate()->first();
+        $guest = $reservation?->primary_guest_id === null
+            ? null
+            : Guest::query()->whereKey($reservation->primary_guest_id)->lockForUpdate()->first();
         $abandoned = $reservation !== null
             && $reservation->source === 'direct'
             && ($reservation->status === ReservationStatus::Draft

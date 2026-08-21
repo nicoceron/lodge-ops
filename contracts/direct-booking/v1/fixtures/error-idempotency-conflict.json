@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "idempotency_conflict",
+    "message": "This idempotency key was already used for different request facts.",
+    "correlation_id": "contract-fixture-40900004",
+    "retryable": false
+  }
+}

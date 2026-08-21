@@ -16,6 +16,7 @@ use App\Services\DirectBooking\DirectBookingStateMachine;
 use App\Services\DirectBooking\DirectBookingTokenService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\CreatesTenant;
@@ -105,6 +106,24 @@ class PostgresDirectBookingConcurrencyTest extends TestCase
         $this->cleanupContractFixture($order);
     }
 
+    public function test_expired_recovery_racing_maintenance_never_produces_an_active_scrubbed_order(): void
+    {
+        $this->assertMaintenanceTransitionRace(
+            DirectBookingOrderState::Started,
+            DirectBookingTransitionAuthority::Recovery,
+            'pii-recovery-race-0001',
+        );
+    }
+
+    public function test_late_payment_review_racing_maintenance_never_produces_a_review_scrubbed_order(): void
+    {
+        $this->assertMaintenanceTransitionRace(
+            DirectBookingOrderState::PaidNeedsReview,
+            DirectBookingTransitionAuthority::ProviderLookup,
+            'pii-payment-race-00001',
+        );
+    }
+
     /** @param array<int, callable(): string> $operations @return array<int, array{ok: bool, result?: string, error?: string}> */
     private function concurrently(array $operations, Tenant $tenant, Membership $membership): array
     {
@@ -161,6 +180,63 @@ class PostgresDirectBookingConcurrencyTest extends TestCase
         if (DB::getDriverName() !== 'pgsql' || ! function_exists('pcntl_fork')) {
             $this->markTestSkipped('PostgreSQL with pcntl is required for the direct-booking concurrency gate.');
         }
+    }
+
+    private function assertMaintenanceTransitionRace(
+        DirectBookingOrderState $target,
+        DirectBookingTransitionAuthority $authority,
+        string $retryIdentity,
+    ): void {
+        $this->requirePostgres();
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $setting = DirectBookingPropertySetting::query()->create([
+            'property_id' => $property->id,
+            'public_slug' => 'pii-race-'.str_replace('_', '-', $target->value),
+            'default_locale' => 'en',
+            'supported_locales' => ['en'],
+            'default_currency' => 'USD',
+            'supported_currencies' => ['USD'],
+        ]);
+        $order = app(DirectBookingTokenService::class)->issue($setting, 'en', 'USD')['order'];
+        $order->forceFill([
+            'state' => DirectBookingOrderState::Expired,
+            'retained_until' => now()->subMinute(),
+            'guest_contact_encrypted' => ['email' => 'race@example.test'],
+            'guest_contact_checksum' => str_repeat('a', 64),
+        ])->save();
+
+        $results = $this->concurrently([
+            fn (): string => (string) Artisan::call('direct-booking:maintain', [
+                '--tenant' => $tenant->id,
+                '--cleanup' => true,
+            ]),
+            fn (): string => app(DirectBookingStateMachine::class)->transition(
+                $order,
+                $target,
+                $authority,
+                1,
+                $retryIdentity,
+            )->order->state->value,
+        ], $tenant, $membership);
+        app(TenantContext::class)->set($tenant, $membership);
+
+        $fresh = $order->fresh();
+        $this->assertFalse(
+            $fresh->state === $target && $fresh->pii_scrubbed_at !== null,
+            json_encode($results, JSON_THROW_ON_ERROR),
+        );
+        if ($fresh->state === $target) {
+            $this->assertNull($fresh->pii_scrubbed_at);
+            $this->assertNotNull($fresh->guest_contact_encrypted);
+            $this->assertTrue($results[1]['ok'], json_encode($results, JSON_THROW_ON_ERROR));
+        } else {
+            $this->assertSame(DirectBookingOrderState::Expired, $fresh->state);
+            $this->assertNotNull($fresh->pii_scrubbed_at);
+            $this->assertFalse($results[1]['ok'], json_encode($results, JSON_THROW_ON_ERROR));
+        }
+
+        DB::table('direct_booking_order_events')->where('direct_booking_order_id', $order->id)->delete();
+        DB::table('direct_booking_orders')->where('id', $order->id)->delete();
     }
 
     private function orderWithQuote(DirectBookingPropertySetting $setting, Property $property): DirectBookingOrder

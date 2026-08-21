@@ -181,7 +181,10 @@ components:
       headers:
         <<: *noStoreHeaders
         Retry-After: { $ref: '#/components/headers/RetryAfter' }
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples: { rate_limited: { $ref: './fixtures/error-rate-limited.json' } }
     BookingUnavailable: { $ref: '#/components/responses/Error503' }
     Error403:
       description: Safe direct-booking error.
@@ -203,7 +206,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
-          examples: { conflict: { $ref: './fixtures/error-conflict.json' } }
+          examples:
+            unavailable: { $ref: './fixtures/error-unavailable.json' }
+            quote_stale: { $ref: './fixtures/error-quote-stale.json' }
+            conflict: { $ref: './fixtures/error-conflict.json' }
+            idempotency_conflict: { $ref: './fixtures/error-idempotency-conflict.json' }
+            payment_pending: { $ref: './fixtures/error-payment-pending.json' }
+            payment_failed: { $ref: './fixtures/error-payment-failed.json' }
+            paid_needs_review: { $ref: './fixtures/error-paid-needs-review.json' }
     Error410:
       description: Safe direct-booking error.
       headers: *noStoreHeaders

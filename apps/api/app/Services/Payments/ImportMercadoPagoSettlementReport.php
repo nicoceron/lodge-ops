@@ -18,11 +18,15 @@ final class ImportMercadoPagoSettlementReport
 {
     private const REPORT_TYPES = ['account_money', 'released_money'];
 
-    public function __construct(private readonly RecordSettlementRevision $settlements) {}
+    public function __construct(
+        private readonly RecordSettlementRevision $settlements,
+        private readonly PaymentConnectionResolver $connections,
+    ) {}
 
     /** @param array<string, bool|int|string|null> $metadata */
     public function handle(IntegrationConnection $connection, string $path, string $reportType, string $providerReportId, bool $isFixture = false, array $metadata = []): int
     {
+        $this->connections->assertAvailable($connection, $connection->tenant_id, $connection->property_id);
         if (! in_array($reportType, self::REPORT_TYPES, true)) {
             throw new DomainException('The settlement report type must be account_money or released_money.');
         }
@@ -38,7 +42,7 @@ final class ImportMercadoPagoSettlementReport
 
         return DB::transaction(function () use ($connection, $path, $reportType, $providerReportId, $isFixture, $metadata, $fileChecksum, $rows): int {
             Tenant::query()->whereKey($connection->tenant_id)->lockForUpdate()->firstOrFail();
-            $identity = ['provider' => 'mercado_pago', 'environment' => (string) data_get($connection->configuration, 'environment'), 'provider_account' => (string) data_get($connection->configuration, 'provider_account'), 'report_type' => $reportType, 'provider_report_id' => $providerReportId];
+            $identity = ['provider' => $connection->provider, 'environment' => $connection->environment, 'provider_account' => $connection->external_account_id, 'report_type' => $reportType, 'provider_report_id' => $providerReportId];
             $previous = SettlementReportImport::query()->where($identity)->orderByDesc('revision')->first();
             $existing = SettlementReportImport::query()->where($identity)->where('file_checksum', $fileChecksum)->first();
             if ($existing !== null) {
@@ -204,8 +208,8 @@ final class ImportMercadoPagoSettlementReport
             return [null, 'unmatched'];
         }
         $attempt = PaymentAttempt::query()->where('integration_connection_id', $connection->id)
-            ->where('provider', 'mercado_pago')->where('environment', data_get($connection->configuration, 'environment'))
-            ->where('provider_account', data_get($connection->configuration, 'provider_account'))->where('provider_payment_id', $sourceId)->first();
+            ->where('provider', $connection->provider)->where('environment', $connection->environment)
+            ->where('provider_account', $connection->external_account_id)->where('provider_payment_id', $sourceId)->first();
         if ($attempt === null) {
             return [null, 'unmatched'];
         }

@@ -32,6 +32,12 @@ class DirectBookingPublication extends TenantModel
     protected static function booted(): void
     {
         static::saving(function (self $publication): void {
+            if ($publication->public_item_id === null && in_array($publication->kind, [
+                DirectBookingPublicationKind::Category,
+                DirectBookingPublicationKind::Program,
+            ], true)) {
+                throw new LogicException('Category and program copy must identify its public item.');
+            }
             if ($publication->public_item_id !== null) {
                 $item = DirectBookingPublicItem::query()
                     ->whereKey($publication->public_item_id)

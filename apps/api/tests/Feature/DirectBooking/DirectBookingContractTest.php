@@ -521,6 +521,32 @@ class DirectBookingContractTest extends TestCase
         $this->assertDatabaseHas('direct_booking_order_events', ['direct_booking_order_id' => $scrubbed->id, 'event_type' => 'pii_scrubbed']);
     }
 
+    public function test_pii_scrub_event_independently_rejects_an_ineligible_or_already_scrubbed_order(): void
+    {
+        [, $property] = $this->tenantEnvironment();
+        $issued = app(DirectBookingTokenService::class)->issue($this->setting($property->id), 'en', 'USD');
+        $issued['order']->forceFill(['retained_until' => now()->subMinute()])->save();
+
+        try {
+            app(DirectBookingStateMachine::class)->recordPiiScrubbed($issued['order'], 'ineligible-pii-scrub-0001');
+            $this->fail('An active order must not be scrubbed even when passed directly to the state machine.');
+        } catch (DirectBookingContractException $exception) {
+            $this->assertSame(DirectBookingErrorCode::Conflict, $exception->errorCode);
+        }
+        $this->assertNull($issued['order']->fresh()->pii_scrubbed_at);
+
+        $issued['order']->forceFill(['state' => DirectBookingOrderState::Expired])->save();
+        $scrubbed = app(DirectBookingStateMachine::class)->recordPiiScrubbed($issued['order'], 'eligible-pii-scrub-0001');
+        $this->assertNotNull($scrubbed->order->pii_scrubbed_at);
+        try {
+            app(DirectBookingStateMachine::class)->recordPiiScrubbed($issued['order'], 'second-pii-scrub-00001');
+            $this->fail('A scrubbed order must not accept a second maintenance event under another retry identity.');
+        } catch (DirectBookingContractException $exception) {
+            $this->assertSame(DirectBookingErrorCode::Conflict, $exception->errorCode);
+        }
+        $this->assertSame(1, $issued['order']->events()->where('event_type', 'pii_scrubbed')->count());
+    }
+
     public function test_pii_maintenance_preserves_confirmation_time_and_scrubs_already_revoked_rows(): void
     {
         [, $property] = $this->tenantEnvironment();

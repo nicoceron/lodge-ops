@@ -51,3 +51,9 @@ Schedule::command('direct-booking:maintain --batch=100 --cleanup')
     ->dailyAt('03:10')
     ->withoutOverlapping(60)
     ->onOneServer();
+
+Schedule::command('integrations:heartbeat')
+    ->name('integrations:heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer();

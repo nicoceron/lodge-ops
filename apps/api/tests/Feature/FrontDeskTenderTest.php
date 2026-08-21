@@ -324,8 +324,12 @@ class FrontDeskTenderTest extends TestCase
         $this->tenantEnvironment(MembershipRole::Finance);
         app(SensitivePaymentDataGuard::class)->assertSafe(['phone' => '+4477009000007']);
         app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => hash('sha256', 'safe-machine-key')]);
+        app(SensitivePaymentDataGuard::class)->assertSafe(['price_snapshot' => json_encode(['amount_minor' => 14_000, 'tax_minor' => 2_000], JSON_THROW_ON_ERROR)]);
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'storage_path' => 'guest-payment-evidence/00000000-0000-4000-8000-000000abcd05/20260000-0000-4000-8000-000000000000/receipt.pdf',
+        ]);
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'reference' => 'deposit_overdue_00000000-0000-4000-8000-000000abcd05',
         ]);
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'price_snapshot' => json_encode([
@@ -333,7 +337,16 @@ class FrontDeskTenderTest extends TestCase
                 'checksum' => str_repeat('4111', 16),
             ], JSON_THROW_ON_ERROR),
         ]);
-        $this->addToAssertionCount(4);
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'storage_path' => 'guest-payment-evidence/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.pdf',
+        ]);
+        $this->addToAssertionCount(7);
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(['storage_path' => 'payment-evidence/synthetic/4111111111111111.pdf']);
+            $this->fail('Only generated storage locator grammars may bypass PAN detection.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payload.storage_path', $exception->errors());
+        }
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe([
                 'price_snapshot' => json_encode(['guest_note' => '4111 1111 1111 1111'], JSON_THROW_ON_ERROR),
@@ -341,6 +354,12 @@ class FrontDeskTenderTest extends TestCase
             $this->fail('Nested JSON guest content must still be scanned for PAN data.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payload.price_snapshot.guest_note', $exception->errors());
+        }
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(['metadata' => json_encode(['note' => '4111 1111 1111 1111'], JSON_THROW_ON_ERROR)]);
+            $this->fail('Nested JSON strings must not bypass PAN detection.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payload.metadata.note', $exception->errors());
         }
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe(['deduplication_key' => '1234567890128']);

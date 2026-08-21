@@ -6,9 +6,28 @@ $fixtures = __DIR__.'/fixtures';
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = $_GET['fixture_state'] ?? null;
+$error = $_GET['fixture_error'] ?? null;
 
 header('Content-Type: application/json');
 header('X-Correlation-ID: direct-booking-mock-0001');
+
+if ($error !== null) {
+    header('Cache-Control: no-store, private');
+    $manifest = json_decode((string) file_get_contents($fixtures.'/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+    $catalog = json_decode((string) file_get_contents($fixtures.'/errors.json'), true, flags: JSON_THROW_ON_ERROR);
+    $fixture = $manifest['error_fixtures'][$error] ?? null;
+    if ($fixture === null || ! isset($catalog[$error])) {
+        http_response_code(404);
+        readfile($fixtures.'/error-not-found.json');
+        return;
+    }
+    http_response_code((int) $catalog[$error]['status']);
+    if ($error === 'rate_limited') {
+        header('Retry-After: 60');
+    }
+    readfile($fixtures.'/'.$fixture);
+    return;
+}
 
 if ($state !== null) {
     header('Cache-Control: no-store, private');

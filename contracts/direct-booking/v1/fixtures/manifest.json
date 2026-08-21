@@ -12,5 +12,20 @@
     "confirmation": "confirmation.json"
   },
   "state_catalog": "order-states.json",
-  "error_catalog": "errors.json"
+  "error_catalog": "errors.json",
+  "error_fixtures": {
+    "validation_error": "error-validation.json",
+    "unavailable": "error-unavailable.json",
+    "quote_stale": "error-quote-stale.json",
+    "hold_expired": "error-hold-expired.json",
+    "conflict": "error-conflict.json",
+    "idempotency_conflict": "error-idempotency-conflict.json",
+    "rate_limited": "error-rate-limited.json",
+    "bot_rejected": "error-bot-rejected.json",
+    "payment_pending": "error-payment-pending.json",
+    "payment_failed": "error-payment-failed.json",
+    "paid_needs_review": "error-paid-needs-review.json",
+    "not_found": "error-not-found.json",
+    "booking_unavailable": "error-booking-unavailable.json"
+  }
 }

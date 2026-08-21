@@ -19,6 +19,7 @@ use App\Models\StockMovement;
 use App\Services\FinancialReportingService;
 use App\Services\GuestMergeService;
 use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\IntegrationConfigurationPolicy;
 use App\Services\OpportunityService;
 use App\Services\RetailPostingService;
 use App\Support\Tenancy\TenantContext;
@@ -191,7 +192,19 @@ class ExtendedOperationsController extends Controller
     {
         abort_unless($context->membership()?->role->canManageConfiguration(), 403);
 
-        return response()->json(['data' => IntegrationConnection::query()->orderBy('type')->get()->makeHidden('secret_reference')]);
+        $query = IntegrationConnection::query()->orderBy('type');
+        if ($context->propertyScopeId() !== null) {
+            $query->where('property_id', $context->propertyScopeId());
+        }
+
+        $configuration = app(IntegrationConfigurationPolicy::class);
+
+        return response()->json(['data' => $query->get()->map(function (IntegrationConnection $connection) use ($configuration): array {
+            $data = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();
+            $data['configuration'] = $configuration->publicView($connection->configuration);
+
+            return $data;
+        })]);
     }
 
     public function configureIntegration(Request $request, TenantContext $context, IntegrationConnectionService $service): JsonResponse
@@ -202,10 +215,35 @@ class ExtendedOperationsController extends Controller
             'type' => ['required', Rule::in(array_keys(IntegrationConnection::TYPES))],
             'configuration' => ['sometimes', 'array'],
             'secret_reference' => ['nullable', 'string', 'max:500'],
+            'property_id' => ['nullable', 'uuid'],
+            'provider' => ['sometimes', 'string', 'max:80'],
+            'product' => ['sometimes', 'string', 'max:80'],
+            'external_account_id' => ['sometimes', 'string', 'max:160'],
+            'environment' => ['sometimes', Rule::in(['sandbox', 'production', 'test'])],
+            'capabilities' => ['sometimes', 'array'],
+            'capabilities.*' => ['string', Rule::in(['payment.hosted_checkout', 'reservations.import', 'accounting.journal_export', 'webhook.inbound', 'webhook.outbound'])],
         ]);
-        $connection = $service->configure($data['name'], $data['type'], $data['configuration'] ?? [], $data['secret_reference'] ?? null);
+        $propertyId = $data['property_id'] ?? $context->propertyScopeId();
+        if ($context->propertyScopeId() !== null && $propertyId !== $context->propertyScopeId()) {
+            abort(403, 'The integration connection must remain in your property scope.');
+        }
+        $connection = $service->configure(
+            $data['name'],
+            $data['type'],
+            $data['configuration'] ?? [],
+            $data['secret_reference'] ?? null,
+            $propertyId,
+            $data['provider'] ?? null,
+            $data['product'] ?? null,
+            $data['external_account_id'] ?? null,
+            $data['environment'] ?? null,
+            $data['capabilities'] ?? [],
+        );
 
-        return response()->json(['data' => $connection->makeHidden('secret_reference')], 200);
+        $response = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();
+        $response['configuration'] = app(IntegrationConfigurationPolicy::class)->publicView($connection->configuration);
+
+        return response()->json(['data' => $response], 200);
     }
 
     public function organizations(TenantContext $context): JsonResponse

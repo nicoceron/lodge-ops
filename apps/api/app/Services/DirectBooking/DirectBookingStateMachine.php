@@ -57,6 +57,9 @@ final class DirectBookingStateMachine
             if ($locked->state_version !== $expectedVersion) {
                 throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'The booking state version changed. Refresh status before retrying.');
             }
+            if ($locked->pii_scrubbed_at !== null && $to !== $locked->state) {
+                throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'The retained booking session has already been closed.');
+            }
             if (! $this->authorized($locked->state, $to, $authority)) {
                 throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'The requested booking transition is not authorized from the current state.');
             }
@@ -157,6 +160,14 @@ final class DirectBookingStateMachine
                 }
 
                 return new DirectBookingTransitionResult($locked, $existing, true);
+            }
+            if (! in_array($locked->state, [
+                DirectBookingOrderState::Expired,
+                DirectBookingOrderState::Confirmed,
+                DirectBookingOrderState::Canceled,
+                DirectBookingOrderState::Refunded,
+            ], true) || $locked->retained_until->isFuture() || $locked->pii_scrubbed_at !== null) {
+                throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'The booking order is not eligible for PII retention cleanup.');
             }
 
             $nextVersion = $locked->state_version + 1;

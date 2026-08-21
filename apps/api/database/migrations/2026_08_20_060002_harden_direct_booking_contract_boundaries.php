@@ -116,13 +116,13 @@ return new class extends Migration
             DB::unprepared(<<<'SQL'
 CREATE OR REPLACE FUNCTION direct_booking_publication_item_kind_guard() RETURNS trigger AS $$
 BEGIN
-    IF NEW.public_item_id IS NOT NULL AND NOT EXISTS (
+    IF (NEW.kind IN ('category', 'program') AND NEW.public_item_id IS NULL) OR (NEW.public_item_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM direct_booking_public_items item
         WHERE item.id = NEW.public_item_id
           AND item.tenant_id = NEW.tenant_id
           AND item.property_id = NEW.property_id
           AND ((item.kind = 'category' AND NEW.kind = 'category') OR (item.kind = 'program' AND NEW.kind = 'program'))
-    ) THEN
+    )) THEN
         RAISE EXCEPTION 'direct-booking publication kind does not match its public item' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
@@ -190,8 +190,8 @@ SQL);
         return [
             'direct_booking_items_property_insert' => "BEFORE INSERT ON direct_booking_public_items BEGIN SELECT RAISE(ABORT, 'cross-property public item subject') WHERE (NEW.resource_category_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource_categories s WHERE s.id = NEW.resource_category_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id)) OR (NEW.program_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM programs s WHERE s.id = NEW.program_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id)); END",
             'direct_booking_items_property_update' => "BEFORE UPDATE OF tenant_id, property_id, resource_category_id, program_id ON direct_booking_public_items BEGIN SELECT RAISE(ABORT, 'cross-property public item subject') WHERE (NEW.resource_category_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource_categories s WHERE s.id = NEW.resource_category_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id)) OR (NEW.program_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM programs s WHERE s.id = NEW.program_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id)); END",
-            'direct_booking_publications_property_insert' => "BEFORE INSERT ON direct_booking_publications BEGIN SELECT RAISE(ABORT, 'invalid public item publication boundary or kind') WHERE NEW.public_item_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_public_items s WHERE s.id = NEW.public_item_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id AND ((s.kind = 'category' AND NEW.kind = 'category') OR (s.kind = 'program' AND NEW.kind = 'program'))); END",
-            'direct_booking_publications_property_update' => "BEFORE UPDATE OF tenant_id, property_id, public_item_id, kind ON direct_booking_publications BEGIN SELECT RAISE(ABORT, 'invalid public item publication boundary or kind') WHERE NEW.public_item_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_public_items s WHERE s.id = NEW.public_item_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id AND ((s.kind = 'category' AND NEW.kind = 'category') OR (s.kind = 'program' AND NEW.kind = 'program'))); END",
+            'direct_booking_publications_property_insert' => "BEFORE INSERT ON direct_booking_publications BEGIN SELECT RAISE(ABORT, 'invalid public item publication boundary or kind') WHERE (NEW.kind IN ('category', 'program') AND NEW.public_item_id IS NULL) OR (NEW.public_item_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_public_items s WHERE s.id = NEW.public_item_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id AND ((s.kind = 'category' AND NEW.kind = 'category') OR (s.kind = 'program' AND NEW.kind = 'program')))); END",
+            'direct_booking_publications_property_update' => "BEFORE UPDATE OF tenant_id, property_id, public_item_id, kind ON direct_booking_publications BEGIN SELECT RAISE(ABORT, 'invalid public item publication boundary or kind') WHERE (NEW.kind IN ('category', 'program') AND NEW.public_item_id IS NULL) OR (NEW.public_item_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_public_items s WHERE s.id = NEW.public_item_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id AND ((s.kind = 'category' AND NEW.kind = 'category') OR (s.kind = 'program' AND NEW.kind = 'program')))); END",
             'direct_booking_capabilities_property_insert' => "BEFORE INSERT ON direct_booking_payment_capabilities BEGIN SELECT RAISE(ABORT, 'cross-property payment instructions') WHERE NEW.instructions_publication_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_publications s WHERE s.id = NEW.instructions_publication_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id); END",
             'direct_booking_capabilities_property_update' => "BEFORE UPDATE OF tenant_id, property_id, instructions_publication_id ON direct_booking_payment_capabilities BEGIN SELECT RAISE(ABORT, 'cross-property payment instructions') WHERE NEW.instructions_publication_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM direct_booking_publications s WHERE s.id = NEW.instructions_publication_id AND s.tenant_id = NEW.tenant_id AND s.property_id = NEW.property_id); END",
             'direct_booking_orders_property_insert' => $this->sqliteOrderBoundary('INSERT'),

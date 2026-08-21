@@ -17,7 +17,10 @@ final class SensitivePaymentDataGuard
     {
         $resolvedFields = array_values(array_unique([...$this->scopedLuhnFalsePositiveFields, ...$this->validateResolutionFields($luhnFalsePositiveFields)]));
         foreach ($this->strings($value, $field) as [$path, $text]) {
-            $withoutUuids = preg_replace('/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i', '', $text) ?? $text;
+            if ($this->isGeneratedStorageLocator($path, $text)) {
+                continue;
+            }
+            $withoutUuids = preg_replace('/(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![0-9a-f])/i', '', $text) ?? $text;
             if ($this->containsSensitiveAuthenticationData($withoutUuids)) {
                 throw ValidationException::withMessages([
                     $path => 'Do not store card verification codes, PINs, expiry data, or magnetic-stripe/chip track data in Inn.',
@@ -27,7 +30,7 @@ final class SensitivePaymentDataGuard
             if (preg_match('/(?:^|\.)(?:id|[a-z_]+_id|phone|sha256|[a-z_]*(?:checksum|hash))$/i', $path) === 1) {
                 continue;
             }
-            if (preg_match('/(?:^|\.)deduplication_key$/i', $path) === 1 && preg_match('/\A[0-9a-f]{64}\z/i', $text) === 1) {
+            if (preg_match('/(?:^|\.)(?:deduplication|idempotency)_key$/i', $path) === 1 && preg_match('/\A[0-9a-f]{64}\z/i', $text) === 1) {
                 continue;
             }
             preg_match_all('/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/', $withoutUuids, $matches);
@@ -85,6 +88,17 @@ final class SensitivePaymentDataGuard
             || preg_match('/(?:exp(?:iry|iration)?|valid\s*(?:thru|through))\s*[:=#-]?\s*(?:0[1-9]|1[0-2])[\/-](?:\d{2}|\d{4})/i', $value) === 1
             || preg_match('/(?<!\d)(?:0[1-9]|1[0-2])\/(?:\d{2}|\d{4})(?!\d)/', $value) === 1
             || preg_match('/(?:track\s*[12]\s*[:=#-]?\s*)?(?:%B|;)[0-9]{12,19}[\^=D]/i', $value) === 1;
+    }
+
+    private function isGeneratedStorageLocator(string $path, string $value): bool
+    {
+        if (preg_match('/(?:^|\.)storage_(?:path|key)$/i', $path) !== 1) {
+            return false;
+        }
+        $uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+
+        return preg_match("#\\Aguest-payment-evidence/{$uuid}/{$uuid}/{$uuid}\\.(?:pdf|png|jpe?g)\\z#i", $value) === 1
+            || preg_match("#\\Apayment-evidence/{$uuid}/refunds/{$uuid}/[0-9a-f]{64}\\.(?:pdf|png|jpe?g)\\z#i", $value) === 1;
     }
 
     /** @return iterable<array{string, string}> */

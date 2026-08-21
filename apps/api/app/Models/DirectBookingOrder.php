@@ -24,6 +24,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $checkout_expires_at
  * @property CarbonImmutable|null $held_at
  * @property CarbonImmutable|null $hold_extended_at
+ * @property CarbonImmutable $retained_until
+ * @property CarbonImmutable|null $pii_scrubbed_at
+ * @property CarbonImmutable|null $guest_pii_cleanup_deferred_at
  */
 class DirectBookingOrder extends TenantModel
 {

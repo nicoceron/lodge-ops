@@ -99,8 +99,24 @@ end
 
 manifest = JSON.parse(File.read(File.join(fixtures_path, 'manifest.json')))
 manifest.fetch('screens').each_value do |fixture|
-    abort "Missing screen fixture #{fixture}." unless File.file?(File.join(fixtures_path, fixture))
+  abort "Missing screen fixture #{fixture}." unless File.file?(File.join(fixtures_path, fixture))
 end
+expected_error_fixtures = {
+  'validation_error' => 'error-validation.json',
+  'unavailable' => 'error-unavailable.json',
+  'quote_stale' => 'error-quote-stale.json',
+  'hold_expired' => 'error-hold-expired.json',
+  'conflict' => 'error-conflict.json',
+  'idempotency_conflict' => 'error-idempotency-conflict.json',
+  'rate_limited' => 'error-rate-limited.json',
+  'bot_rejected' => 'error-bot-rejected.json',
+  'payment_pending' => 'error-payment-pending.json',
+  'payment_failed' => 'error-payment-failed.json',
+  'paid_needs_review' => 'error-paid-needs-review.json',
+  'not_found' => 'error-not-found.json',
+  'booking_unavailable' => 'error-booking-unavailable.json'
+}
+abort 'The mock error-fixture manifest must exactly match the frozen error catalog.' unless manifest['error_fixtures'] == expected_error_fixtures
 
 def resolve_schema(root, schema)
   return schema unless schema.is_a?(Hash) && schema['$ref']&.start_with?('#/components/schemas/')
@@ -186,27 +202,50 @@ end
 end
 
 error_examples = {
-  'Error403' => ['error-bot-rejected.json', 403],
-  'Error404' => ['error-not-found.json', 404],
-  'Error409' => ['error-conflict.json', 409],
-  'Error410' => ['error-hold-expired.json', 410],
-  'Error422' => ['error-validation.json', 422],
-  'Error503' => ['error-booking-unavailable.json', 503]
+  'Error403' => { 'bot_rejected' => 'error-bot-rejected.json' },
+  'Error404' => { 'not_found' => 'error-not-found.json' },
+  'Error409' => {
+    'unavailable' => 'error-unavailable.json',
+    'quote_stale' => 'error-quote-stale.json',
+    'conflict' => 'error-conflict.json',
+    'idempotency_conflict' => 'error-idempotency-conflict.json',
+    'payment_pending' => 'error-payment-pending.json',
+    'payment_failed' => 'error-payment-failed.json',
+    'paid_needs_review' => 'error-paid-needs-review.json'
+  },
+  'Error410' => { 'hold_expired' => 'error-hold-expired.json' },
+  'Error422' => { 'validation_error' => 'error-validation.json' },
+  'RateLimited' => { 'rate_limited' => 'error-rate-limited.json' },
+  'Error503' => { 'booking_unavailable' => 'error-booking-unavailable.json' }
 }
-error_envelopes = error_examples.map do |response_name, (fixture, status)|
+error_response_statuses = {
+  'Error403' => 403,
+  'Error404' => 404,
+  'Error409' => 409,
+  'Error410' => 410,
+  'Error422' => 422,
+  'RateLimited' => 429,
+  'Error503' => 503
+}
+error_envelopes = []
+error_examples.each do |response_name, expected_examples|
   response = direct.dig('components', 'responses', response_name)
   examples = response.dig('content', 'application/json', 'examples') || {}
-  abort "#{response_name} must expose exactly one frozen error example." unless examples.length == 1
-  reference = examples.values.first&.fetch('$ref')
-  abort "#{response_name} must reference its distinct #{fixture} envelope." unless reference == "./fixtures/#{fixture}"
-  envelope = JSON.parse(File.read(File.join(fixtures_path, fixture)))
-  validate_schema!(direct, direct.dig('components', 'schemas', 'ErrorEnvelope'), envelope)
-  fact = error_catalog.fetch(envelope.dig('error', 'code'))
-  abort "#{fixture} status does not match the frozen error catalog." unless fact['status'] == status
-  abort "#{fixture} retryability does not match the frozen error catalog." unless fact['retryable'] == envelope.dig('error', 'retryable')
-  JSON.generate(envelope)
+  actual_examples = examples.transform_values { |example| example.fetch('$ref').delete_prefix('./fixtures/') }
+  abort "#{response_name} examples drifted from the frozen error catalog." unless actual_examples == expected_examples
+  expected_examples.each do |code, fixture|
+    envelope = JSON.parse(File.read(File.join(fixtures_path, fixture)))
+    validate_schema!(direct, direct.dig('components', 'schemas', 'ErrorEnvelope'), envelope)
+    abort "#{fixture} identifies #{envelope.dig('error', 'code')} instead of #{code}." unless envelope.dig('error', 'code') == code
+    fact = error_catalog.fetch(code)
+    abort "#{fixture} status does not match the frozen error catalog." unless fact['status'] == error_response_statuses.fetch(response_name)
+    abort "#{fixture} retryability does not match the frozen error catalog." unless fact['retryable'] == envelope.dig('error', 'retryable')
+    error_envelopes << JSON.generate(envelope)
+  end
 end
-abort 'Every status error example must be a distinct full envelope.' unless error_envelopes.uniq.length == error_envelopes.length
+abort 'Every frozen error needs one schema-valid OpenAPI and mock fixture.' unless error_envelopes.length == errors.length
+abort 'Every frozen error example must be a distinct full envelope.' unless error_envelopes.uniq.length == error_envelopes.length
+abort 'OpenAPI and mock error examples must cover the exact error catalog.' unless error_examples.values.flat_map(&:keys).sort == errors.sort
 
 begun = direct.dig('components', 'schemas', 'OrderBegunEnvelope', 'properties', 'data', 'properties')
 abort 'session_token must be response-only.' unless begun.dig('session_token', 'readOnly') == true && !begun.dig('session_token', 'writeOnly')
@@ -215,6 +254,7 @@ abort 'Turnstile idempotency keys must be UUIDs.' unless main.dig('components', 
 mock = File.read(File.join(root, 'contracts/direct-booking/v1/mock-router.php'))
 abort 'Mock must expose the frozen published cache header.' unless mock.include?('public, max-age=60, stale-while-revalidate=300')
 abort 'Mock must expose Content-Language for published content.' unless mock.include?('Content-Language:')
+abort 'Mock must route every frozen error fixture.' unless mock.include?('fixture_error') && mock.include?("['error_fixtures']")
 
 references = File.read(main_path).scan(%r{\./direct-booking/v1/[^'"# ]+})
 references.each do |reference|
