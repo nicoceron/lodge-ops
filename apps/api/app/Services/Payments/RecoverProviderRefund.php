@@ -57,11 +57,14 @@ final class RecoverProviderRefund
             return $snapshot;
         }
 
+        $payment = Payment::query()->findOrFail($snapshot->payment_id);
+        $attemptId = data_get($payment->metadata, 'payment_attempt_id');
         $attempt = PaymentAttempt::query()
-            ->where('provider', $snapshot->provider)
-            ->where('environment', $snapshot->environment)
-            ->where('provider_account', $snapshot->provider_account)
-            ->where('provider_payment_id', $snapshot->provider_payment_id)
+            ->when(is_string($attemptId), fn ($query) => $query->whereKey($attemptId))
+            ->when(! is_string($attemptId), fn ($query) => $query
+                ->where('provider', $snapshot->provider)
+                ->where('environment', $snapshot->environment)
+                ->where('provider_payment_id', $snapshot->provider_payment_id))
             ->firstOrFail();
         $remote = $this->gateways->for($attempt->integrationConnection)
             ->fetchRefund($snapshot->provider_payment_id, $providerRefundId);

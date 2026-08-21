@@ -10,8 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * contain raw credentials that may never be persisted in plaintext.
  *
  * @property string $idempotency_key
+ * @property string|null $direct_booking_order_id
  * @property string $command
  * @property string $request_checksum
+ * @property string|null $request_token_hash
+ * @property string|null $response_token_hash
  * @property int|null $status_code
  * @property string|null $response_body_encrypted
  * @property array<string, string>|null $response_headers
@@ -36,5 +39,10 @@ class DirectBookingCommandResponse extends TenantModel
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(DirectBookingOrder::class, 'direct_booking_order_id');
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\DirectBookingErrorCode;
 use App\Exceptions\DirectBookingContractException;
 use App\Http\Controllers\Controller;
+use App\Http\Responses\DirectBookingErrorResponse;
 use App\Models\DirectBookingPropertySetting;
 use App\Services\DirectBooking\DirectBookingApiService;
 use Illuminate\Auth\AuthenticationException;
@@ -75,7 +76,7 @@ final class DirectBookingContractController extends Controller
     public function hold(Request $request, string $propertySlug, string $orderReference): JsonResponse
     {
         return $this->execute($request, function () use ($request, $orderReference): array {
-            $this->only($request, ['expected_state_version', 'guest', 'consents', 'turnstile_token', 'turnstile_action']);
+            $this->only($request, ['expected_state_version', 'guest', 'companions', 'consents', 'turnstile_token', 'turnstile_action']);
             $data = $request->validate([
                 'expected_state_version' => ['required', 'integer', 'min:1'],
                 'guest' => ['required', 'array:first_name,last_name,email,phone'],
@@ -83,6 +84,11 @@ final class DirectBookingContractController extends Controller
                 'guest.last_name' => ['nullable', 'string', 'max:100'],
                 'guest.email' => ['required', 'email:rfc', 'max:254'],
                 'guest.phone' => ['nullable', 'string', 'max:40', 'regex:/^\+?[0-9 .()\/\-]{7,40}$/'],
+                'companions' => ['sometimes', 'array', 'max:49'],
+                'companions.*' => ['array:first_name,last_name,guest_type'],
+                'companions.*.first_name' => ['required', 'string', 'max:100'],
+                'companions.*.last_name' => ['nullable', 'string', 'max:100'],
+                'companions.*.guest_type' => ['required', Rule::in(['adult', 'child', 'infant'])],
                 'consents' => ['required', 'array:terms,privacy,cancellation,no_show,marketing_consent'],
                 'consents.terms' => ['required', 'array'],
                 'consents.privacy' => ['required', 'array'],
@@ -197,28 +203,16 @@ final class DirectBookingContractController extends Controller
                 ...($published ? ['Content-Language' => $data['locale'] ?? $this->locale($request)] : []),
             ]);
         } catch (DirectBookingContractException $exception) {
-            return $this->error($correlation, $exception->errorCode, $exception->getMessage(), $exception->httpStatus, retryable: $exception->retryable);
+            return DirectBookingErrorResponse::make($request, $exception->errorCode);
         } catch (ValidationException $exception) {
-            return $this->error($correlation, DirectBookingErrorCode::Validation, 'The request contains invalid booking data.', 422, $exception->errors());
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::Validation, $exception->errors());
         } catch (AuthenticationException) {
-            return $this->error($correlation, DirectBookingErrorCode::NotFound, 'The booking could not be found.', 404);
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::NotFound);
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->error($correlation, DirectBookingErrorCode::BookingUnavailable, 'Direct booking is temporarily unavailable.', 503, retryable: true);
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::BookingUnavailable);
         }
-    }
-
-    /** @param array<string, list<string>>|null $fields */
-    private function error(string $correlation, DirectBookingErrorCode $code, string $message, int $status, ?array $fields = null, bool $retryable = false): JsonResponse
-    {
-        return response()->json(['error' => array_filter([
-            'code' => $code->value,
-            'message' => $message,
-            'correlation_id' => $correlation,
-            'retryable' => $retryable,
-            'fields' => $fields,
-        ], fn ($value) => $value !== null)], $status, ['Cache-Control' => 'no-store, private', 'X-Correlation-ID' => $correlation]);
     }
 
     private function setting(Request $request): DirectBookingPropertySetting

@@ -70,7 +70,7 @@ public_transitions.each do |from, actions|
 end
 
 paths = main.fetch('paths').select { |path, _item| path.start_with?('/direct-booking/') }
-abort "Expected 12 frozen direct-booking paths, found #{paths.length}." unless paths.length == 12
+abort "Expected 13 versioned direct-booking paths, found #{paths.length}." unless paths.length == 13
 paths.each do |path, item|
     operation = item['post']
     next unless operation
@@ -181,12 +181,14 @@ fixture_schemas = {
   'quote.json' => 'QuoteEnvelope',
   'order-held.json' => 'OrderStatusEnvelope',
   'checkout.json' => 'CheckoutEnvelope',
+  'checkout-manual.json' => 'CheckoutEnvelope',
   'evidence-pending.json' => 'OrderStatusEnvelope',
   'confirmation.json' => 'ConfirmationEnvelope'
 }
 fixture_schemas.each do |fixture, schema_name|
   validate_schema!(direct, direct.dig('components', 'schemas', schema_name), JSON.parse(File.read(File.join(fixtures_path, fixture))))
 end
+validate_schema!(direct, direct.dig('components', 'schemas', 'HoldRequest'), JSON.parse(File.read(File.join(fixtures_path, 'hold-request-companions.json'))))
 
 state_schema = direct.dig('components', 'schemas', 'OrderStatusEnvelope')
 state_catalog.each do |state, envelope|

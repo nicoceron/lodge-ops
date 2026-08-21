@@ -7,6 +7,7 @@ $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = $_GET['fixture_state'] ?? null;
 $error = $_GET['fixture_error'] ?? null;
+$paymentMethod = $_GET['fixture_payment_method'] ?? null;
 
 header('Content-Type: application/json');
 header('X-Correlation-ID: direct-booking-mock-0001');
@@ -46,7 +47,7 @@ $fixture = match (true) {
     $method === 'POST' && str_ends_with((string) $path, '/availability') => 'availability.json',
     $method === 'POST' && str_ends_with((string) $path, '/quote') => 'quote.json',
     $method === 'POST' && str_ends_with((string) $path, '/hold') => 'order-held.json',
-    $method === 'POST' && (str_ends_with((string) $path, '/checkout') || str_ends_with((string) $path, '/payments/retry')) => 'checkout.json',
+    $method === 'POST' && (str_ends_with((string) $path, '/checkout') || str_ends_with((string) $path, '/payments/retry')) => $paymentMethod === 'manual_bank_transfer' ? 'checkout-manual.json' : 'checkout.json',
     $method === 'POST' && str_ends_with((string) $path, '/manual-payment-evidence') => 'evidence-pending.json',
     $method === 'POST' && str_ends_with((string) $path, '/recover') => 'order-begun.json',
     $method === 'GET' && str_ends_with((string) $path, '/confirmation') => 'confirmation.json',

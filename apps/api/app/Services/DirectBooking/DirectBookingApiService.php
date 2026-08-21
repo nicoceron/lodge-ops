@@ -12,20 +12,26 @@ use App\Enums\DirectBookingPublicationKind;
 use App\Enums\DirectBookingPublicationState;
 use App\Enums\DirectBookingTransitionAuthority;
 use App\Enums\ReservationStatus;
+use App\Exceptions\AllocationConflictException;
 use App\Exceptions\DirectBookingContractException;
 use App\Models\Allocation;
 use App\Models\BookingQuote;
 use App\Models\Deposit;
 use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingPaymentCapability;
+use App\Models\DirectBookingPaymentInstruction;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\DirectBookingPublication;
 use App\Models\DirectBookingPublicItem;
+use App\Models\DocumentGenerationRequest;
+use App\Models\GeneratedDocument;
+use App\Models\Guest;
 use App\Models\GuestPaymentEvidence;
 use App\Models\PaymentAttempt;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\RatePlan;
+use App\Models\RatePlanService;
 use App\Models\Reservation;
 use App\Services\AvailabilityQuery;
 use App\Services\AvailabilityService;
@@ -62,6 +68,7 @@ final class DirectBookingApiService
         private readonly CanonicalJson $canonical,
         private readonly PaymentEvidenceScanner $evidenceScanner,
         private readonly ResourceSuggestionService $resourceSuggestions,
+        private readonly DirectBookingCommandResponseStore $commandResponses,
     ) {}
 
     /** @return array<string, mixed> */
@@ -159,20 +166,25 @@ final class DirectBookingApiService
         $this->assertReady($setting);
         $this->assertLocaleCurrency($setting, $data['locale'], $data['currency']);
         $this->verifyBot($setting, $data, $request, 'direct_booking_begin', $retryIdentity);
-        $issued = $this->tokens->issue($setting, $data['locale'], $data['currency'], $data['attribution'] ?? [], $request->ip());
-        $order = $issued['order'];
 
-        return [
-            'order_reference' => $order->public_reference,
-            'session_token' => $issued['token'],
-            'recovery_token' => $issued['recovery_token'],
-            'state' => $order->state->value,
-            'state_version' => $order->state_version,
-            'locale' => $order->locale,
-            'currency' => $order->currency,
-            'session_expires_at' => $order->session_expires_at->toIso8601String(),
-            'recovery_expires_at' => $order->recovery_expires_at->toIso8601String(),
-        ];
+        return DB::transaction(function () use ($setting, $data, $request, $retryIdentity): array {
+            $issued = $this->tokens->issue($setting, $data['locale'], $data['currency'], $data['attribution'] ?? [], $request->ip());
+            $order = $issued['order'];
+            $result = [
+                'order_reference' => $order->public_reference,
+                'session_token' => $issued['token'],
+                'recovery_token' => $issued['recovery_token'],
+                'state' => $order->state->value,
+                'state_version' => $order->state_version,
+                'locale' => $order->locale,
+                'currency' => $order->currency,
+                'session_expires_at' => $order->session_expires_at->toIso8601String(),
+                'recovery_expires_at' => $order->recovery_expires_at->toIso8601String(),
+            ];
+            $this->commandResponses->complete($order, $result, 201, $retryIdentity);
+
+            return $result;
+        }, 3);
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -200,48 +212,81 @@ final class DirectBookingApiService
         if ($plan === null) {
             throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, 'The selected stay is unavailable.');
         }
-        if (($data['optional_service_keys'] ?? []) !== []) {
-            throw ValidationException::withMessages(['optional_service_keys' => 'The requested optional service selection is unavailable.']);
+        $optionalServiceKeys = array_values($data['optional_service_keys'] ?? []);
+        $optionalServices = RatePlanService::query()
+            ->where('rate_plan_id', $plan->id)
+            ->where('selection_type', 'optional')->where('is_active', true)
+            ->whereIn('direct_booking_public_key', $optionalServiceKeys)
+            ->whereHas('catalogItem', fn ($query) => $query
+                ->where('is_active', true)->where('currency', $plan->currency))
+            ->get();
+        if ($optionalServices->count() !== count($optionalServiceKeys)) {
+            throw ValidationException::withMessages(['optional_service_keys' => 'A selected optional service is unavailable for this rate plan.']);
         }
         $occupancy = $data['occupancy'];
-        $quote = $this->quotes->create([
-            'property_id' => $setting->property_id,
-            'rate_plan_id' => $plan->id,
-            'resource_category_id' => $category->resource_category_id,
-            'program_id' => $program?->program_id,
-            'starts_at' => $this->localDate($setting, $data['arrival_date']),
-            'ends_at' => $this->localDate($setting, $data['departure_date']),
-            'adults' => $occupancy['adults'],
-            'children' => $occupancy['children'],
-            'infants' => $occupancy['infants'],
-            'voucher_code' => $data['voucher_code'] ?? null,
-            'promotion_session_id' => $order->public_reference,
-        ]);
-        $order->forceFill(['booking_quote_id' => $quote->id])->save();
-        $transition = $this->states->transition(
-            $order,
-            DirectBookingOrderState::Quoted,
-            DirectBookingTransitionAuthority::Pricing,
-            (int) $data['expected_state_version'],
-            'quote:'.$retryIdentity,
+        $this->assertStayAvailable(
+            $setting,
+            $data['arrival_date'],
+            $data['departure_date'],
+            $occupancy,
+            $category->resource_category_id,
         );
 
-        return $this->quoteProjection($transition->order, $quote);
+        return DB::transaction(function () use ($setting, $data, $order, $plan, $category, $program, $occupancy, $optionalServices, $retryIdentity): array {
+            try {
+                $quote = $this->quotes->create([
+                    'property_id' => $setting->property_id,
+                    'rate_plan_id' => $plan->id,
+                    'resource_category_id' => $category->resource_category_id,
+                    'program_id' => $program?->program_id,
+                    'starts_at' => $this->localDate($setting, $data['arrival_date']),
+                    'ends_at' => $this->localDate($setting, $data['departure_date']),
+                    'adults' => $occupancy['adults'],
+                    'children' => $occupancy['children'],
+                    'infants' => $occupancy['infants'],
+                    'optional_services' => $optionalServices->map(fn (RatePlanService $service): array => [
+                        'id' => $service->catalog_item_id,
+                        'quantity' => $service->default_quantity,
+                    ])->values()->all(),
+                    'voucher_code' => $data['voucher_code'] ?? null,
+                    'promotion_session_id' => $order->public_reference,
+                ]);
+            } catch (ValidationException $exception) {
+                $this->throwUnavailableQuote($exception);
+            }
+            $order->forceFill(['booking_quote_id' => $quote->id])->save();
+            $transition = $this->states->transition(
+                $order,
+                DirectBookingOrderState::Quoted,
+                DirectBookingTransitionAuthority::Pricing,
+                (int) $data['expected_state_version'],
+                'quote:'.$retryIdentity,
+            );
+            $result = $this->quoteProjection($transition->order, $quote);
+            $this->commandResponses->complete($transition->order, $result, 200, $retryIdentity);
+
+            return $result;
+        }, 3);
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
     public function hold(DirectBookingPropertySetting $setting, DirectBookingOrder $order, array $data, Request $request, string $retryIdentity): array
     {
         $this->assertReady($setting);
-        if ($order->state !== DirectBookingOrderState::Quoted || $order->state_version !== (int) $data['expected_state_version']) {
+        if ($order->state !== DirectBookingOrderState::Quoted) {
             throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'Refresh the booking before committing the hold.');
+        }
+        if ($order->state_version !== (int) $data['expected_state_version']) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::QuoteStale, DirectBookingErrorCode::QuoteStale->publicMessage());
         }
         $this->verifyBot($setting, $data, $request, 'direct_booking_hold', $retryIdentity);
         $guest = $this->validatedGuest($data['guest']);
+        $companions = $this->validatedCompanions($data['companions'] ?? []);
 
-        return DB::transaction(function () use ($order, $data, $request, $retryIdentity, $guest): array {
+        return DB::transaction(function () use ($setting, $order, $data, $request, $retryIdentity, $guest, $companions): array {
             $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
             $quote = BookingQuote::query()->with('lines')->lockForUpdate()->findOrFail($locked->booking_quote_id);
+            $this->assertCurrentQuote($quote);
             $decisions = [];
             foreach ($data['consents'] as $kind => $decision) {
                 if (in_array($kind, ['terms', 'privacy', 'cancellation', 'no_show'], true)
@@ -260,13 +305,30 @@ final class DirectBookingApiService
                 $decisions[$kind] = ['publication_id' => $publication->id, 'accepted' => (bool) $decision['accepted']];
             }
             $this->consents->record($locked, $decisions, $request->ip());
-            $reservation = $this->commitQuote->handle($quote, null, $guest, source: 'direct');
+            $this->assertCompanionOccupancy($quote, $companions);
+            $companionIds = collect($companions)->map(fn (array $companion): string => Guest::query()->create([
+                'first_name' => $companion['first_name'],
+                'last_name' => $companion['last_name'],
+                'email' => null,
+                'phone' => null,
+                'preferences' => ['direct_booking_guest_type' => $companion['guest_type']],
+            ])->id)->all();
+            try {
+                $reservation = $this->commitQuote->handle($quote, null, $guest, $companionIds, source: 'direct');
+            } catch (ValidationException $exception) {
+                $this->throwUnavailableOrStaleHold($exception);
+            } catch (AllocationConflictException) {
+                throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, DirectBookingErrorCode::Unavailable->publicMessage());
+            }
+            $holdMinutes = max(1, min($setting->initial_hold_minutes, $setting->maximum_hold_minutes));
+            $reservation->forceFill(['hold_expires_at' => now()->addMinutes($holdMinutes)])->save();
             $this->provisionProgramRequirements($reservation);
             $locked->forceFill([
                 'reservation_id' => $reservation->id,
                 'guest_contact_encrypted' => $guest,
                 'guest_contact_checksum' => $this->canonical->checksum($guest),
             ])->save();
+            $this->issuePaymentRequest->provisionHeld($locked, $quote, $reservation);
             $transition = $this->states->transition(
                 $locked,
                 DirectBookingOrderState::Held,
@@ -275,15 +337,16 @@ final class DirectBookingApiService
                 'hold:'.$retryIdentity,
             );
 
-            return $this->statusProjection($transition->order);
+            $result = $this->statusProjection($transition->order);
+            $this->commandResponses->complete($transition->order, $result, 200, $retryIdentity);
+
+            return $result;
         }, 3);
     }
 
     /** @return array<string, mixed> */
     public function status(DirectBookingPropertySetting $setting, DirectBookingOrder $order): array
     {
-        $this->assertReady($setting);
-
         return $this->statusProjection($order->fresh());
     }
 
@@ -299,7 +362,7 @@ final class DirectBookingApiService
             throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, 'The selected payment method is unavailable.');
         }
         if ($method === DirectBookingPaymentMethod::ManualBankTransfer) {
-            $transition = DB::transaction(function () use ($order, $data, $retryIdentity) {
+            return DB::transaction(function () use ($order, $data, $retryIdentity, $method): array {
                 $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
                 $quote = $locked->bookingQuote()->lockForUpdate()->firstOrFail();
                 $reservation = $locked->reservation()->lockForUpdate()->firstOrFail();
@@ -315,16 +378,18 @@ final class DirectBookingApiService
                     'due_at' => now(),
                 ]);
 
-                return $this->states->transition(
+                $transition = $this->states->transition(
                     $locked,
                     DirectBookingOrderState::AwaitingManualPayment,
                     DirectBookingTransitionAuthority::PaymentOrchestrator,
                     (int) $data['expected_state_version'],
                     'manual:'.$retryIdentity,
                 );
-            }, 3);
+                $result = $this->checkoutProjection($transition->order, $method, null);
+                $this->commandResponses->complete($transition->order, $result, 200, $retryIdentity);
 
-            return $this->checkoutProjection($transition->order, $method, null);
+                return $result;
+            }, 3);
         }
 
         $issued = $this->issuePaymentRequest->handle($order, (int) $data['expected_state_version'], 'request:'.$retryIdentity);
@@ -352,7 +417,10 @@ final class DirectBookingApiService
             }
         }
 
-        return $this->checkoutProjection($current, $method, $attempt);
+        $result = $this->checkoutProjection($current, $method, $attempt);
+        $this->commandResponses->complete($current, $result, 200, $retryIdentity);
+
+        return $result;
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -363,21 +431,23 @@ final class DirectBookingApiService
             throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'This payment cannot be retried from its current state.');
         }
         if ($order->state === DirectBookingOrderState::EvidenceRejected) {
-            $transition = DB::transaction(function () use ($order, $data, $retryIdentity) {
+            return DB::transaction(function () use ($order, $data, $retryIdentity): array {
                 $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
                 $reservation = $locked->reservation()->lockForUpdate()->firstOrFail();
                 $this->assertLiveHold($locked, $reservation);
 
-                return $this->states->transition(
+                $transition = $this->states->transition(
                     $locked,
                     DirectBookingOrderState::AwaitingManualPayment,
                     DirectBookingTransitionAuthority::PaymentOrchestrator,
                     (int) $data['expected_state_version'],
                     'retry-manual:'.$retryIdentity,
                 );
-            }, 3);
+                $result = $this->checkoutProjection($transition->order, DirectBookingPaymentMethod::ManualBankTransfer, null);
+                $this->commandResponses->complete($transition->order, $result, 200, $retryIdentity);
 
-            return $this->checkoutProjection($transition->order, DirectBookingPaymentMethod::ManualBankTransfer, null);
+                return $result;
+            }, 3);
         }
 
         $capability = DirectBookingPaymentCapability::query()
@@ -391,7 +461,11 @@ final class DirectBookingApiService
         // Remote checkout creation stays outside the replacement transaction.
         $attempt = $this->providerCheckout->handle($issued['request'], $capability->providerConnection);
 
-        return $this->checkoutProjection($order->fresh(), DirectBookingPaymentMethod::HostedCheckout, $attempt);
+        $current = $order->fresh();
+        $result = $this->checkoutProjection($current, DirectBookingPaymentMethod::HostedCheckout, $attempt);
+        $this->commandResponses->complete($current, $result, 200, $retryIdentity);
+
+        return $result;
     }
 
     /** @return array<string, mixed> */
@@ -402,7 +476,6 @@ final class DirectBookingApiService
         UploadedFile $upload,
         string $retryIdentity,
     ): array {
-        $this->assertReady($setting);
         if ($order->state !== DirectBookingOrderState::AwaitingManualPayment || $order->state_version !== $expectedVersion) {
             throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'Manual evidence is not accepted from the current booking state.');
         }
@@ -465,7 +538,10 @@ final class DirectBookingApiService
                     ['reason_code' => 'private_evidence_accepted'],
                 );
 
-                return $this->statusProjection($transition->order);
+                $result = $this->statusProjection($transition->order);
+                $this->commandResponses->complete($transition->order, $result, 202, $retryIdentity);
+
+                return $result;
             }, 3);
         } catch (\Throwable $exception) {
             Storage::disk('local')->delete($storagePath);
@@ -476,8 +552,6 @@ final class DirectBookingApiService
     /** @return array<string, mixed> */
     public function recover(DirectBookingPropertySetting $setting, string $reference, string $recoveryToken, int $expectedVersion, string $retryIdentity): array
     {
-        $this->assertReady($setting);
-
         return DB::transaction(function () use ($setting, $reference, $recoveryToken, $expectedVersion, $retryIdentity): array {
             $recovered = $this->tokens->recover($recoveryToken, $setting->property_id);
             $order = $recovered['order'];
@@ -493,7 +567,7 @@ final class DirectBookingApiService
                 ['reason_code' => 'session_recovered_for_repricing'],
             );
 
-            return [
+            $result = [
                 'order_reference' => $order->public_reference,
                 'session_token' => $recovered['token'],
                 'recovery_token' => $recovered['recovery_token'],
@@ -504,17 +578,40 @@ final class DirectBookingApiService
                 'session_expires_at' => $transition->order->session_expires_at->toIso8601String(),
                 'recovery_expires_at' => $transition->order->recovery_expires_at->toIso8601String(),
             ];
+            $this->commandResponses->complete($transition->order, $result, 200, $retryIdentity);
+
+            return $result;
         }, 3);
     }
 
     /** @return array<string, mixed> */
     public function confirmation(DirectBookingPropertySetting $setting, DirectBookingOrder $order): array
     {
-        $this->assertReady($setting);
         if ($order->state !== DirectBookingOrderState::Confirmed || $order->reservation_id === null) {
             throw new AuthenticationException;
         }
         $reservation = $order->reservation()->firstOrFail();
+        $basePath = '/api/v1/direct-booking/properties/'.$setting->public_slug.'/orders/'.$order->public_reference.'/confirmation';
+        $documents = DocumentGenerationRequest::query()
+            ->with('generatedDocument')->where('reservation_id', $reservation->id)
+            ->whereIn('kind', ['reservation_confirmation', 'payment_receipt'])->get()
+            ->sortBy('kind')
+            ->unique(fn (DocumentGenerationRequest $request): string => $request->kind->value)
+            ->map(function (DocumentGenerationRequest $request) use ($order, $basePath): array {
+                $document = $request->generatedDocument;
+                $reference = $document instanceof GeneratedDocument
+                    && $document->purged_at === null
+                    && $document->expires_at?->isPast() !== true
+                        ? $this->documentReference($order, $document)
+                        : null;
+
+                return [
+                    'kind' => $request->kind->value,
+                    'status' => $reference === null ? $request->status->value : 'generated',
+                    'document_reference' => $reference,
+                    'download_path' => $reference === null ? null : $basePath.'/documents/'.$reference,
+                ];
+            })->values()->all();
 
         return [
             'order_reference' => $order->public_reference,
@@ -524,7 +621,41 @@ final class DirectBookingApiService
             'departure_date' => $reservation->ends_at->setTimezone($setting->property->timezone)->toDateString(),
             'timezone' => $setting->property->timezone,
             'total' => ['amount_minor' => $reservation->total_minor, 'currency' => $reservation->currency],
+            'documents' => $documents,
+            'links' => [
+                'self_path' => $basePath,
+                'guest_portal' => [
+                    'status' => 'invitation_required',
+                    'entry_path' => '/guest/stay',
+                ],
+            ],
         ];
+    }
+
+    public function confirmationDocument(
+        DirectBookingPropertySetting $setting,
+        DirectBookingOrder $order,
+        string $documentReference,
+    ): GeneratedDocument {
+        if ($order->property_id !== $setting->property_id
+            || $order->state !== DirectBookingOrderState::Confirmed
+            || $order->reservation_id === null) {
+            throw new AuthenticationException;
+        }
+
+        $documents = GeneratedDocument::query()
+            ->where('reservation_id', $order->reservation_id)
+            ->whereIn('kind', ['reservation_confirmation', 'payment_receipt'])
+            ->whereNull('purged_at')
+            ->get();
+        foreach ($documents as $document) {
+            if ($document->expires_at?->isPast() !== true
+                && hash_equals($this->documentReference($order, $document), $documentReference)) {
+                return $document;
+            }
+        }
+
+        throw new AuthenticationException;
     }
 
     public function resolveOrder(DirectBookingPropertySetting $setting, string $reference, ?string $bearer): DirectBookingOrder
@@ -575,6 +706,12 @@ final class DirectBookingApiService
                 'version' => $policy->version,
                 'checksum' => $policy->checksum,
             ])->values()->all(),
+            'optional_services' => $quote->ratePlan->services
+                ->where('selection_type', 'optional')->where('is_active', true)
+                ->filter(fn (RatePlanService $service): bool => $service->catalogItem->is_active
+                    && $service->catalogItem->currency === $quote->currency)
+                ->map(fn (RatePlanService $service): array => $this->safeProjection->optionalService($service, $quote->currency))
+                ->values()->all(),
         ];
     }
 
@@ -616,7 +753,7 @@ final class DirectBookingApiService
     /** @return array<string, mixed> */
     private function checkoutProjection(DirectBookingOrder $order, DirectBookingPaymentMethod $method, ?PaymentAttempt $attempt): array
     {
-        return [
+        $projection = [
             'order_reference' => $order->public_reference,
             'state' => $order->state->value,
             'state_version' => $order->state_version,
@@ -625,12 +762,136 @@ final class DirectBookingApiService
             'hold_expires_at' => $order->hold_expires_at->toIso8601String(),
             'checkout_expires_at' => ($order->checkout_expires_at ?? $order->hold_expires_at)->toIso8601String(),
         ];
+
+        if ($method === DirectBookingPaymentMethod::ManualBankTransfer) {
+            $projection['manual_payment_instructions'] = $this->manualPaymentInstructions($order);
+        }
+
+        return $projection;
+    }
+
+    /** @return array{locale: string, currency: string, title: string, body: string, version: int, checksum: string} */
+    private function manualPaymentInstructions(DirectBookingOrder $order): array
+    {
+        $instruction = DirectBookingPaymentInstruction::query()
+            ->where('property_id', $order->property_id)
+            ->where('locale', $order->locale)
+            ->whereHas('capability', fn ($query) => $query
+                ->where('property_id', $order->property_id)
+                ->where('currency', $order->currency)
+                ->where('method', DirectBookingPaymentMethod::ManualBankTransfer)
+                ->where('is_enabled', true))
+            ->whereHas('publication', fn ($query) => $query
+                ->where('property_id', $order->property_id)
+                ->where('locale', $order->locale)
+                ->where('kind', DirectBookingPublicationKind::BankTransferInstructions)
+                ->where('state', DirectBookingPublicationState::Published)
+                ->where(fn ($effective) => $effective->whereNull('effective_at')->orWhere('effective_at', '<=', now())))
+            ->with('publication')
+            ->first();
+        $publication = $instruction?->publication;
+        if ($publication === null || blank($publication->title) || blank($publication->body)) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::BookingUnavailable, DirectBookingErrorCode::BookingUnavailable->publicMessage());
+        }
+
+        return [
+            'locale' => $order->locale,
+            'currency' => $order->currency,
+            'title' => $publication->title,
+            'body' => $publication->body,
+            'version' => $publication->version,
+            'checksum' => $publication->checksum,
+        ];
+    }
+
+    private function documentReference(DirectBookingOrder $order, GeneratedDocument $document): string
+    {
+        return hash_hmac('sha256', $order->id.'|'.$document->id, (string) config('app.key'));
+    }
+
+    /** @param list<array<string, mixed>> $companions @return list<array{first_name: string, last_name: string|null, guest_type: string}> */
+    private function validatedCompanions(array $companions): array
+    {
+        return collect($companions)->map(fn (array $companion): array => [
+            'first_name' => trim((string) $companion['first_name']),
+            'last_name' => trim((string) ($companion['last_name'] ?? '')) ?: null,
+            'guest_type' => (string) $companion['guest_type'],
+        ])->values()->all();
+    }
+
+    /** @param list<array{first_name: string, last_name: string|null, guest_type: string}> $companions */
+    private function assertCompanionOccupancy(BookingQuote $quote, array $companions): void
+    {
+        if ($companions === []) {
+            return;
+        }
+        $actual = collect($companions)->countBy('guest_type');
+        $expected = [
+            'adult' => max(0, $quote->adults - 1),
+            'child' => $quote->children,
+            'infant' => $quote->infants,
+        ];
+        foreach ($expected as $type => $count) {
+            if (($actual[$type] ?? 0) !== $count) {
+                throw ValidationException::withMessages([
+                    'companions' => 'Companion types must exactly match the quoted occupancy when companion details are supplied.',
+                ]);
+            }
+        }
     }
 
     private function assertReady(DirectBookingPropertySetting $setting): void
     {
         if (! $this->readiness->evaluate($setting)->ready) {
             throw new DirectBookingContractException(DirectBookingErrorCode::BookingUnavailable, 'Direct booking is temporarily unavailable.', 503);
+        }
+    }
+
+    /** @param array{adults: int, children: int, infants: int} $occupancy */
+    private function assertStayAvailable(
+        DirectBookingPropertySetting $setting,
+        string $arrivalDate,
+        string $departureDate,
+        array $occupancy,
+        string $categoryId,
+    ): void {
+        $party = (int) $occupancy['adults'] + (int) $occupancy['children'];
+        $result = $this->availability->forStay(
+            $setting->property_id,
+            $this->localDate($setting, $arrivalDate),
+            $this->localDate($setting, $departureDate),
+            $party,
+            $categoryId,
+        );
+        if (! (bool) data_get(collect($result['categories'])->firstWhere('id', $categoryId), 'available')) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, DirectBookingErrorCode::Unavailable->publicMessage());
+        }
+    }
+
+    private function throwUnavailableQuote(ValidationException $exception): never
+    {
+        $fields = array_keys($exception->errors());
+        if (array_intersect($fields, ['resource_category_id', 'resource_id', 'rate_plan_id', 'program_id', 'adults', 'ends_at']) !== []) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, DirectBookingErrorCode::Unavailable->publicMessage());
+        }
+
+        throw $exception;
+    }
+
+    private function throwUnavailableOrStaleHold(ValidationException $exception): never
+    {
+        $messages = collect($exception->errors())->flatten()->implode(' ');
+        if (str_contains($messages, 'expired') || str_contains($messages, 'integrity')) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::QuoteStale, DirectBookingErrorCode::QuoteStale->publicMessage());
+        }
+
+        throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, DirectBookingErrorCode::Unavailable->publicMessage());
+    }
+
+    private function assertCurrentQuote(BookingQuote $quote): void
+    {
+        if (! $quote->expires_at->isFuture() || ! hash_equals($quote->checksum, $this->quotes->checksumFor($quote))) {
+            throw new DirectBookingContractException(DirectBookingErrorCode::QuoteStale, DirectBookingErrorCode::QuoteStale->publicMessage());
         }
     }
 

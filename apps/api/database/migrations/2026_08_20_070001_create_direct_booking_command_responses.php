@@ -12,9 +12,12 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('property_id')->constrained()->cascadeOnDelete();
+            $table->foreignUuid('direct_booking_order_id')->nullable()->constrained('direct_booking_orders')->cascadeOnDelete();
             $table->uuid('idempotency_key');
             $table->string('command', 240);
             $table->char('request_checksum', 64);
+            $table->char('request_token_hash', 64)->nullable();
+            $table->char('response_token_hash', 64)->nullable();
             $table->unsignedSmallInteger('status_code')->nullable();
             $table->text('response_body_encrypted')->nullable();
             $table->json('response_headers')->nullable();
@@ -26,6 +29,8 @@ return new class extends Migration
             $table->index(['tenant_id', 'expires_at'], 'direct_booking_commands_expiry_idx');
             $table->foreign(['tenant_id', 'property_id'], 'direct_booking_commands_tenant_property_fk')
                 ->references(['tenant_id', 'id'])->on('properties')->cascadeOnDelete();
+            $table->foreign(['tenant_id', 'direct_booking_order_id'], 'direct_booking_commands_tenant_order_fk')
+                ->references(['tenant_id', 'id'])->on('direct_booking_orders')->cascadeOnDelete();
         });
     }
 

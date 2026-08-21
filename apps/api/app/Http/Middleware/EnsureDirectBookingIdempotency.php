@@ -3,7 +3,9 @@
 namespace App\Http\Middleware;
 
 use App\Enums\DirectBookingErrorCode;
+use App\Http\Responses\DirectBookingErrorResponse;
 use App\Models\DirectBookingCommandResponse;
+use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\Tenant;
 use App\Services\Documents\CanonicalJson;
@@ -23,8 +25,15 @@ final class EnsureDirectBookingIdempotency
         abort_unless($setting instanceof DirectBookingPropertySetting, 404);
         $key = strtolower(trim((string) $request->header('Idempotency-Key')));
         if (! Str::isUuid($key) || strlen($key) !== 36) {
-            return $this->error($request, DirectBookingErrorCode::Validation, 'A canonical UUID Idempotency-Key is required.', 422);
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::Validation);
         }
+        $correlation = $request->header('X-Correlation-ID');
+        if (! is_string($correlation) || preg_match('/^[A-Za-z0-9._:-]{16,128}$/', $correlation) !== 1) {
+            $correlation = (string) Str::uuid();
+        }
+        $request->attributes->set('direct_booking_correlation_id', $correlation);
+        $bearer = $request->bearerToken();
+        $requestTokenHash = is_string($bearer) && $bearer !== '' ? hash('sha256', $bearer) : null;
         $command = $request->method().' /'.$request->route()->uri();
         $checksum = $this->canonical->checksum([
             'command' => $command,
@@ -41,11 +50,12 @@ final class EnsureDirectBookingIdempotency
             ] : null,
         ]);
 
-        [$record, $replay] = DB::transaction(function () use ($setting, $key, $command, $checksum): array {
+        [$record, $replay] = DB::transaction(function () use ($setting, $key, $command, $checksum, $requestTokenHash): array {
             Tenant::query()->whereKey($setting->tenant_id)->lockForUpdate()->firstOrFail();
             $record = DirectBookingCommandResponse::query()->where('idempotency_key', $key)->lockForUpdate()->first();
             if ($record !== null) {
-                if ($record->command !== $command || ! hash_equals($record->request_checksum, $checksum)) {
+                if ($record->command !== $command || ! hash_equals($record->request_checksum, $checksum)
+                    || $record->request_token_hash !== $requestTokenHash) {
                     return [$record, 'conflict'];
                 }
                 if ($record->status_code !== null && $record->response_body_encrypted !== null) {
@@ -63,6 +73,7 @@ final class EnsureDirectBookingIdempotency
                 'idempotency_key' => $key,
                 'command' => $command,
                 'request_checksum' => $checksum,
+                'request_token_hash' => $requestTokenHash,
                 'lease_expires_at' => now()->addSeconds(45),
                 'expires_at' => now()->addDays(7),
             ]);
@@ -71,12 +82,16 @@ final class EnsureDirectBookingIdempotency
         }, 3);
 
         if ($replay === 'conflict') {
-            return $this->error($request, DirectBookingErrorCode::IdempotencyConflict, 'This idempotency key was already used for different request facts.', 409);
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::IdempotencyConflict);
         }
         if ($replay === 'pending') {
-            return $this->error($request, DirectBookingErrorCode::Conflict, 'This booking command is already in progress.', 409);
+            return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::Conflict);
         }
         if ($replay === 'replay') {
+            if (! $this->replaySessionIsCurrent($record, $requestTokenHash)) {
+                return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::NotFound);
+            }
+
             return response($record->response_body_encrypted, $record->status_code, [
                 ...($record->response_headers ?? []),
                 'Content-Type' => 'application/json',
@@ -91,15 +106,18 @@ final class EnsureDirectBookingIdempotency
             throw $exception;
         }
         if ($response->isSuccessful()) {
-            $record->forceFill([
-                'status_code' => $response->getStatusCode(),
-                'response_body_encrypted' => $response->getContent(),
-                'response_headers' => [
-                    'Cache-Control' => (string) $response->headers->get('Cache-Control'),
-                    'X-Correlation-ID' => (string) $response->headers->get('X-Correlation-ID'),
-                ],
-                'lease_expires_at' => now(),
-            ])->save();
+            $record->refresh();
+            if ($record->status_code === null) {
+                $record->forceFill([
+                    'status_code' => $response->getStatusCode(),
+                    'response_body_encrypted' => $response->getContent(),
+                    'response_headers' => [
+                        'Cache-Control' => (string) $response->headers->get('Cache-Control'),
+                        'X-Correlation-ID' => (string) $response->headers->get('X-Correlation-ID'),
+                    ],
+                    'lease_expires_at' => now(),
+                ])->save();
+            }
         } else {
             $record->delete();
         }
@@ -107,15 +125,26 @@ final class EnsureDirectBookingIdempotency
         return $response;
     }
 
-    private function error(Request $request, DirectBookingErrorCode $code, string $message, int $status): Response
+    private function replaySessionIsCurrent(DirectBookingCommandResponse $record, ?string $requestTokenHash): bool
     {
-        $correlation = (string) $request->attributes->get('direct_booking_correlation_id', Str::uuid());
+        if ($record->direct_booking_order_id === null || $record->response_token_hash === null) {
+            return false;
+        }
+        $order = DirectBookingOrder::query()->whereKey($record->direct_booking_order_id)->first();
+        if ($order === null || $order->revoked_at !== null || $order->session_expires_at->isPast()
+            || ! hash_equals($record->response_token_hash, $order->token_hash)) {
+            return false;
+        }
+        if ($requestTokenHash === null) {
+            return $record->request_token_hash === null;
+        }
+        if ($record->request_token_hash === null || ! hash_equals($record->request_token_hash, $requestTokenHash)) {
+            return false;
+        }
+        if (! str_ends_with($record->command, '/recover')) {
+            return hash_equals($requestTokenHash, $order->token_hash);
+        }
 
-        return response()->json(['error' => [
-            'code' => $code->value,
-            'message' => $message,
-            'correlation_id' => $correlation,
-            'retryable' => false,
-        ]], $status, ['Cache-Control' => 'no-store, private', 'X-Correlation-ID' => $correlation]);
+        return true;
     }
 }

@@ -35,11 +35,13 @@ final class ExecuteProviderRefund
             if ($payment->origin !== PaymentOrigin::Provider || $lockedRequest->type !== 'refund_requested' || $lockedRequest->status !== 'requested') {
                 throw new DomainException('Provider execution requires an open refund request for a provider-origin payment.');
             }
+            $attemptId = data_get($payment->metadata, 'payment_attempt_id');
             $attempt = PaymentAttempt::query()
-                ->where('provider', $payment->provider)
-                ->where('environment', $payment->environment)
-                ->where('provider_account', $payment->provider_account)
-                ->where('provider_payment_id', $payment->provider_reference)
+                ->when(is_string($attemptId), fn ($query) => $query->whereKey($attemptId))
+                ->when(! is_string($attemptId), fn ($query) => $query
+                    ->where('provider', $payment->provider)
+                    ->where('environment', $payment->environment)
+                    ->where('provider_payment_id', $payment->provider_reference))
                 ->lockForUpdate()->firstOrFail();
             $existing = ProviderRefund::query()->where('reservation_change_id', $lockedRequest->id)->lockForUpdate()->first();
             if ($existing !== null) {
@@ -53,14 +55,18 @@ final class ExecuteProviderRefund
                 'integration_connection_id' => $attempt->integration_connection_id,
                 'provider' => $attempt->provider,
                 'environment' => $attempt->environment,
-                'provider_account' => $attempt->provider_account,
+                'provider_account' => $payment->provider_account,
                 'source_amount_minor' => $lockedRequest->amount_minor,
                 'source_currency' => $payment->currency,
-                'charge_amount_minor' => $payment->currency === $attempt->charge_currency
+                'charge_amount_minor' => data_get($payment->metadata, 'unapplied_direct_booking_funds') === true
+                    ? (int) data_get($payment->metadata, 'actual_charge_amount_minor', $attempt->charge_amount_minor)
+                    : ($payment->currency === $attempt->charge_currency
                     ? $lockedRequest->amount_minor
                     : BigDecimal::of($lockedRequest->amount_minor)->multipliedBy($attempt->charge_amount_minor)
-                        ->dividedBy($attempt->source_amount_minor, 0, RoundingMode::HalfUp)->toInt(),
-                'charge_currency' => $attempt->charge_currency,
+                        ->dividedBy($attempt->source_amount_minor, 0, RoundingMode::HalfUp)->toInt()),
+                'charge_currency' => data_get($payment->metadata, 'unapplied_direct_booking_funds') === true
+                    ? (string) data_get($payment->metadata, 'actual_charge_currency', $attempt->charge_currency)
+                    : $attempt->charge_currency,
                 'idempotency_key' => (string) Str::uuid(),
                 'provider_payment_id' => $payment->provider_reference,
                 'state' => ProviderRefundState::Requested,
@@ -75,11 +81,14 @@ final class ExecuteProviderRefund
             return $this->recover->handle($execution, $execution->provider_refund_id, $actorId);
         }
 
+        $payment = $execution->payment;
+        $attemptId = data_get($payment->metadata, 'payment_attempt_id');
         $attempt = PaymentAttempt::query()
-            ->where('provider', $execution->provider)
-            ->where('environment', $execution->environment)
-            ->where('provider_account', $execution->provider_account)
-            ->where('provider_payment_id', $execution->provider_payment_id)
+            ->when(is_string($attemptId), fn ($query) => $query->whereKey($attemptId))
+            ->when(! is_string($attemptId), fn ($query) => $query
+                ->where('provider', $execution->provider)
+                ->where('environment', $execution->environment)
+                ->where('provider_payment_id', $execution->provider_payment_id))
             ->firstOrFail();
         $execution->update(['state' => ProviderRefundState::Processing, 'attempt_count' => $execution->attempt_count + 1, 'last_attempted_at' => now()]);
         try {

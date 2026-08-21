@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\V1\ResourceSuggestionController;
 use App\Http\Controllers\Api\V1\ServiceOccurrenceController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\CalendarFeedController;
+use App\Http\Controllers\DirectBookingGeneratedDocumentDownloadController;
 use App\Http\Controllers\GeneratedDocumentDownloadController;
 use App\Http\Controllers\GuestGeneratedDocumentDownloadController;
 use App\Http\Controllers\ReportExportDownloadController;
@@ -67,6 +68,9 @@ Route::prefix('v1/direct-booking/properties/{propertySlug}')
         Route::post('orders/{orderReference}/manual-payment-evidence', [DirectBookingContractController::class, 'manualEvidence'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware(['throttle:direct-booking-mutation', 'direct-booking.idempotent']);
         Route::post('orders/{orderReference}/recover', [DirectBookingContractController::class, 'recover'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware(['throttle:direct-booking-mutation', 'direct-booking.idempotent']);
         Route::get('orders/{orderReference}/confirmation', [DirectBookingContractController::class, 'confirmation'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-read');
+        Route::get('orders/{orderReference}/confirmation/documents/{documentReference}', DirectBookingGeneratedDocumentDownloadController::class)
+            ->where(['orderReference' => '[0-9A-HJKMNP-TV-Z]{26}', 'documentReference' => '[a-f0-9]{64}'])
+            ->middleware('throttle:direct-booking-read');
     });
 
 Route::post('v1/integration-webhooks/{endpointKey}', IntegrationWebhookController::class)

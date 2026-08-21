@@ -1,0 +1,20 @@
+{
+  "expected_state_version": 2,
+  "guest": {
+    "first_name": "Public",
+    "last_name": "Guest",
+    "email": "public@example.test",
+    "phone": "+12025550123"
+  },
+  "companions": [
+    {"first_name": "Travel", "last_name": "Companion", "guest_type": "adult"}
+  ],
+  "consents": {
+    "terms": {"version": 2, "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "accepted": true},
+    "privacy": {"version": 4, "checksum": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "accepted": true},
+    "cancellation": {"version": 3, "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "accepted": true},
+    "no_show": {"version": 2, "checksum": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "accepted": true}
+  },
+  "turnstile_token": "opaque-turnstile-token",
+  "turnstile_action": "direct_booking_hold"
+}

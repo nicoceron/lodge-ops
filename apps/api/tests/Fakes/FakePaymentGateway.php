@@ -25,6 +25,11 @@ final class FakePaymentGateway implements PaymentGateway, PaymentGatewayFactory
     /** @var list<CheckoutRequest> */
     public array $checkouts = [];
 
+    /** @var array<string, HostedCheckout> */
+    public array $hostedByIdempotencyKey = [];
+
+    public bool $failAfterCheckoutCreationOnce = false;
+
     /** @var list<ProviderRefundRequest> */
     public array $refunds = [];
 
@@ -41,9 +46,18 @@ final class FakePaymentGateway implements PaymentGateway, PaymentGatewayFactory
 
     public function createHostedCheckout(CheckoutRequest $request): HostedCheckout
     {
+        if (isset($this->hostedByIdempotencyKey[$request->idempotencyKey])) {
+            return $this->hostedByIdempotencyKey[$request->idempotencyKey];
+        }
         $this->checkouts[] = $request;
+        $hosted = new HostedCheckout('pref-'.$request->externalReference, 'https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=test');
+        $this->hostedByIdempotencyKey[$request->idempotencyKey] = $hosted;
+        if ($this->failAfterCheckoutCreationOnce) {
+            $this->failAfterCheckoutCreationOnce = false;
+            throw new \RuntimeException('Simulated timeout after remote checkout creation.');
+        }
 
-        return new HostedCheckout('pref-'.$request->externalReference, 'https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=test');
+        return $hosted;
     }
 
     public function fetchPayment(string $providerPaymentId): ProviderPayment

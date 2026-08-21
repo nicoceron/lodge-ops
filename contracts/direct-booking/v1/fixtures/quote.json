@@ -20,6 +20,20 @@
       {"kind": "cancellation", "version": 3, "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
       {"kind": "no_show", "version": 2, "checksum": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
       {"kind": "marketing_consent", "version": 1, "checksum": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+    ],
+    "optional_services": [
+      {
+        "key": "01K3A6R8T4V2N9W7X1Y0Z3Q5PM",
+        "name": "Airport transfer",
+        "description": "Private arrival transfer for the selected rate plan.",
+        "pricing": {
+          "unit_amount": {"amount_minor": 45000, "currency": "USD"},
+          "quantity_basis": "per_stay",
+          "default_quantity": 1,
+          "maximum_quantity": 1
+        },
+        "applicability": "selected_rate_plan"
+      }
     ]
   }
 }

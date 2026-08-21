@@ -4,11 +4,15 @@ namespace App\Services\DirectBooking;
 
 use App\Enums\DirectBookingOrderState;
 use App\Enums\DirectBookingTransitionAuthority;
+use App\Enums\DocumentKind;
+use App\Enums\PaymentRequestState;
 use App\Enums\ReservationStatus;
 use App\Enums\TaskStatus;
 use App\Models\DirectBookingOrder;
 use App\Models\GuestPaymentEvidence;
 use App\Models\OperationalTask;
+use App\Models\Payment;
+use App\Services\Documents\RequestDocumentGeneration;
 use App\Services\ReservationService;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +21,7 @@ final class DirectBookingManualReviewReconciler
     public function __construct(
         private readonly DirectBookingStateMachine $states,
         private readonly ReservationService $reservations,
+        private readonly RequestDocumentGeneration $documents,
     ) {}
 
     public function prepareApproval(GuestPaymentEvidence $evidence): void
@@ -45,6 +50,17 @@ final class DirectBookingManualReviewReconciler
                 return;
             }
             $reservation = $order->reservation()->lockForUpdate()->first();
+            $payment = $evidence->payment_id === null ? null : Payment::query()->whereKey($evidence->payment_id)->lockForUpdate()->first();
+            if ($payment !== null && $order->payment_request_id !== null) {
+                $request = $order->paymentRequest()->lockForUpdate()->first();
+                if ($request !== null && in_array($request->state, [PaymentRequestState::Open, PaymentRequestState::Processing], true)) {
+                    $request->forceFill([
+                        'payment_id' => $payment->id,
+                        'state' => PaymentRequestState::Paid,
+                        'paid_at' => $payment->processed_at ?? now(),
+                    ])->save();
+                }
+            }
             if ($reservation === null || $reservation->status !== ReservationStatus::Hold
                 || $reservation->hold_expires_at?->isFuture() !== true
                 || $order->hold_expires_at?->isFuture() !== true) {
@@ -71,6 +87,21 @@ final class DirectBookingManualReviewReconciler
                 'manual-confirmed:'.$evidence->id,
                 ['reason_code' => 'finance_approved_payment_and_inventory'],
             );
+            $this->documents->handleSystem(
+                $reservation->fresh(),
+                DocumentKind::ReservationConfirmation,
+                app()->getLocale(),
+                'direct-booking-confirmation:'.$order->id,
+            );
+            if ($payment !== null) {
+                $this->documents->handleSystem(
+                    $reservation->fresh(),
+                    DocumentKind::PaymentReceipt,
+                    app()->getLocale(),
+                    'manual-payment-receipt:'.$payment->id,
+                    $payment,
+                );
+            }
         }, 3);
     }
 

@@ -2694,6 +2694,21 @@ paths:
         '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
         '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
         '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/confirmation/documents/{documentReference}:
+    get:
+      tags: [Direct Booking]
+      operationId: downloadDirectBookingConfirmationDocument
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingDocumentReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/ConfirmationDocument' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
 
 components:
   securitySchemes:
@@ -2751,6 +2766,12 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+    DirectBookingDocumentReference:
+      name: documentReference
+      in: path
+      required: true
+      description: Opaque property- and order-scoped document reference; it is not a database or provider identifier.
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
     DirectBookingPolicyKind:
       name: policyKind
       in: path

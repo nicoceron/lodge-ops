@@ -33,6 +33,7 @@ final class DirectBookingPaymentReconciler
             }
             $reservation = $order->reservation()->lockForUpdate()->first();
             if ($order->state !== DirectBookingOrderState::PaymentPending
+                || $order->payment_request_id !== $attempt->payment_request_id
                 || $reservation === null
                 || $reservation->status !== ReservationStatus::Hold
                 || $reservation->hold_expires_at?->isFuture() !== true
@@ -74,6 +75,12 @@ final class DirectBookingPaymentReconciler
                 $paid->state_version,
                 'provider-confirmed:'.$attempt->id,
                 ['reason_code' => 'authoritative_payment_and_inventory_confirmed'],
+            );
+            $this->documents->handleSystem(
+                $reservation->fresh(),
+                DocumentKind::ReservationConfirmation,
+                app()->getLocale(),
+                'direct-booking-confirmation:'.$order->id,
             );
             $payment = $attempt->paymentRequest->payment_id === null
                 ? null
@@ -147,6 +154,16 @@ final class DirectBookingPaymentReconciler
 
     private function markNeedsReview(DirectBookingOrder $order, PaymentAttempt $attempt, string $reason): void
     {
+        if ($order->state === DirectBookingOrderState::PaymentFailed) {
+            $order = $this->states->transition(
+                $order,
+                DirectBookingOrderState::PaymentPending,
+                DirectBookingTransitionAuthority::PaymentOrchestrator,
+                $order->state_version,
+                'late-payment-normalize:'.$attempt->id,
+                ['reason_code' => 'authoritative_late_payment_detected'],
+            )->order;
+        }
         if (in_array($order->state, [DirectBookingOrderState::PaymentPending, DirectBookingOrderState::Expired], true)) {
             $order = $this->states->transition(
                 $order,
@@ -162,6 +179,7 @@ final class DirectBookingPaymentReconciler
 
     private function financeTask(DirectBookingOrder $order, PaymentAttempt $attempt, string $reason): void
     {
+        $paymentId = Payment::query()->where('metadata->payment_attempt_id', $attempt->id)->value('id');
         OperationalTask::query()->firstOrCreate([
             'property_id' => $order->property_id,
             'reservation_id' => $order->reservation_id,
@@ -174,6 +192,7 @@ final class DirectBookingPaymentReconciler
             'metadata' => [
                 'generated_from' => 'direct_booking_paid_needs_review',
                 'payment_attempt_id' => $attempt->id,
+                'payment_id' => $paymentId,
                 'safe_reason_code' => $reason,
             ],
         ]);
@@ -182,7 +201,7 @@ final class DirectBookingPaymentReconciler
     private function lockedOrder(PaymentAttempt $attempt): ?DirectBookingOrder
     {
         return DirectBookingOrder::query()
-            ->where('payment_request_id', $attempt->payment_request_id)
+            ->where('reservation_id', $attempt->reservation_id)
             ->lockForUpdate()
             ->first();
     }

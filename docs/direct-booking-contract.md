@@ -1,7 +1,7 @@
 # P3-07F direct-booking contract freeze
 
-Frozen: 2026-08-20
-Contract version: `2026-08-20` / public API `v1`
+Frozen base: 2026-08-20
+Additive contract version: `2026-08-20.1` / public API `v1` (`1.1.0` schema)
 Consumers: Agent 07 domain/API and Agent 08 public UX
 
 This document freezes the public protocol and state ownership. It is not a claim that a booking journey works in this foundation PR. The route handlers deliberately fail closed with `booking_unavailable` until Agent 07 connects the existing availability, commercial, reservation, guest-evidence and payment services.
@@ -33,6 +33,9 @@ The canonical schemas, examples, headers and errors are in [`contracts/openapi.y
 | `POST .../orders/{ref}/manual-payment-evidence` | Submit private evidence | no-store | Evidence service, not money authority |
 | `POST .../orders/{ref}/recover` | Re-price/recheck expired session and rotate token | no-store | Recovery + commercial/inventory services |
 | `GET .../orders/{ref}/confirmation` | Safe confirmed reservation summary | no-store | Reservation domain only |
+| `GET .../orders/{ref}/confirmation/documents/{opaqueRef}` | Integrity-verified confirmation/receipt PDF after confirmed state | no-store | Current property-scoped booking session + document store |
+
+The additive `1.1.0` response projection supplies exact published manual-transfer instructions under `data.manual_payment_instructions` and confirmed-only document state/opaque links under `data.documents`. `data.links.guest_portal` is an explicit integration seam: the entry path is stable, but its separate invitation remains required; the direct-booking bearer is never placed in a URL or reused as a guest-portal credential. These additions do not change any `1.0.0` required request or response field.
 
 Every mutation except the non-mutating availability search requires a canonical UUID `Idempotency-Key`. The canonical request checksum includes normalized JSON/body facts and the command identity. Same key/same body returns the exact stored status/body with `Idempotency-Replayed: true`; same key/different body returns `idempotency_conflict`. `expected_state_version` is an independent optimistic-concurrency guard. The same UUID is sent to Turnstile as its replay-safe verification identity; malformed values fail before any outbound verification request.
 

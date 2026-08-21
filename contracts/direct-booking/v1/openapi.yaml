@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: Inn Direct Booking Contract
-  version: 1.0.0
+  version: 1.1.0
   description: >-
     Frozen P3-07F public contract. Property dates are YYYY-MM-DD values in the
     advertised IANA timezone. Money is integer minor units with an explicit ISO
@@ -9,7 +9,7 @@ info:
     inventory, reservation, or confirmation authority.
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 
-x-inn-contract-version: '2026-08-20'
+x-inn-contract-version: '2026-08-20.1'
 x-cache-policy:
   published-content: public, max-age=60, stale-while-revalidate=300
   availability-and-orders: no-store, private
@@ -171,6 +171,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ConfirmationEnvelope' }
           examples: { default: { $ref: './fixtures/confirmation.json' } }
+    ConfirmationDocument:
+      description: Integrity-verified confirmed-booking PDF, scoped by property, current booking session, and opaque document reference.
+      headers: *noStoreHeaders
+      content:
+        application/pdf:
+          schema: { type: string, format: binary }
     Validation: { $ref: '#/components/responses/Error422' }
     Conflict: { $ref: '#/components/responses/Error409' }
     HoldExpired: { $ref: '#/components/responses/Error410' }
@@ -279,6 +285,24 @@ components:
       properties:
         method: { type: string, enum: [hosted_checkout, manual_bank_transfer] }
         currency: { $ref: '#/components/schemas/Currency' }
+    OptionalService:
+      type: object
+      additionalProperties: false
+      required: [key, name, description, pricing, applicability]
+      properties:
+        key: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        pricing:
+          type: object
+          additionalProperties: false
+          required: [unit_amount, quantity_basis, default_quantity, maximum_quantity]
+          properties:
+            unit_amount: { $ref: '#/components/schemas/Money' }
+            quantity_basis: { type: string, enum: [per_stay, per_night, per_person, per_person_night] }
+            default_quantity: { type: integer, minimum: 1 }
+            maximum_quantity: { type: integer, minimum: 1 }
+        applicability: { type: string, const: selected_rate_plan }
     PropertyEnvelope:
       type: object
       additionalProperties: false
@@ -299,6 +323,7 @@ components:
             accessible_fallback_url: { type: string, format: uri, pattern: '^https://[^?#]+$' }
             media: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Media' } }
             bookables: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Bookable' } }
+            optional_services: { type: array, items: { $ref: '#/components/schemas/OptionalService' } }
             payment_capabilities: { type: array, minItems: 1, items: { $ref: '#/components/schemas/PaymentCapability' } }
     PolicyEnvelope:
       type: object
@@ -453,6 +478,7 @@ components:
                   kind: { type: string, enum: [terms, privacy, cancellation, no_show, marketing_consent] }
                   version: { type: integer, minimum: 1 }
                   checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
+            optional_services: { type: array, items: { $ref: '#/components/schemas/OptionalService' } }
     ConsentDecision:
       type: object
       additionalProperties: false
@@ -476,6 +502,18 @@ components:
             last_name: { type: [string, 'null'], maxLength: 100, writeOnly: true }
             email: { type: string, format: email, maxLength: 254, writeOnly: true }
             phone: { type: [string, 'null'], maxLength: 40, writeOnly: true }
+        companions:
+          type: array
+          maxItems: 49
+          writeOnly: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [first_name, guest_type]
+            properties:
+              first_name: { type: string, minLength: 1, maxLength: 100, writeOnly: true }
+              last_name: { type: [string, 'null'], maxLength: 100, writeOnly: true }
+              guest_type: { type: string, enum: [adult, child, infant], writeOnly: true }
         consents:
           type: object
           additionalProperties: false
@@ -538,6 +576,18 @@ components:
             checkout_url: { type: [string, 'null'], format: uri, pattern: '^https://' }
             hold_expires_at: { type: string, format: date-time }
             checkout_expires_at: { type: string, format: date-time }
+            manual_payment_instructions: { $ref: '#/components/schemas/ManualPaymentInstructions' }
+    ManualPaymentInstructions:
+      type: object
+      additionalProperties: false
+      required: [locale, currency, title, body, version, checksum]
+      properties:
+        locale: { type: string, maxLength: 12, pattern: '^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 20000 }
+        version: { type: integer, minimum: 1 }
+        checksum: { type: string, pattern: '^[a-f0-9]{64}$' }
     ManualEvidenceRequest:
       type: object
       additionalProperties: false
@@ -570,6 +620,31 @@ components:
             departure_date: { $ref: '#/components/schemas/LocalDate' }
             timezone: { type: string, maxLength: 80 }
             total: { $ref: '#/components/schemas/Money' }
+            documents:
+              type: array
+              maxItems: 2
+              items:
+                type: object
+                additionalProperties: false
+                required: [kind, status, document_reference, download_path]
+                properties:
+                  kind: { type: string, enum: [reservation_confirmation, payment_receipt] }
+                  status: { type: string, enum: [pending, processing, generated, failed] }
+                  document_reference: { type: [string, 'null'], pattern: '^[a-f0-9]{64}$' }
+                  download_path: { type: [string, 'null'], maxLength: 400, pattern: '^/api/v1/direct-booking/properties/[a-z0-9]+(?:-[a-z0-9]+)*/orders/[0-9A-HJKMNP-TV-Z]{26}/confirmation/documents/[a-f0-9]{64}$' }
+            links:
+              type: object
+              additionalProperties: false
+              required: [self_path, guest_portal]
+              properties:
+                self_path: { type: string, maxLength: 300, pattern: '^/api/v1/direct-booking/properties/[a-z0-9]+(?:-[a-z0-9]+)*/orders/[0-9A-HJKMNP-TV-Z]{26}/confirmation$' }
+                guest_portal:
+                  type: object
+                  additionalProperties: false
+                  required: [status, entry_path]
+                  properties:
+                    status: { type: string, const: invitation_required }
+                    entry_path: { type: string, const: /guest/stay }
     ErrorCode:
       type: string
       enum: [validation_error, unavailable, quote_stale, hold_expired, conflict, idempotency_conflict, rate_limited, bot_rejected, payment_pending, payment_failed, paid_needs_review, not_found, booking_unavailable]

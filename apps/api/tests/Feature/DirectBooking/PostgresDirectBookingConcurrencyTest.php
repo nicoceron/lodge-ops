@@ -11,7 +11,11 @@ use App\Models\DirectBookingPropertySetting;
 use App\Models\Membership;
 use App\Models\Property;
 use App\Models\RatePlan;
+use App\Models\RateRule;
+use App\Models\Resource;
 use App\Models\Tenant;
+use App\Services\BookingQuoteService;
+use App\Services\CommitBookingQuote;
 use App\Services\DirectBooking\DirectBookingStateMachine;
 use App\Services\DirectBooking\DirectBookingTokenService;
 use App\Support\Tenancy\TenantContext;
@@ -73,6 +77,57 @@ class PostgresDirectBookingConcurrencyTest extends TestCase
         $this->assertCount(1, collect($results)->pluck('result')->unique());
         $this->assertDatabaseCount('direct_booking_order_events', 1);
         $this->cleanupContractFixture($order);
+    }
+
+    public function test_two_anonymous_sessions_competing_for_the_last_unit_create_one_hold(): void
+    {
+        $this->requirePostgres();
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        $setting = DirectBookingPropertySetting::query()->create([
+            'property_id' => $property->id, 'public_slug' => 'last-unit-race', 'default_locale' => 'en',
+            'supported_locales' => ['en'], 'default_currency' => 'USD', 'supported_currencies' => ['USD'],
+        ]);
+        $category = $this->category($property, 'room');
+        Resource::factory()->create(['property_id' => $property->id, 'category_id' => $category->id, 'capacity' => 1]);
+        $plan = RatePlan::query()->create([
+            'property_id' => $property->id, 'name' => 'Last unit', 'currency' => 'USD', 'state' => 'draft', 'is_active' => true,
+        ]);
+        RateRule::query()->create(['rate_plan_id' => $plan->id, 'resource_category_id' => $category->id, 'amount_minor' => 20_000]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
+        $facts = [
+            'property_id' => $property->id, 'rate_plan_id' => $plan->id, 'resource_category_id' => $category->id,
+            'starts_at' => now()->addDays(50)->startOfDay()->toIso8601String(),
+            'ends_at' => now()->addDays(52)->startOfDay()->toIso8601String(),
+            'adults' => 1, 'children' => 0,
+        ];
+        $firstQuote = app(BookingQuoteService::class)->create($facts);
+        $secondQuote = app(BookingQuoteService::class)->create($facts);
+        $first = app(DirectBookingTokenService::class)->issue($setting, 'en', 'USD')['order'];
+        $second = app(DirectBookingTokenService::class)->issue($setting, 'en', 'USD')['order'];
+        $first->forceFill(['booking_quote_id' => $firstQuote->id])->save();
+        $second->forceFill(['booking_quote_id' => $secondQuote->id])->save();
+
+        $results = $this->concurrently([
+            fn (): string => app(CommitBookingQuote::class)->handle($firstQuote, null, ['first_name' => 'First'], source: 'direct')->id,
+            fn (): string => app(CommitBookingQuote::class)->handle($secondQuote, null, ['first_name' => 'Second'], source: 'direct')->id,
+        ], $tenant, $membership);
+        app(TenantContext::class)->set($tenant, $membership);
+
+        $this->assertSame(1, collect($results)->where('ok', true)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, collect($results)->where('ok', false)->count(), json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertDatabaseCount('reservations', 1);
+        $this->assertDatabaseCount('allocations', 1);
+        $this->assertDatabaseCount('guests', 1);
+        DB::table('direct_booking_order_events')->whereIn('direct_booking_order_id', [$first->id, $second->id])->delete();
+        DB::table('direct_booking_orders')->whereIn('id', [$first->id, $second->id])->delete();
+        $reservationIds = DB::table('reservations')->pluck('id');
+        $guestIds = DB::table('reservations')->whereIn('id', $reservationIds)->pluck('primary_guest_id');
+        DB::table('booking_quotes')->whereIn('id', [$firstQuote->id, $secondQuote->id])->update(['reservation_id' => null]);
+        DB::table('reservations')->whereIn('id', $reservationIds)->update(['booking_quote_id' => null]);
+        DB::table('reservations')->whereIn('id', $reservationIds)->delete();
+        DB::table('guests')->whereIn('id', $guestIds)->delete();
+        DB::table('booking_quotes')->whereIn('id', [$firstQuote->id, $secondQuote->id])->delete();
+        DB::table('rate_plans')->where('id', $plan->id)->delete();
     }
 
     public function test_revoke_wins_against_a_concurrent_stale_rotation_without_session_resurrection(): void

@@ -2,12 +2,13 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\DirectBookingErrorCode;
+use App\Http\Responses\DirectBookingErrorResponse;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 final class ResolveDirectBookingProperty
@@ -31,7 +32,7 @@ final class ResolveDirectBookingProperty
         $this->context->set($tenant);
         try {
             $setting = DirectBookingPropertySetting::query()->with('property')->find($candidate->id);
-            if ($setting === null || ! $setting->property->is_active) {
+            if ($setting === null) {
                 abort(404);
             }
             $request->attributes->set('direct_booking_setting', $setting);
@@ -44,20 +45,6 @@ final class ResolveDirectBookingProperty
 
     private function unavailable(Request $request): Response
     {
-        $correlation = $request->header('X-Correlation-ID');
-        if (! is_string($correlation) || preg_match('/^[A-Za-z0-9._:-]{16,128}$/', $correlation) !== 1) {
-            $correlation = (string) Str::uuid();
-        }
-
-        return response()->json(['error' => [
-            'code' => 'booking_unavailable',
-            'message' => 'Direct booking is temporarily unavailable.',
-            'correlation_id' => $correlation,
-            'retryable' => true,
-        ]], 503, [
-            'Cache-Control' => 'no-store, private',
-            'X-Correlation-ID' => $correlation,
-            'Retry-After' => '60',
-        ]);
+        return DirectBookingErrorResponse::make($request, DirectBookingErrorCode::BookingUnavailable, headers: ['Retry-After' => '60']);
     }
 }
