@@ -63,7 +63,18 @@ class PostgresDirectBookingConcurrencyTest extends TestCase
     {
         putenv('DIRECT_BOOKING_COP_MP_TOKEN');
         putenv('DIRECT_BOOKING_COP_MP_WEBHOOK');
-        parent::tearDown();
+        // DatabaseMigrations dismantles its isolated test schema via migrate:rollback,
+        // which invokes the commercial-rules guard. Production rollback stays guarded
+        // unless this explicit unit-test-only flag is set. A prior postgres
+        // concurrency test may have cleared the phpunit.pgsql.xml value during its
+        // own teardown, so set the flag immediately before the rollback and clear it
+        // afterwards so it never leaks into the rest of the full CI suite.
+        putenv('COMMERCIAL_TEST_TEARDOWN=1');
+        try {
+            parent::tearDown();
+        } finally {
+            putenv('COMMERCIAL_TEST_TEARDOWN');
+        }
     }
 
     protected function beforeRefreshingDatabase(): void

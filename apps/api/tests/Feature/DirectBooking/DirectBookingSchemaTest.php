@@ -240,6 +240,13 @@ class DirectBookingSchemaTest extends TestCase
         ]);
         $migration = require database_path('migrations/2026_08_20_060002_harden_direct_booking_contract_boundaries.php');
 
+        // The pgsql suite sets ALLOW_DIRECT_BOOKING_FACT_ROLLBACK=true so
+        // DatabaseMigrations/RefreshDatabase can roll back the hardening migration
+        // during teardown. This assertion must verify the production guard refuses
+        // rollback when live facts exist, so override the config back to false
+        // before invoking down() regardless of the global test environment.
+        config(['direct-booking.allow_operational_fact_rollback' => false]);
+
         try {
             $migration->down();
             $this->fail('Live direct-booking hardening facts must block rollback.');
