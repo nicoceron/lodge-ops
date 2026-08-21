@@ -2,10 +2,12 @@
 
 namespace App\Services\Payments;
 
+use App\Contracts\Payments\InPersonPaymentGatewayFactory;
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Data\Payments\WebhookRequest;
 use App\Enums\ProviderEventState;
 use App\Jobs\ProcessProviderEventJob;
+use App\Jobs\ProcessProviderOrderEventJob;
 use App\Models\ProviderEvent;
 use App\Services\Integrations\EndpointKeyService;
 use Illuminate\Database\QueryException;
@@ -14,15 +16,22 @@ use Illuminate\Support\Str;
 
 final class ReceiveProviderWebhook
 {
-    public function __construct(private readonly PaymentGatewayFactory $gateways, private readonly EndpointKeyService $endpointKeys) {}
+    public function __construct(
+        private readonly PaymentGatewayFactory $gateways,
+        private readonly InPersonPaymentGatewayFactory $inPersonGateways,
+        private readonly EndpointKeyService $endpointKeys,
+    ) {}
 
     /** @param array<string, string> $headers @param array<string, string> $query */
     public function handle(string $webhookKey, string $rawBody, array $headers, array $query): ProviderEvent
     {
         $connection = $this->endpointKeys->resolveConnection($webhookKey);
         abort_unless($connection->type === 'payment' && $connection->provider === 'mercado_pago'
-            && $connection->product === 'checkout_pro' && $connection->is_enabled && $connection->revoked_at === null, 404);
-        $verified = $this->gateways->for($connection)->verifyWebhook(new WebhookRequest($rawBody, $headers, $query));
+            && in_array($connection->product, ['checkout_pro', 'orders'], true) && $connection->is_enabled && $connection->revoked_at === null, 404);
+        $untrustedBody = json_decode($rawBody, true);
+        $topic = strtolower((string) ($query['type'] ?? (is_array($untrustedBody) ? data_get($untrustedBody, 'type') : '')));
+        $verified = ($topic === 'order' ? $this->inPersonGateways->for($connection) : $this->gateways->for($connection))
+            ->verifyWebhook(new WebhookRequest($rawBody, $headers, $query));
         $checksum = hash('sha256', $rawBody);
 
         try {
@@ -74,7 +83,9 @@ final class ReceiveProviderWebhook
             ]);
         }
 
-        DB::afterCommit(fn () => ProcessProviderEventJob::dispatch($event->tenant_id, $event->id)->onQueue('provider-events'));
+        DB::afterCommit(fn () => $verified->topic === 'order'
+            ? ProcessProviderOrderEventJob::dispatch($event->tenant_id, $event->id)->onQueue('provider-events')
+            : ProcessProviderEventJob::dispatch($event->tenant_id, $event->id)->onQueue('provider-events'));
 
         return $event;
     }

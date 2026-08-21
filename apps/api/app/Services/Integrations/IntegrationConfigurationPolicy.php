@@ -29,6 +29,15 @@ final class IntegrationConfigurationPolicy
                 'webhook_endpoint_key_reference' => 'reference',
             ];
         }
+        if ($provider === 'mercado_pago' && $product === 'orders') {
+            $allowed += [
+                'charge_currency' => 'currency',
+                'transport' => 'transport',
+                'fixture' => 'fixture',
+                'webhook_secret_reference' => 'reference',
+                'webhook_endpoint_key_reference' => 'reference',
+            ];
+        }
         if (in_array('webhook.inbound', $capabilities, true)) {
             $allowed['webhook_signing_secret_reference'] = 'reference';
         }

@@ -46,6 +46,6 @@ final class DefaultPaymentGatewayFactory implements PaymentGatewayFactory
             throw new RuntimeException('The deterministic provider fixture is missing.');
         }
 
-        return new DeterministicMercadoPagoTransport($fixture);
+        return new DeterministicMercadoPagoTransport($fixture, $connection->external_account_id);
     }
 }

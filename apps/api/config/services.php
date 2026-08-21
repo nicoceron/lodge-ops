@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'mercado_pago_point_uat' => [
+        'authorized' => env('MP_POINT_UAT_AUTHORIZED', false),
+        'access_token' => env('MP_POINT_UAT_ACCESS_TOKEN'),
+        'provider_account' => env('MP_POINT_UAT_PROVIDER_ACCOUNT'),
+        'terminal' => env('MP_POINT_UAT_TERMINAL', 'NEWLAND_N950__SBX0000001'),
+    ],
+
 ];

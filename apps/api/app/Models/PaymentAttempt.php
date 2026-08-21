@@ -31,6 +31,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $provider_payment_id
  * @property string|null $hosted_checkout_url
  * @property CarbonImmutable|null $checkout_expires_at
+ * @property CarbonImmutable|null $order_expires_at
+ * @property CarbonImmutable|null $provider_order_created_at
+ * @property CarbonImmutable|null $provider_order_updated_at
+ * @property CarbonImmutable|null $queued_at
+ * @property CarbonImmutable|null $at_terminal_at
+ * @property CarbonImmutable|null $action_required_at
+ * @property CarbonImmutable|null $cancel_requested_at
+ * @property CarbonImmutable|null $canceled_at
  * @property string|null $provider_status
  * @property string|null $provider_status_detail
  * @property int $attempt_count
@@ -52,9 +60,18 @@ class PaymentAttempt extends TenantModel
             'charge_amount_minor' => 'integer',
             'exchange_rate' => 'string',
             'conversion_snapshot' => 'array',
+            'qr_data_ciphertext' => 'encrypted',
             'checkout_expires_at' => 'immutable_datetime',
             'last_checked_at' => 'immutable_datetime',
             'last_processed_at' => 'immutable_datetime',
+            'queued_at' => 'immutable_datetime',
+            'at_terminal_at' => 'immutable_datetime',
+            'action_required_at' => 'immutable_datetime',
+            'order_expires_at' => 'immutable_datetime',
+            'provider_order_created_at' => 'immutable_datetime',
+            'provider_order_updated_at' => 'immutable_datetime',
+            'cancel_requested_at' => 'immutable_datetime',
+            'canceled_at' => 'immutable_datetime',
             'attempt_count' => 'integer',
             'error_count' => 'integer',
         ];
@@ -83,6 +100,16 @@ class PaymentAttempt extends TenantModel
     public function integrationConnection(): BelongsTo
     {
         return $this->belongsTo(IntegrationConnection::class);
+    }
+
+    public function paymentTerminal(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTerminal::class);
+    }
+
+    public function providerPosLocation(): BelongsTo
+    {
+        return $this->belongsTo(ProviderPosLocation::class);
     }
 
     public function providerDisputes(): HasMany

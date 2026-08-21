@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\FolioController;
 use App\Http\Controllers\Api\V1\FrontDeskTenderController;
 use App\Http\Controllers\Api\V1\GuestController;
 use App\Http\Controllers\Api\V1\GuestPortalController;
+use App\Http\Controllers\Api\V1\InPersonPaymentController;
 use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationWebhookController;
 use App\Http\Controllers\Api\V1\OperationsProjectionController;
@@ -156,6 +157,18 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::post('provider-refunds/{providerRefund}/recover', [ProviderFinanceController::class, 'recoverRefund'])->middleware('idempotent');
     Route::post('provider-disputes/{providerDispute}/resolve', [ProviderFinanceController::class, 'resolveDispute'])->middleware('idempotent');
     Route::post('settlement-entries/{settlementEntry}/variance', [ProviderFinanceController::class, 'settlement'])->middleware('idempotent');
+    Route::get('payment-terminals', [InPersonPaymentController::class, 'terminals']);
+    Route::post('payment-terminals/sync', [InPersonPaymentController::class, 'syncTerminals'])->middleware('idempotent');
+    Route::post('payment-terminals/{paymentTerminal}/state', [InPersonPaymentController::class, 'setTerminalState'])->middleware('idempotent');
+    Route::get('provider-pos-locations', [InPersonPaymentController::class, 'posLocations']);
+    Route::post('provider-pos-locations', [InPersonPaymentController::class, 'registerPos'])->middleware('idempotent');
+    Route::post('provider-pos-locations/{providerPosLocation}/state', [InPersonPaymentController::class, 'setPosState'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/point-orders', [InPersonPaymentController::class, 'point'])->middleware('idempotent');
+    Route::post('reservations/{reservation}/qr-orders', [InPersonPaymentController::class, 'qr'])->middleware('idempotent');
+    Route::get('in-person-payment-attempts/{paymentAttempt}', [InPersonPaymentController::class, 'show']);
+    Route::post('in-person-payment-attempts/{paymentAttempt}/cancel', [InPersonPaymentController::class, 'cancel'])->middleware('idempotent');
+    Route::post('in-person-payment-attempts/{paymentAttempt}/reconcile', [InPersonPaymentController::class, 'reconcile'])->middleware('idempotent');
+    Route::post('in-person-refunds/{refund}/execute', [InPersonPaymentController::class, 'refund'])->middleware('idempotent');
     Route::apiResource('deposits', DepositController::class)->only(['index', 'store', 'show']);
     Route::post('deposits/{deposit}/waive', [DepositController::class, 'waive'])->middleware('idempotent');
 

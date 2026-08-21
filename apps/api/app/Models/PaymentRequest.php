@@ -20,7 +20,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $source_amount_minor
  * @property string $source_currency
  * @property string|null $charge_currency
- * @property string $access_token_hash
+ * @property string|null $public_id
+ * @property string|null $access_token_hash
+ * @property string $initiation_mode
  * @property int $access_count
  * @property string|null $payment_id
  * @property CarbonImmutable $expires_at

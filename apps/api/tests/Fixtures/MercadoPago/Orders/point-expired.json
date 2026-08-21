@@ -1,0 +1,1 @@
+{"id":"ORD01TESTPOINTEXPIRED00000001","type":"point","user_id":"TEST-SELLER-ID","external_reference":"inn_point_expired","status":"expired","status_detail":"expired","currency":"ARS","config":{"point":{"terminal_id":"NEWLAND_N950__SBX0000001"}},"transactions":{"payments":[{"id":"PAY01TESTPOINTEXPIRED00000001","amount":"24.00","status":"expired","status_detail":"expired"}]}}

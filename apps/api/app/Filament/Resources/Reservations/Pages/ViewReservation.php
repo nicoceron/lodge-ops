@@ -25,6 +25,8 @@ class ViewReservation extends ViewRecord
         return [
             EditAction::make()->visible(fn (Reservation $record): bool => ReservationResource::canEdit($record)),
             PaymentRequestActions::issue(),
+            PaymentRequestActions::point(),
+            PaymentRequestActions::qr(),
             ...ReservationChangeActions::make(),
             Action::make('closeFolio')
                 ->label('Close folio')

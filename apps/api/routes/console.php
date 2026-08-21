@@ -40,6 +40,12 @@ Schedule::command('payments:recover-refunds --older-than=15 --limit=100')
     ->withoutOverlapping(15)
     ->onOneServer();
 
+Schedule::command('payments:reconcile-in-person --older-than=2 --limit=100')
+    ->name('payments:reconcile-in-person')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
 Schedule::command('direct-booking:maintain --batch=100')
     ->name('direct-booking:expire')
     ->everyMinute()

@@ -221,7 +221,10 @@ class ExtendedOperationsController extends Controller
             'external_account_id' => ['sometimes', 'string', 'max:160'],
             'environment' => ['sometimes', Rule::in(['sandbox', 'production', 'test'])],
             'capabilities' => ['sometimes', 'array'],
-            'capabilities.*' => ['string', Rule::in(['payment.hosted_checkout', 'reservations.import', 'accounting.journal_export', 'webhook.inbound', 'webhook.outbound'])],
+            'capabilities.*' => ['string', Rule::in([
+                'payment.hosted_checkout', 'payment.point_orders', 'payment.qr_orders',
+                'reservations.import', 'accounting.journal_export', 'webhook.inbound', 'webhook.outbound',
+            ])],
         ]);
         $propertyId = $data['property_id'] ?? $context->propertyScopeId();
         if ($context->propertyScopeId() !== null && $propertyId !== $context->propertyScopeId()) {

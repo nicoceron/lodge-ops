@@ -31,7 +31,16 @@ final class LaravelHttpMercadoPagoTransport implements MercadoPagoTransport
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException('Mercado Pago returned HTTP '.$response->status().'.');
+            $body = $response->json();
+            $code = is_array($body) ? data_get($body, 'error', data_get($body, 'code')) : null;
+            $retryAfter = $response->header('Retry-After');
+            $resourceId = is_array($body) ? data_get($body, 'data.order_id', data_get($body, 'order_id')) : null;
+            throw new MercadoPagoTransportException(
+                $response->status(),
+                is_string($code) && preg_match('/^[A-Za-z0-9_.-]{1,120}$/', $code) === 1 ? $code : null,
+                $retryAfter !== '' && ctype_digit($retryAfter) ? (int) $retryAfter : null,
+                is_string($resourceId) && preg_match('/^ORD[A-Za-z0-9_-]{8,160}$/', $resourceId) === 1 ? $resourceId : null,
+            );
         }
         $decoded = $response->json();
         if (! is_array($decoded)) {

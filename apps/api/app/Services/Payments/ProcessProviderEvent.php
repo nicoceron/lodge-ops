@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Data\Payments\ProviderPayment;
+use App\Data\Payments\ProviderPaymentApplication;
 use App\Enums\PaymentAttemptState;
 use App\Enums\ProviderEventState;
 use App\Exceptions\CommercialWorkflowException as DomainException;
@@ -146,7 +147,7 @@ final class ProcessProviderEvent
             ]);
             if ($state === PaymentAttemptState::Approved) {
                 try {
-                    $this->payments->recordProvider($attempt->fresh(), $providerPayment);
+                    $this->payments->recordProvider($attempt->fresh(), ProviderPaymentApplication::checkoutPro($providerPayment));
                 } catch (DomainException $exception) {
                     $attempt->update(['state' => PaymentAttemptState::Mismatched, 'last_error' => $exception->getMessage()]);
 

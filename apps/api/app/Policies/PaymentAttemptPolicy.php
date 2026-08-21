@@ -21,4 +21,9 @@ class PaymentAttemptPolicy extends TenantPolicy
     {
         return $this->canManageMoney($user, $attempt);
     }
+
+    public function cancel(User $user, PaymentAttempt $attempt): bool
+    {
+        return $this->canManageGuestMoney($user, $attempt);
+    }
 }

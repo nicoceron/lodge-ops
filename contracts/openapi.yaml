@@ -1433,6 +1433,130 @@ paths:
       responses:
         '200': { description: Authoritative provider lookup and normal payment-event processing completed. }
         '409': { $ref: '#/components/responses/Conflict' }
+  /payment-terminals:
+    get:
+      tags: [Payments]
+      operationId: listPaymentTerminals
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Property-scoped Point terminal registry without credentials., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/PaymentTerminal' } } } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /payment-terminals/sync:
+    post:
+      tags: [Payments]
+      operationId: syncPaymentTerminals
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [integration_connection_id, property_id], properties: { integration_connection_id: { type: string, format: uuid }, property_id: { type: string, format: uuid }, store_id: { type: [string, 'null'], maxLength: 160 } } } } }
+      responses:
+        '200': { description: Authoritative Point terminal list synchronized; only PDV terminals are enabled. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /payment-terminals/{paymentTerminal}/state:
+    post:
+      tags: [Payments]
+      operationId: setPaymentTerminalState
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: paymentTerminal, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses:
+        '200': { description: Terminal state changed only when no unresolved active order exists. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /provider-pos-locations:
+    get:
+      tags: [Payments]
+      operationId: listProviderPosLocations
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: property_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Property-scoped QR store and POS registry., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ProviderPosLocation' } } } } } } }
+    post:
+      tags: [Payments]
+      operationId: registerProviderPosLocation
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProviderPosLocationInput' } } }
+      responses:
+        '201': { description: QR store and POS identity registered against one canonical connection/account/environment/property. }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /provider-pos-locations/{providerPosLocation}/state:
+    post:
+      tags: [Payments]
+      operationId: setProviderPosLocationState
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: providerPosLocation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses:
+        '200': { description: QR POS state changed only when no unresolved active order exists. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/point-orders:
+    post:
+      tags: [Payments]
+      operationId: initiatePointOrder
+      description: Creates one staff-only immutable request and idempotent Point Orders resource for a server-derived amount. Device display is never financial truth.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/InPersonOrderInput' }, { type: object, required: [terminal_id], properties: { terminal_id: { type: string, format: uuid } } }] } } } }
+      responses:
+        '201': { description: Point order queued or the exact active attempt replayed., content: { application/json: { schema: { $ref: '#/components/schemas/PaymentAttemptEnvelope' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reservations/{reservation}/qr-orders:
+    post:
+      tags: [Payments]
+      operationId: initiateQrOrder
+      description: Creates one staff-only immutable request and provider QR order. QR data is temporary, encrypted at rest, and absent after terminal state.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reservation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/InPersonOrderInput' }, { type: object, required: [pos_location_id], properties: { pos_location_id: { type: string, format: uuid } } }] } } } }
+      responses:
+        '201': { description: QR order created or the exact active attempt replayed., content: { application/json: { schema: { $ref: '#/components/schemas/PaymentAttemptEnvelope' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /in-person-payment-attempts/{paymentAttempt}:
+    get:
+      tags: [Payments]
+      operationId: getInPersonPaymentAttempt
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { name: paymentAttempt, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Authorized order state; active QR data is omitted at terminal state., content: { application/json: { schema: { $ref: '#/components/schemas/PaymentAttemptEnvelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /in-person-payment-attempts/{paymentAttempt}/cancel:
+    post:
+      tags: [Payments]
+      operationId: cancelInPersonPaymentOrder
+      description: Fetches authoritatively first. API cancellation is attempted only for created; Point at_terminal is routed to terminal action.
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: paymentAttempt, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Cancellation or required terminal action reconciled. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /in-person-payment-attempts/{paymentAttempt}/reconcile:
+    post:
+      tags: [Finance]
+      operationId: reconcileInPersonPaymentOrder
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: paymentAttempt, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Authoritative Orders lookup passed through the same exact-once application path as signed events. }
+  /in-person-refunds/{refund}/execute:
+    post:
+      tags: [Finance]
+      operationId: executeInPersonOrderRefund
+      description: Uses POST /v1/orders/{order_id}/refund and retains processing/action-required outcomes until authoritative completion.
+      parameters: [{ $ref: '#/components/parameters/TenantId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: refund, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Point or QR refund execution recorded with its provider action/reason. }
+        '409': { $ref: '#/components/responses/Conflict' }
   /provider-refunds/{refund}/execute:
     post:
       tags: [Finance]
@@ -2609,7 +2733,7 @@ components:
   schemas:
     IntegrationCapability:
       type: string
-      enum: [payment.hosted_checkout, reservations.import, accounting.journal_export, webhook.inbound, webhook.outbound]
+      enum: [payment.hosted_checkout, payment.point_orders, payment.qr_orders, reservations.import, accounting.journal_export, webhook.inbound, webhook.outbound]
     IntegrationConnectionInput:
       type: object
       required: [name, type]
@@ -3806,12 +3930,13 @@ components:
         data: { type: object, additionalProperties: true }
     PaymentRequest:
       type: object
-      required: [id, property_id, reservation_id, purpose, state, source_amount_minor, source_currency, expires_at]
+      required: [id, property_id, reservation_id, initiation_mode, purpose, state, source_amount_minor, source_currency, expires_at]
       properties:
         id: { type: string, format: uuid }
         property_id: { type: string, format: uuid }
         reservation_id: { type: string, format: uuid }
         deposit_id: { type: [string, 'null'], format: uuid }
+        initiation_mode: { type: string, enum: [guest_link, staff_point, staff_qr] }
         purpose: { type: string, enum: [deposit, balance, full_outstanding, authorized_partial] }
         state: { type: string, enum: [draft, open, processing, paid, expired, revoked, superseded] }
         source_amount_minor: { type: integer, minimum: 1 }
@@ -3829,6 +3954,89 @@ components:
         deposit_id: { type: [string, 'null'], format: uuid }
         amount_minor: { type: [integer, 'null'], minimum: 1 }
         expires_at: { type: [string, 'null'], format: date-time }
+    PaymentTerminal:
+      type: object
+      required: [id, property_id, integration_connection_id, provider_terminal_id, display_name, operating_mode, is_enabled, health_state]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        integration_connection_id: { type: string, format: uuid }
+        provider_terminal_id: { type: string, maxLength: 160 }
+        provider_store_id: { type: [string, 'null'], maxLength: 160 }
+        display_name: { type: string, maxLength: 120 }
+        hardware_model: { type: [string, 'null'], maxLength: 80 }
+        serial_suffix: { type: [string, 'null'], maxLength: 16 }
+        operating_mode: { type: string, enum: [PDV, STANDALONE, UNKNOWN] }
+        is_enabled: { type: boolean }
+        health_state: { type: string }
+        last_synced_at: { type: [string, 'null'], format: date-time }
+        last_successful_order_at: { type: [string, 'null'], format: date-time }
+        replaced_by_id: { type: [string, 'null'], format: uuid }
+    ProviderPosLocation:
+      type: object
+      required: [id, property_id, integration_connection_id, provider_store_id, external_pos_id, display_name, qr_mode, is_enabled, health_state]
+      properties:
+        id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        integration_connection_id: { type: string, format: uuid }
+        provider_store_id: { type: string, maxLength: 160 }
+        external_pos_id: { type: string, maxLength: 160 }
+        display_name: { type: string, maxLength: 120 }
+        qr_mode: { type: string, enum: [static, dynamic, hybrid] }
+        is_enabled: { type: boolean }
+        health_state: { type: string }
+        last_synced_at: { type: [string, 'null'], format: date-time }
+        last_successful_order_at: { type: [string, 'null'], format: date-time }
+        replaced_by_id: { type: [string, 'null'], format: uuid }
+    ProviderPosLocationInput:
+      type: object
+      required: [integration_connection_id, property_id, provider_store_id, external_pos_id, display_name, qr_mode]
+      additionalProperties: false
+      properties:
+        integration_connection_id: { type: string, format: uuid }
+        property_id: { type: string, format: uuid }
+        provider_store_id: { type: string, maxLength: 160 }
+        external_pos_id: { type: string, pattern: '^[A-Za-z0-9_-]+$', maxLength: 160 }
+        display_name: { type: string, maxLength: 120 }
+        qr_mode: { type: string, enum: [static, dynamic, hybrid] }
+    InPersonOrderInput:
+      type: object
+      required: [purpose]
+      properties:
+        purpose: { type: string, enum: [deposit, balance, full_outstanding, authorized_partial] }
+        deposit_id: { type: [string, 'null'], format: uuid }
+        amount_minor: { type: [integer, 'null'], minimum: 1 }
+    PaymentAttemptEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, payment_request_id, provider, environment, state, channel, source_amount_minor, source_currency, charge_amount_minor, charge_currency]
+          properties:
+            id: { type: string, format: uuid }
+            payment_request_id: { type: string, format: uuid }
+            provider: { type: string, enum: [mercado_pago] }
+            environment: { type: string, enum: [sandbox, production] }
+            state: { type: string, enum: [creating, checkout_ready, pending, queued, at_terminal, action_required, processing, approved, rejected, cancelled, expired, mismatched, failed] }
+            channel: { type: string, enum: [integrated_terminal, qr] }
+            source_amount_minor: { type: integer, minimum: 1 }
+            source_currency: { type: string, pattern: '^[A-Z]{3}$' }
+            charge_amount_minor: { type: integer, minimum: 1 }
+            charge_currency: { type: string, pattern: '^[A-Z]{3}$' }
+            payment_terminal_id: { type: [string, 'null'], format: uuid }
+            provider_pos_location_id: { type: [string, 'null'], format: uuid }
+            provider_order_id: { type: [string, 'null'], maxLength: 160 }
+            provider_transaction_id: { type: [string, 'null'], maxLength: 160 }
+            provider_order_type: { type: [string, 'null'], enum: [point, qr, null] }
+            qr_mode: { type: [string, 'null'], enum: [static, dynamic, hybrid, null] }
+            qr_data: { type: [string, 'null'], description: Temporary provider QR payload for authorized staff only; absent after terminal state. }
+            qr_data_checksum: { type: [string, 'null'], pattern: '^[a-f0-9]{64}$' }
+            order_expires_at: { type: [string, 'null'], format: date-time }
+            action_required_at: { type: [string, 'null'], format: date-time }
+            provider_status: { type: [string, 'null'] }
+            provider_status_detail: { type: [string, 'null'] }
+            last_error: { type: [string, 'null'] }
     Dashboard:
       type: object
       required: [data]

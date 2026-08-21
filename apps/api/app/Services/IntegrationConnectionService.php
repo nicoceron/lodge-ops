@@ -19,6 +19,8 @@ class IntegrationConnectionService
 
     public const CAPABILITY_DIRECTIONS = [
         'payment.hosted_checkout' => 'outbound',
+        'payment.point_orders' => 'outbound',
+        'payment.qr_orders' => 'outbound',
         'reservations.import' => 'inbound',
         'accounting.journal_export' => 'outbound',
         'webhook.inbound' => 'inbound',
