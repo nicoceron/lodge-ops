@@ -9,6 +9,7 @@ use App\Enums\ProviderEventState;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\PaymentAttempt;
 use App\Models\ProviderEvent;
+use App\Services\DirectBooking\DirectBookingPaymentReconciler;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,6 +24,7 @@ final class ProcessProviderEvent
         private readonly PaymentService $payments,
         private readonly RecordProviderDispute $disputes,
         private readonly RecordSettlementRevision $settlements,
+        private readonly DirectBookingPaymentReconciler $directBooking,
     ) {}
 
     public function handle(ProviderEvent $event): ProviderEvent
@@ -84,6 +86,9 @@ final class ProcessProviderEvent
                     'last_error' => 'Provider identity, account, amount, or currency mismatch.',
                     'last_processed_at' => now(),
                 ]);
+                if ($providerPayment->status === 'approved') {
+                    $this->directBooking->needsReview($attempt->fresh(), 'provider_identity_or_money_mismatch');
+                }
 
                 return $this->mismatch($claimed, 'Provider identity, account, amount, or currency mismatch.');
             }
@@ -149,10 +154,14 @@ final class ProcessProviderEvent
                     $this->payments->recordProvider($attempt->fresh(), $providerPayment);
                 } catch (DomainException $exception) {
                     $attempt->update(['state' => PaymentAttemptState::Mismatched, 'last_error' => $exception->getMessage()]);
+                    $this->directBooking->needsReview($attempt->fresh(), 'authoritative_payment_not_applicable');
 
                     return $this->mismatch($claimed, $exception->getMessage());
                 }
                 $this->settlements->handle($attempt, $providerPayment);
+                $this->directBooking->approved($attempt->fresh());
+            } elseif (in_array($state, [PaymentAttemptState::Rejected, PaymentAttemptState::Cancelled], true)) {
+                $this->directBooking->failed($attempt->fresh(), 'provider_'.$state->value);
             }
             $claimed->update(['processing_state' => ProviderEventState::Processed, 'processed_at' => now(), 'last_error' => null]);
 

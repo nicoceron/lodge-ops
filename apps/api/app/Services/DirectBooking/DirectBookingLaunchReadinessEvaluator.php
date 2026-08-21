@@ -116,7 +116,7 @@ final class DirectBookingLaunchReadinessEvaluator
                         || $capability->providerConnection->type !== 'payment'
                         || $capability->providerConnection->status !== 'connected'
                         || empty($capability->providerConnection->secret_reference)
-                        || trim((string) data_get($capability->providerConnection->configuration, 'provider_account')) === ''
+                        || trim($capability->providerConnection->external_account_id) === ''
                         || strtoupper((string) data_get($capability->providerConnection->configuration, 'charge_currency')) !== $currency
                         || ! $this->gatewaySupported($capability->providerConnection))) {
                     $reasons[] = "hosted_checkout_not_ready:{$currency}";

@@ -27,6 +27,7 @@ use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DirectBookingCommandResponse;
 use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingOrderConsent;
 use App\Models\DirectBookingOrderEvent;
@@ -213,6 +214,7 @@ class AppServiceProvider extends ServiceProvider
             Deposit::class,
             DepositPolicy::class,
             DirectBookingOrder::class,
+            DirectBookingCommandResponse::class,
             DirectBookingOrderConsent::class,
             DirectBookingOrderEvent::class,
             DirectBookingPaymentCapability::class,

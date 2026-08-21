@@ -11,6 +11,7 @@ use App\Models\ProviderRefund;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
 use App\Services\CompleteRefund;
+use App\Services\DirectBooking\DirectBookingPaymentReconciler;
 use Illuminate\Support\Facades\DB;
 
 final class RecoverProviderRefund
@@ -18,6 +19,7 @@ final class RecoverProviderRefund
     public function __construct(
         private readonly PaymentGatewayFactory $gateways,
         private readonly CompleteRefund $completeRefund,
+        private readonly DirectBookingPaymentReconciler $directBooking,
     ) {}
 
     public function handle(ProviderRefund $refund, string $providerRefundId, ?int $actorId): ProviderRefund
@@ -50,6 +52,8 @@ final class RecoverProviderRefund
             return [$locked->fresh(), true];
         }, 3);
         if (! $shouldFetch) {
+            $this->directBooking->refunded($snapshot);
+
             return $snapshot;
         }
 
@@ -94,7 +98,7 @@ final class RecoverProviderRefund
             'currency' => $remote->currency,
         ], JSON_THROW_ON_ERROR));
 
-        return DB::transaction(function () use ($snapshot, $providerRefundId, $remote, $actorId, $checksum): ProviderRefund {
+        $result = DB::transaction(function () use ($snapshot, $providerRefundId, $remote, $actorId, $checksum): ProviderRefund {
             $row = ProviderRefund::query()->findOrFail($snapshot->id);
             Reservation::query()->lockForUpdate()->findOrFail($row->reservationChange->reservation_id);
             Payment::query()->lockForUpdate()->findOrFail($row->payment_id);
@@ -117,5 +121,8 @@ final class RecoverProviderRefund
 
             return $locked->fresh();
         }, 3);
+        $this->directBooking->refunded($result);
+
+        return $result;
     }
 }

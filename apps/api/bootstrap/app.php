@@ -3,7 +3,9 @@
 use App\Exceptions\AllocationConflictException;
 use App\Exceptions\CommercialWorkflowException;
 use App\Exceptions\InvalidStatusTransitionException;
+use App\Http\Middleware\EnsureDirectBookingIdempotency;
 use App\Http\Middleware\EnsureIdempotentCommand;
+use App\Http\Middleware\ResolveDirectBookingProperty;
 use App\Http\Middleware\ResolveGuestPortalSession;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Foundation\Application;
@@ -22,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'idempotent' => EnsureIdempotentCommand::class,
+            'direct-booking.idempotent' => EnsureDirectBookingIdempotency::class,
+            'direct-booking.property' => ResolveDirectBookingProperty::class,
             'guest.portal' => ResolveGuestPortalSession::class,
             'tenant' => ResolveTenant::class,
         ]);

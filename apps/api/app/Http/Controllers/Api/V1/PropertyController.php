@@ -4,13 +4,30 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PropertyResource;
+use App\Models\DirectBookingPropertySetting;
 use App\Models\Property;
+use App\Services\DirectBooking\DirectBookingLaunchReadinessEvaluator;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PropertyController extends Controller
 {
+    public function directBookingReadiness(Property $property, DirectBookingLaunchReadinessEvaluator $readiness): JsonResponse
+    {
+        $this->authorize('view', $property);
+        $setting = DirectBookingPropertySetting::query()->where('property_id', $property->id)->first();
+
+        return response()->json(['data' => $setting === null ? [
+            'ready' => false,
+            'blocking_reasons' => ['settings_missing'],
+        ] : [
+            'ready' => ($report = $readiness->evaluate($setting))->ready,
+            'blocking_reasons' => $report->blockingReasons,
+        ]]);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Property::class);

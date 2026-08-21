@@ -124,6 +124,10 @@ final class PaymentService
 
     private function requestProviderReceipt(Reservation $reservation, Payment $payment): void
     {
+        if ($reservation->status === ReservationStatus::Hold
+            && $reservation->directBookingOrder()->exists()) {
+            return;
+        }
         $this->documents->handleSystem(
             $reservation,
             DocumentKind::PaymentReceipt,

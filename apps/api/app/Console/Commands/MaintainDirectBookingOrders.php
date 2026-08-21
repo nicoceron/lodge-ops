@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\DirectBookingOrderState;
 use App\Enums\DirectBookingTransitionAuthority;
 use App\Enums\ReservationStatus;
+use App\Models\DirectBookingCommandResponse;
 use App\Models\DirectBookingOrder;
 use App\Models\Guest;
 use App\Models\Reservation;
@@ -24,17 +25,22 @@ class MaintainDirectBookingOrders extends Command
     {
         $expired = 0;
         $scrubbed = 0;
+        $responses = 0;
         Tenant::query()->when($this->option('tenant'), fn ($query, $id) => $query->whereKey($id))->get()
-            ->each(function (Tenant $tenant) use ($states, &$expired, &$scrubbed): void {
+            ->each(function (Tenant $tenant) use ($states, &$expired, &$scrubbed, &$responses): void {
                 app(TenantContext::class)->set($tenant);
                 if ($this->option('cleanup')) {
                     $scrubbed += $this->scrub($states);
+                    $responses += DirectBookingCommandResponse::query()
+                        ->where('expires_at', '<=', now())
+                        ->limit(max(1, (int) $this->option('batch')))
+                        ->delete();
                 } else {
                     $expired += $this->expire($states);
                 }
             });
         app(TenantContext::class)->clear();
-        $this->info("Expired {$expired}; scrubbed {$scrubbed} direct-booking order(s).");
+        $this->info("Expired {$expired}; scrubbed {$scrubbed} direct-booking order(s); deleted {$responses} expired command response(s).");
 
         return self::SUCCESS;
     }

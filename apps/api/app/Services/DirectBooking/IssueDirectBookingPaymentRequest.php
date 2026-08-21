@@ -40,18 +40,36 @@ final class IssueDirectBookingPaymentRequest
             $locked = DirectBookingOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($locked->payment_request_id !== null) {
                 $request = $locked->paymentRequest()->lockForUpdate()->firstOrFail();
-                $result = $this->states->transition(
-                    $locked,
-                    DirectBookingOrderState::PaymentPending,
-                    DirectBookingTransitionAuthority::PaymentOrchestrator,
-                    $expectedVersion,
-                    $retryIdentity,
-                    ['payment_request_reference' => $request->public_id],
-                );
+                if ($locked->state === DirectBookingOrderState::PaymentFailed) {
+                    if ($request->state === PaymentRequestState::Paid) {
+                        throw new DirectBookingContractException(DirectBookingErrorCode::PaidNeedsReview, 'A paid request cannot be replaced.');
+                    }
+                    $request->forceFill([
+                        'state' => PaymentRequestState::Superseded,
+                        'revoked_at' => now(),
+                        'revocation_reason' => 'Guest requested a replacement direct-booking checkout.',
+                    ])->save();
+                    $request->attempts()->whereIn('state', ['creating', 'checkout_ready', 'pending'])->update([
+                        'state' => 'expired',
+                        'last_error' => 'Payment request superseded by direct-booking retry.',
+                        'last_processed_at' => now(),
+                    ]);
+                    $locked->forceFill(['payment_request_id' => null, 'checkout_expires_at' => null])->save();
+                } else {
+                    $result = $this->states->transition(
+                        $locked,
+                        DirectBookingOrderState::PaymentPending,
+                        DirectBookingTransitionAuthority::PaymentOrchestrator,
+                        $expectedVersion,
+                        $retryIdentity,
+                        ['payment_request_reference' => $request->public_id],
+                    );
 
-                return ['request' => $request, 'token' => null, 'replayed' => $result->replayed];
+                    return ['request' => $request, 'token' => null, 'replayed' => $result->replayed];
+                }
             }
-            if ($locked->state !== DirectBookingOrderState::Held || $locked->state_version !== $expectedVersion) {
+            if (! in_array($locked->state, [DirectBookingOrderState::Held, DirectBookingOrderState::PaymentFailed], true)
+                || $locked->state_version !== $expectedVersion) {
                 throw new DirectBookingContractException(DirectBookingErrorCode::Conflict, 'A current held order is required to issue direct-booking payment.');
             }
 
@@ -119,6 +137,7 @@ final class IssueDirectBookingPaymentRequest
                 'calculation_snapshot' => $snapshot,
                 'calculation_checksum' => $this->canonicalJson->checksum($snapshot),
                 'expires_at' => $reservation->hold_expires_at,
+                'supersedes_id' => isset($request) ? $request->id : null,
             ]);
             $locked->forceFill([
                 'payment_request_id' => $request->id,

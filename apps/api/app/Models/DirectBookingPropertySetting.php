@@ -9,6 +9,7 @@ use LogicException;
 
 /**
  * @property string $property_id
+ * @property string $tenant_id
  * @property string $public_slug
  * @property bool $direct_booking_enabled
  * @property string $default_locale
