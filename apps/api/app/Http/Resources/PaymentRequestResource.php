@@ -17,6 +17,7 @@ class PaymentRequestResource extends JsonResource
             'reservation_id' => $this->reservation_id,
             'deposit_id' => $this->deposit_id,
             'purpose' => $this->purpose->value,
+            'initiation_mode' => $this->initiation_mode,
             'state' => $this->state->value,
             'source_amount_minor' => $this->source_amount_minor,
             'source_currency' => $this->source_currency,

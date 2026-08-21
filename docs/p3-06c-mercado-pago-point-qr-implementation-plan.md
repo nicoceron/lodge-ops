@@ -1,9 +1,21 @@
 # P3-06C Mercado Pago Point and QR implementation plan
 
-Date: 2026-08-18
-Status: **planned follow-on; do not start before P3-06A and P3-06B merge**
+Date: 2026-08-20
+Status: **implemented and release-gated at level 1; provider QR sandbox and physical Point certification remain externally blocked**
 Branch: `codex/p3-06c-mercado-pago-point-qr`
 Base: synchronized `main` containing the merged [online payment](p3-06-mercado-pago-payments-implementation-plan.md) and [front-desk tender](p3-06b-front-desk-tenders-implementation-plan.md) slices
+
+## Implementation result
+
+The software slice now includes a dedicated Mercado Pago Orders gateway, canonical connection/application/account/environment/property binding, Point terminal and QR POS registries, staff initiation/cancel/reconcile/refund commands, signed singular-`order` event processing, exact-once provider payment/settlement/receipt application, Finance/Filament operations, API/OpenAPI contracts, PostgreSQL active-order constraints, deterministic worker/browser UAT, and a local-only authorized Point virtual-device harness.
+
+Completion is intentionally split into three evidence levels:
+
+1. **Implementation/test mode:** complete after the recorded release gates in [`docs/evidence/p3-06c/README.md`](evidence/p3-06c/README.md). This proves deterministic Point and QR Orders, signature/lookup handling, ordinary-worker accounting, receipts, settlement, and browser behavior; it is not provider transaction evidence.
+2. **Real QR sandbox:** not run. The available authorized test connection identifies a Colombia/MCO test account, while the requested QR Orders path is an Argentina/MLA + ARS merchant/POS/test-buyer capability. No provider mutation was attempted with an unsupported account.
+3. **Client-complete physical Point:** not run. It requires an authorized production MLA merchant, a real Point device confirmed in PDV mode, a low-value card payment, refund/terminal action when required, receipt, and settlement observation. Mercado Pago says test users cannot complete real physical Point payments and its virtual device is not an integration-quality measurement.
+
+The operating procedure and activation checklist are in [`docs/p3-06c-mercado-pago-point-qr-runbook.md`](p3-06c-mercado-pago-point-qr-runbook.md).
 
 ## 1. Decision and client outcome
 
@@ -83,7 +95,7 @@ Mobbex Smart POS is the most relevant Argentine alternative because it combines 
 | POS-02 | Each provider create/cancel/refund mutation has a stable operation-specific `X-Idempotency-Key`; retry with a different body is rejected locally before a provider call. |
 | POS-03 | One terminal may have at most one active order controlled by Inn. Device-busy and already-queued responses enter recovery, never blind retry. |
 | POS-04 | Terminal display, browser polling and staff confirmation never post money. Signed event plus authenticated lookup, or authenticated reconciliation lookup, is authoritative. |
-| POS-05 | Provider account, order type, external reference, terminal/POS, amount, currency and payment identity must match the local attempt before money is applied. |
+| POS-05 | Provider application, seller account, environment, order type, external reference, terminal/POS, amount, currency and one exact nonempty/unique transaction identity with matching amount/paid amount must match the local attempt before money is applied. |
 | POS-06 | One approved provider transaction creates at most one Payment, request satisfaction, folio effect, deposit application, receipt and cashless settlement entry under all retries/races. |
 | POS-07 | Point and QR are separate channels sharing one Orders transport. A Point order cannot be reconciled as QR or vice versa. |
 | POS-08 | Terminal/POS credentials and access tokens remain server-side; public QR payload contains only provider-specified EMVCo data and expires with its order. |

@@ -22,11 +22,16 @@ class PaymentRequestPolicy extends TenantPolicy
     {
         $role = app(TenantContext::class)->membership()?->role;
 
-        return $this->canView($user) && ($role?->canManageSales() === true || $role?->canManageMoney() === true);
+        return $this->canManageGuestMoney($user) || ($this->canView($user) && $role?->canManageSales() === true);
     }
 
     public function update(User $user, PaymentRequest $request): bool
     {
         return $this->create($user) && $this->canView($user, $request);
+    }
+
+    public function createInPerson(User $user): bool
+    {
+        return $this->canManageGuestMoney($user);
     }
 }

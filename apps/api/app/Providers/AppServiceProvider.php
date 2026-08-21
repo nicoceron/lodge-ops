@@ -6,7 +6,9 @@ use App\Contracts\DirectBooking\BotVerifier;
 use App\Contracts\Documents\DocumentRenderer;
 use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
 use App\Contracts\Integrations\SecretReferenceResolver;
+use App\Contracts\Payments\InPersonPaymentGatewayFactory;
 use App\Contracts\Payments\PaymentGatewayFactory;
+use App\Integrations\Payments\MercadoPago\DefaultInPersonPaymentGatewayFactory;
 use App\Integrations\Payments\MercadoPago\DefaultPaymentGatewayFactory;
 use App\Integrations\Secrets\EnvironmentSecretReferenceResolver;
 use App\Models\Allocation;
@@ -62,11 +64,13 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\PaymentAttempt;
 use App\Models\PaymentRequest;
+use App\Models\PaymentTerminal;
 use App\Models\Program;
 use App\Models\Property;
 use App\Models\ProviderDispute;
 use App\Models\ProviderDisputeRevision;
 use App\Models\ProviderEvent;
+use App\Models\ProviderPosLocation;
 use App\Models\ProviderRefund;
 use App\Models\RatePlan;
 use App\Models\RatePlanService;
@@ -117,6 +121,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
         $this->app->bind(BotVerifier::class, CloudflareTurnstileVerifier::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
+        $this->app->bind(InPersonPaymentGatewayFactory::class, DefaultInPersonPaymentGatewayFactory::class);
         $this->app->bind(SecretReferenceResolver::class, EnvironmentSecretReferenceResolver::class);
         $this->app->singleton(CapabilityPortRegistry::class);
         $this->app->scoped(EndpointKeyRuntimeStore::class);
@@ -241,6 +246,8 @@ class AppServiceProvider extends ServiceProvider
             Payment::class,
             PaymentAttempt::class,
             PaymentRequest::class,
+            PaymentTerminal::class,
+            ProviderPosLocation::class,
             ProviderEvent::class,
             ProviderDispute::class,
             ProviderDisputeRevision::class,

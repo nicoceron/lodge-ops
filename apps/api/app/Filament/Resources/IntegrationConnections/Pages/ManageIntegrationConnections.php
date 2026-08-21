@@ -26,6 +26,7 @@ class ManageIntegrationConnections extends ManageRecords
                     $data['external_account_id'] ?? null,
                     $data['environment'] ?? null,
                     $data['capabilities'] ?? [],
+                    $data['provider_application_id'] ?? null,
                 )),
         ];
     }

@@ -63,6 +63,7 @@ class IntegrationConnectionResource extends TenantResource
                 TextInput::make('provider')->maxLength(80)->helperText('Defaults to the integration type when omitted.')->disabledOn('edit'),
                 TextInput::make('product')->maxLength(80)->helperText('Defaults to the named provider product for known consumers, otherwise the integration type.')->disabledOn('edit'),
                 TextInput::make('external_account_id')->label('External account')->maxLength(160)->helperText('Defaults to the connection name for legacy consumers.')->disabledOn('edit'),
+                TextInput::make('provider_application_id')->label('Provider application ID')->maxLength(160)->helperText('Required canonical application identity for Mercado Pago Orders.')->disabledOn('edit'),
                 Select::make('environment')->options(['sandbox' => 'Sandbox', 'production' => 'Production', 'test' => 'Test'])->placeholder('Sandbox')->disabledOn('edit'),
                 TagsInput::make('capabilities')->helperText('Capability-specific contracts only, for example reservations.import or webhook.outbound.')->columnSpanFull(),
                 KeyValue::make('configuration')->label('Non-secret configuration')->columnSpanFull(),
@@ -80,6 +81,7 @@ class IntegrationConnectionResource extends TenantResource
                 TextEntry::make('provider'),
                 TextEntry::make('product'),
                 TextEntry::make('external_account_id')->label('External account'),
+                TextEntry::make('provider_application_id')->label('Provider application ID')->placeholder('Not applicable'),
                 TextEntry::make('environment')->badge(),
                 TextEntry::make('property.name')->label('Property scope')->placeholder('All properties'),
                 TextEntry::make('status')->badge()->formatStateUsing(fn (string $state): string => InnPresentation::label($state))->color(fn ($state): string => InnPresentation::statusColor($state)),
@@ -144,6 +146,7 @@ class IntegrationConnectionResource extends TenantResource
                     $record->external_account_id,
                     $record->environment,
                     $data['capabilities'] ?? $record->capabilities ?? [],
+                    $record->provider_application_id,
                 )),
                 Action::make('test')->authorize('update')->form([
                     Select::make('capability')->options(fn (IntegrationConnection $record): array => collect($record->capabilities ?? [])->mapWithKeys(fn (string $value): array => [$value => $value])->all())->required(),

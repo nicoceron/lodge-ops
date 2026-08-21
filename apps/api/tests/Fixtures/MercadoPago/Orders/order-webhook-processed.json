@@ -1,0 +1,1 @@
+{"action":"order.processed","api_version":"v1","application_id":"TEST-APPLICATION-ID","data":{"id":"ORD01TESTPOINTPROCESSED000001"},"date_created":"2026-08-19T12:00:00Z","live_mode":false,"type":"order","user_id":"TEST-SELLER-ID"}

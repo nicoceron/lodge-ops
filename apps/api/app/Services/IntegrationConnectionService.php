@@ -19,6 +19,8 @@ class IntegrationConnectionService
 
     public const CAPABILITY_DIRECTIONS = [
         'payment.hosted_checkout' => 'outbound',
+        'payment.point_orders' => 'outbound',
+        'payment.qr_orders' => 'outbound',
         'reservations.import' => 'inbound',
         'accounting.journal_export' => 'outbound',
         'webhook.inbound' => 'inbound',
@@ -37,6 +39,7 @@ class IntegrationConnectionService
         ?string $externalAccountId = null,
         ?string $environment = null,
         array $capabilities = [],
+        ?string $providerApplicationId = null,
     ): IntegrationConnection {
         if (! array_key_exists($type, IntegrationConnection::TYPES)) {
             throw new DomainException('Unsupported integration type.');
@@ -58,13 +61,16 @@ class IntegrationConnectionService
                 throw new DomainException('Provider, product, external account, and environment identity are required.');
             }
         }
+        if ($provider === 'mercado_pago' && $product === 'orders' && trim((string) $providerApplicationId) === '') {
+            throw new DomainException('Mercado Pago Orders requires its canonical provider application identity.');
+        }
         $capabilities = array_values(array_unique(array_map('strval', $capabilities ?: ($type === 'payment' ? ['payment.hosted_checkout'] : []))));
         if (array_diff($capabilities, array_keys(self::CAPABILITY_DIRECTIONS)) !== []) {
             throw new DomainException('The connection contains an unsupported capability.');
         }
         $configuration = $this->configurationPolicy->validate($configuration, $type, $provider, $product, $capabilities);
 
-        return DB::transaction(function () use ($name, $type, $configuration, $secretReference, $propertyId, $provider, $product, $externalAccountId, $environment, $capabilities): IntegrationConnection {
+        return DB::transaction(function () use ($name, $type, $configuration, $secretReference, $propertyId, $provider, $product, $externalAccountId, $environment, $capabilities, $providerApplicationId): IntegrationConnection {
             $connection = IntegrationConnection::query()->firstOrNew([
                 'provider' => $provider,
                 'product' => $product,
@@ -76,6 +82,7 @@ class IntegrationConnectionService
                 'property_id' => $propertyId,
                 'name' => $name,
                 'type' => $type,
+                'provider_application_id' => $providerApplicationId,
                 'status' => $secretReference === null ? 'disconnected' : 'configured',
                 'secret_reference' => $secretReference,
                 'configuration' => $configuration,

@@ -9,6 +9,7 @@ final class IntegrationConfigurationPolicy
     private const RESERVED_IDENTITY_KEYS = [
         'tenant_id', 'property_id', 'property_scope_key', 'type', 'provider', 'product',
         'provider_account', 'external_account_id', 'environment', 'capabilities',
+        'application_id', 'provider_application_id',
     ];
 
     /** @param array<string,mixed> $configuration @param list<string> $capabilities @return array<string,mixed> */
@@ -23,6 +24,15 @@ final class IntegrationConfigurationPolicy
                 'return_url_base' => 'url',
                 'charge_currency' => 'currency',
                 'use_sandbox_checkout_url' => 'bool',
+                'transport' => 'transport',
+                'fixture' => 'fixture',
+                'webhook_secret_reference' => 'reference',
+                'webhook_endpoint_key_reference' => 'reference',
+            ];
+        }
+        if ($provider === 'mercado_pago' && $product === 'orders') {
+            $allowed += [
+                'charge_currency' => 'currency',
                 'transport' => 'transport',
                 'fixture' => 'fixture',
                 'webhook_secret_reference' => 'reference',

@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Data\Payments\ProviderPayment;
+use App\Data\Payments\ProviderPaymentApplication;
 use App\Enums\DepositStatus;
 use App\Enums\DocumentKind;
 use App\Enums\FolioStatus;
@@ -33,20 +33,25 @@ final class PaymentService
         private readonly RequestDocumentGeneration $documents,
     ) {}
 
-    public function recordProvider(PaymentAttempt $attempt, ProviderPayment $providerPayment): Payment
+    public function recordProvider(PaymentAttempt $attempt, ProviderPaymentApplication $application): Payment
     {
-        return DB::transaction(function () use ($attempt, $providerPayment): Payment {
+        return DB::transaction(function () use ($attempt, $application): Payment {
             Tenant::query()->whereKey($attempt->tenant_id)->lockForUpdate()->firstOrFail();
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($attempt->reservation_id);
             $request = PaymentRequest::query()->lockForUpdate()->findOrFail($attempt->payment_request_id);
             $lockedAttempt = PaymentAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
-            if ($providerPayment->providerAccount === '' || $providerPayment->providerAccount !== $lockedAttempt->provider_account) {
+            if ($application->providerAccount === '' || $application->providerAccount !== $lockedAttempt->provider_account) {
                 throw new DomainException('The provider payment account does not match the payment attempt.');
+            }
+            if ($application->externalReference !== $lockedAttempt->external_reference
+                || $application->amountMinor !== $lockedAttempt->charge_amount_minor
+                || $application->currency !== $lockedAttempt->charge_currency) {
+                throw new DomainException('The trusted provider application does not match the payment attempt identity or money.');
             }
             $existing = Payment::query()->where('provider', $lockedAttempt->provider)
                 ->where('environment', $lockedAttempt->environment)
                 ->where('provider_account', $lockedAttempt->provider_account)
-                ->where('provider_reference', $providerPayment->id)->lockForUpdate()->first();
+                ->where('provider_reference', $application->providerTransactionId)->lockForUpdate()->first();
             if ($existing !== null) {
                 if ($existing->reservation_id !== $reservation->id
                     || (string) data_get($existing->metadata, 'payment_attempt_id') !== $lockedAttempt->id) {
@@ -84,14 +89,14 @@ final class PaymentService
             $payment = Payment::query()->create([
                 'reservation_id' => $reservation->id,
                 'status' => PaymentStatus::Succeeded,
-                'method' => 'mercado_pago_checkout_pro',
-                'channel' => PaymentChannel::OnlineCheckout,
+                'method' => $application->method,
+                'channel' => $application->channel,
                 'entry_mode' => PaymentEntryMode::ProviderReported,
                 'origin' => PaymentOrigin::Provider,
                 'provider' => $lockedAttempt->provider,
                 'environment' => $lockedAttempt->environment,
                 'provider_account' => $lockedAttempt->provider_account,
-                'provider_reference' => $providerPayment->id,
+                'provider_reference' => $application->providerTransactionId,
                 'currency' => $request->source_currency,
                 'amount_minor' => $request->source_amount_minor,
                 'processed_at' => now(),
@@ -102,6 +107,7 @@ final class PaymentService
                     'charge_amount_minor' => $lockedAttempt->charge_amount_minor,
                     'charge_currency' => $lockedAttempt->charge_currency,
                     'conversion_snapshot' => $lockedAttempt->conversion_snapshot,
+                    'provider_order_id' => $application->providerOrderId,
                 ],
             ]);
             $this->folio->postPayment($payment->load('reservation'), null);

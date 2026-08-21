@@ -1,0 +1,14 @@
+[
+  {"scenario":"bad-request","http_status":400,"body":{"error":"property_value","message":"Synthetic invalid order field"}},
+  {"scenario":"unauthorized","http_status":401,"body":{"error":"unauthorized","message":"Synthetic invalid access token"}},
+  {"scenario":"forbidden-terminal-owner","http_status":403,"body":{"error":"forbidden_checking_terminal_owner","message":"Synthetic terminal ownership mismatch"}},
+  {"scenario":"already-queued","http_status":409,"body":{"error":"already_queued_order_for_terminal","message":"Synthetic terminal already has an order"}},
+  {"scenario":"idempotency-conflict","http_status":409,"body":{"error":"idempotency_key_already_used","message":"Synthetic key/body mismatch"}},
+  {"scenario":"refund-not-ready","http_status":425,"body":{"error":"order_payment_not_yet_enabled_for_refund","message":"Synthetic refund not ready"}},
+  {"scenario":"refund-insufficient-balance","http_status":428,"body":{"error":"insufficient_money_for_refund","message":"Synthetic seller balance is insufficient"}},
+  {"scenario":"rate-limited","http_status":429,"headers":{"Retry-After":"7"},"body":{"error":"too_many_requests","message":"Synthetic rate limit"}},
+  {"scenario":"provider-error","http_status":500,"body":{"error":"internal_error","message":"Synthetic provider failure"}},
+  {"scenario":"timeout-after-create-success","transport_error":"timeout","recovery":{"lookup_by":"provider order identity","fixture":"point-created.json"}},
+  {"scenario":"timeout-after-cancel-success","transport_error":"timeout","recovery":{"lookup_by":"provider order id","fixture":"point-canceled.json"}},
+  {"scenario":"timeout-after-refund-success","transport_error":"timeout","recovery":{"lookup_by":"provider order id","fixture":"point-refunded.json"}}
+]

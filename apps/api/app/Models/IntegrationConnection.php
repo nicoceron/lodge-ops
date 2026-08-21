@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $provider
  * @property string $product
  * @property string $external_account_id
+ * @property string|null $provider_application_id
  * @property string $environment
  * @property array<string, mixed>|null $configuration
  * @property list<string>|null $capabilities
@@ -75,7 +76,8 @@ class IntegrationConnection extends TenantModel
             $configuration = $connection->configuration ?? [];
             foreach ([
                 'provider' => 'provider', 'product' => 'product', 'provider_account' => 'external_account_id',
-                'external_account_id' => 'external_account_id', 'environment' => 'environment', 'property_id' => 'property_id',
+                'external_account_id' => 'external_account_id', 'application_id' => 'provider_application_id',
+                'provider_application_id' => 'provider_application_id', 'environment' => 'environment', 'property_id' => 'property_id',
             ] as $configurationKey => $column) {
                 $legacy = data_get($configuration, $configurationKey);
                 $canonical = $connection->getAttribute($column);

@@ -37,6 +37,7 @@ class ProviderRefund extends TenantModel
             'source_amount_minor' => 'integer',
             'charge_amount_minor' => 'integer',
             'attempt_count' => 'integer',
+            'provider_action_required' => 'boolean',
             'last_attempted_at' => 'immutable_datetime',
             'succeeded_at' => 'immutable_datetime',
         ];
