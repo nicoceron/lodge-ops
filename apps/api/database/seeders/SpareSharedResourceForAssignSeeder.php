@@ -18,6 +18,10 @@ class SpareSharedResourceForAssignSeeder extends Seeder
 
     public const RESOURCE_NAME = 'Spare fishing guide';
 
+    public const SECOND_RESOURCE_CODE = 'GUIDE-SPARE-ASSIGN-2';
+
+    public const SECOND_RESOURCE_NAME = 'Spare fishing guide 2';
+
     public function run(): void
     {
         $this->withDemoTenant(function (Property $property): void {
@@ -26,40 +30,53 @@ class SpareSharedResourceForAssignSeeder extends Seeder
                 ->where('slug', 'guide')
                 ->firstOrFail();
 
-            Resource::query()->updateOrCreate(
-                ['property_id' => $property->id, 'code' => self::RESOURCE_CODE],
-                [
-                    'category_id' => $guideCategory->id,
-                    'name' => self::RESOURCE_NAME,
-                    'capacity' => 2,
-                    'user_id' => null,
-                    'attributes' => [
-                        'capabilities' => ['fishing', 'hunting'],
-                        'languages' => ['en', 'es'],
+            foreach ($this->definitions() as $definition) {
+                Resource::query()->updateOrCreate(
+                    ['property_id' => $property->id, 'code' => $definition['code']],
+                    [
+                        'category_id' => $guideCategory->id,
+                        'name' => $definition['name'],
+                        'capacity' => $definition['capacity'],
+                        'user_id' => null,
+                        'attributes' => [
+                            'capabilities' => ['fishing', 'hunting'],
+                            'languages' => ['en', 'es'],
+                        ],
+                        'is_buyout' => false,
+                        'housekeeping_status' => null,
+                        'is_active' => true,
                     ],
-                    'is_buyout' => false,
-                    'housekeeping_status' => null,
-                    'is_active' => true,
-                ],
-            );
+                );
+            }
         });
     }
 
     public static function reverse(): void
     {
         (new self)->withDemoTenant(function (): void {
-            $resource = Resource::query()->where('code', self::RESOURCE_CODE)->first();
-            if ($resource === null) {
-                return;
-            }
+            foreach (array_reverse(self::definitions()) as $definition) {
+                $resource = Resource::query()->where('code', $definition['code'])->first();
+                if ($resource === null) {
+                    continue;
+                }
 
-            if ($resource->allocations()->where('status', '!=', AllocationStatus::Released)->exists()) {
-                throw new LogicException('Spare assign guide has active allocations and cannot be reversed.');
-            }
+                if ($resource->allocations()->where('status', '!=', AllocationStatus::Released)->exists()) {
+                    throw new LogicException('Spare assign guide has active allocations and cannot be reversed.');
+                }
 
-            $resource->allocations()->delete();
-            $resource->delete();
+                $resource->allocations()->delete();
+                $resource->delete();
+            }
         });
+    }
+
+    /** @return list<array{code: string, name: string, capacity: int}> */
+    private static function definitions(): array
+    {
+        return [
+            ['code' => self::RESOURCE_CODE, 'name' => self::RESOURCE_NAME, 'capacity' => 2],
+            ['code' => self::SECOND_RESOURCE_CODE, 'name' => self::SECOND_RESOURCE_NAME, 'capacity' => 1],
+        ];
     }
 
     /** @param  callable(Property): void  $callback */
