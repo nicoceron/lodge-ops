@@ -12,6 +12,7 @@ use App\Models\Program;
 use App\Models\Property;
 use App\Models\Reservation;
 use App\Models\Resource;
+use App\Models\ResourceBlock;
 use App\Models\ResourceCategory;
 use App\Models\Tenant;
 use App\Models\User;
@@ -29,6 +30,10 @@ class OperationalAcceptanceBrowserSeeder extends Seeder
     public const SWAP_RESERVATION_REFERENCE = 'RSV-OP-SWAP-UAT';
 
     public const OWN_GUIDE_NAME = 'Own Guide Availability';
+
+    public const OTHER_GUIDE_BLOCK_ID = '05000000-0000-4000-8000-000000000001';
+
+    public const OTHER_GUIDE_RESOURCE_ID = '05000000-0000-4000-8000-000000000002';
 
     public function run(): void
     {
@@ -65,11 +70,30 @@ class OperationalAcceptanceBrowserSeeder extends Seeder
                     'user_id' => null, 'is_active' => true, 'attributes' => ['capabilities' => ['fishing'], 'languages' => []],
                 ],
             );
+            $otherGuide = Resource::query()->updateOrCreate(
+                ['id' => self::OTHER_GUIDE_RESOURCE_ID],
+                [
+                    'property_id' => $property->id, 'category_id' => $guideCategory->id,
+                    'code' => 'G-OP-D', 'name' => 'Protected Other Guide', 'capacity' => 1,
+                    'user_id' => null, 'is_active' => true,
+                    'attributes' => ['capabilities' => ['fishing'], 'languages' => []],
+                ],
+            );
             $guest = Guest::query()->updateOrCreate(
                 ['email' => 'operational-review-uat@example.test'],
                 ['first_name' => 'Operational', 'last_name' => 'Review UAT', 'language' => 'en'],
             );
             $startsAt = CarbonImmutable::now($property->timezone)->startOfDay()->addDays(5)->addHours(8)->utc();
+            ResourceBlock::query()->updateOrCreate(
+                ['id' => self::OTHER_GUIDE_BLOCK_ID],
+                [
+                    'resource_id' => $otherGuide->id,
+                    'starts_at' => $startsAt->addDays(20),
+                    'ends_at' => $startsAt->addDays(20)->addHours(2),
+                    'reason' => 'Other guide protected availability',
+                    'notes' => null,
+                ],
+            );
             $reservation = Reservation::query()->updateOrCreate(
                 ['confirmation_number' => self::RESERVATION_REFERENCE],
                 [

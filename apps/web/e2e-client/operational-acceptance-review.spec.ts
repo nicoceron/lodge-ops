@@ -8,6 +8,9 @@ const CHECKLIST_NAME = "Operational review UAT";
 const EXCEPTION_TITLE = "Prepare browser-reviewed welcome kit";
 const SWAP_RESERVATION_REFERENCE = "RSV-OP-SWAP-UAT";
 const OWN_GUIDE_NAME = "Own Guide Availability";
+const OTHER_GUIDE_RESOURCE_ID = "05000000-0000-4000-8000-000000000002";
+const GUIDE_BLOCK_REASON = "Guide browser availability confirmed";
+const GUIDE_BLOCK_EDITED_REASON = "Guide browser availability updated";
 const EMPTY_STORAGE_STATE = { cookies: [], origins: [] };
 
 test.use({ trace: "off" });
@@ -112,6 +115,52 @@ test("operational review workbench assignment and checklist exception regenerate
 
   const guide = await rolePage(browser, baseURL, "guide@example.com");
   await guide.context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+  const startsAt = new Date(Date.now() + (25 * 24 * 60 * 60 * 1000));
+  const endsAt = new Date(startsAt.getTime() + (2 * 60 * 60 * 1000));
+  await guide.page.goto("/manage/workspace/demo-lodge/resource-blocks");
+  await guide.page.getByRole("button", { name: "New resource block", exact: true }).click();
+  const createDialog = guide.page.getByRole("dialog", { name: "Create Resource Block" });
+  await createDialog.getByRole("combobox", { name: "Resource*" }).click();
+  await guide.page.getByRole("option", { name: new RegExp(OWN_GUIDE_NAME) }).click();
+  await createDialog.getByRole("textbox", { name: "Reason*" }).fill(GUIDE_BLOCK_REASON);
+  await createDialog.getByRole("textbox", { name: "Starts at*" }).fill(startsAt.toISOString().slice(0, 16));
+  await createDialog.getByRole("textbox", { name: "Ends at*" }).fill(endsAt.toISOString().slice(0, 16));
+  await createDialog.getByRole("button", { name: "Create", exact: true }).click();
+  const guideBlockRow = guide.page.getByRole("row").filter({ hasText: GUIDE_BLOCK_REASON });
+  await expect(guideBlockRow).toBeVisible();
+  await guideBlockRow.getByRole("button", { name: "Edit", exact: true }).click();
+  const editDialog = guide.page.getByRole("dialog", { name: "Edit resource block" });
+  await editDialog.getByRole("textbox", { name: "Reason*" }).fill(GUIDE_BLOCK_EDITED_REASON);
+  await editDialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(guide.page.getByText(GUIDE_BLOCK_EDITED_REASON, { exact: true })).toBeVisible();
+  await expect(guide.page.getByText(OWN_GUIDE_NAME, { exact: false }).first()).toBeVisible();
+  await expect(guide.page.getByText("Other guide protected availability", { exact: true })).toHaveCount(0);
+  const guideScreenshot = testInfo.outputPath("operational-acceptance-guide-availability-redacted.png");
+  await guide.page.screenshot({ path: guideScreenshot, fullPage: true });
+  await testInfo.attach("operational-acceptance-guide-availability-redacted", { path: guideScreenshot, contentType: "image/png" });
+  await guide.page.getByRole("button", { name: "New resource block", exact: true }).click();
+  const deniedDialog = guide.page.getByRole("dialog", { name: "Create Resource Block" });
+  const deniedResource = deniedDialog.getByRole("combobox", { name: "Resource*" });
+  await deniedResource.evaluate((element, resourceId) => {
+    const livewireRoot = element.closest<HTMLElement>("[wire\\:id]");
+    if (!livewireRoot) throw new Error("Resource block form is missing its Livewire root.");
+    const livewire = (globalThis as typeof globalThis & {
+      Livewire: { find: (id: string) => { $set: (path: string, value: string) => void } };
+    }).Livewire;
+    livewire.find(livewireRoot.getAttribute("wire:id") ?? "")
+      .$set("mountedActions.0.data.resource_id", resourceId);
+  }, OTHER_GUIDE_RESOURCE_ID);
+  await deniedDialog.getByRole("textbox", { name: "Reason*" }).fill("Guide must not alter another guide availability");
+  await deniedDialog.getByRole("textbox", { name: "Starts at*" }).fill(startsAt.toISOString().slice(0, 16));
+  await deniedDialog.getByRole("textbox", { name: "Ends at*" }).fill(endsAt.toISOString().slice(0, 16));
+  await deniedDialog.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(deniedDialog.getByText("The selected resource is invalid.", { exact: true })).toBeVisible();
+  await deniedDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  const editedGuideBlockRow = guide.page.getByRole("row").filter({ hasText: GUIDE_BLOCK_EDITED_REASON });
+  await editedGuideBlockRow.getByRole("button", { name: "Delete", exact: true }).click();
+  const deleteDialog = guide.page.getByRole("alertdialog", { name: "Delete resource block" });
+  await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(guide.page.getByText(GUIDE_BLOCK_EDITED_REASON, { exact: true })).toHaveCount(0);
   const denied = await guide.page.goto("/manage/workspace/demo-lodge/finance-dashboard");
   expect([403, 404]).toContain(denied?.status());
   for (const pathName of ["guests", "reservations", "payments", "properties"]) {

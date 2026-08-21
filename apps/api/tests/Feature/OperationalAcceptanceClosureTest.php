@@ -248,6 +248,7 @@ class OperationalAcceptanceClosureTest extends TestCase
             $start = CarbonImmutable::parse('2026-09-01 UTC')->addDays($index % 86);
             $reservation = Reservation::factory()->create([
                 'property_id' => $property->id, 'status' => ReservationStatus::Confirmed,
+                'confirmation_number' => sprintf('RSV-CALENDAR-%03d', $index),
                 'starts_at' => $start, 'ends_at' => $start->addDays(2),
             ]);
             Allocation::query()->create([

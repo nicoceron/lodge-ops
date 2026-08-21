@@ -117,6 +117,14 @@ jobs:
       - run: make doctor
       - name: Run authenticated client UAT
         run: make test-client
+      - name: Upload redacted authenticated UAT receipts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: authenticated-client-uat-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Show service logs on failure
         if: failure()
         run: docker compose logs --tail=200 api web worker scheduler migrate

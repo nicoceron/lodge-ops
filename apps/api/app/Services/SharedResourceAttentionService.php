@@ -8,6 +8,7 @@ use App\Models\Allocation;
 use App\Models\Reservation;
 use App\Models\ResourceCategory;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 final class SharedResourceAttentionService
@@ -48,35 +49,42 @@ final class SharedResourceAttentionService
                     && ($allocation->requested_category_id ?? $allocation->resource?->category_id) === $category->id);
                 $assigned = (int) $active->whereNotNull('resource_id')->sum('quantity');
                 $required = (int) $requirement['required'];
+                $missing = max(0, $required - $assigned);
                 $conflicted = in_array($reservation->id, $conflictReservationIds, true);
-                $allocation = $active->first();
+                $unassignedRequest = $active->first(fn (Allocation $allocation): bool => $allocation->resource_id === null);
                 $ranked = array_values(array_filter([
                     $conflicted ? '1. Hard capacity, block, or property-wide buyout conflict.' : null,
                     $assigned < $required ? '2. Required '.$category->name.': '.$required.'; assigned '.$assigned.'.' : null,
                     $active->contains(fn (Allocation $item): bool => $item->resource_id === null) ? '3. Category request is awaiting an exact instance.' : null,
                     $assigned >= $required && ! $conflicted ? '1. Required capacity is fully assigned without an authoritative conflict.' : null,
                 ]));
-                $allocationStart = $allocation instanceof Allocation ? $allocation->starts_at : $reservation->starts_at;
-                $allocationEnd = $allocation instanceof Allocation ? $allocation->ends_at : $reservation->ends_at;
-                $suggestions = $this->suggestions->suggest(
+                $missingStart = $unassignedRequest instanceof Allocation ? $unassignedRequest->starts_at : $reservation->starts_at;
+                $missingEnd = $unassignedRequest instanceof Allocation ? $unassignedRequest->ends_at : $reservation->ends_at;
+                $missingQuantity = $unassignedRequest instanceof Allocation ? $unassignedRequest->quantity : 1;
+                $missingSuggestions = $missing === 0 ? [] : $this->rankedSuggestions(
                     $category,
-                    $allocationStart,
-                    $allocationEnd,
-                    capabilities: $requirement['capabilities'],
-                    languages: $requirement['languages'],
-                    propertyId: $reservation->property_id,
-                )->take(3)->values()->all();
-                $swap = $allocation?->resource_id === null ? null : Allocation::query()
-                    ->where('id', '!=', $allocation->id)
-                    ->where('status', '!=', AllocationStatus::Released)
-                    ->whereNotNull('resource_id')
-                    ->where('resource_id', '!=', $allocation->resource_id)
-                    ->where('requested_category_id', $category->id)
-                    ->where('starts_at', $allocation->starts_at)
-                    ->where('ends_at', $allocation->ends_at)
-                    ->whereHas('reservation', fn ($query) => $query->where('property_id', $reservation->property_id)
-                        ->whereIn('status', [ReservationStatus::Hold, ReservationStatus::Confirmed, ReservationStatus::CheckedIn]))
-                    ->first();
+                    $missingStart,
+                    $missingEnd,
+                    $missingQuantity,
+                    $requirement,
+                    $reservation->property_id,
+                );
+                $assignments = $active->whereNotNull('resource_id')->values()
+                    ->map(fn (Allocation $allocation): array => [
+                        'allocation_id' => $allocation->id,
+                        'resource_id' => $allocation->resource_id,
+                        'resource' => $allocation->resource->name,
+                        'quantity' => $allocation->quantity,
+                        'suggestions' => $this->rankedSuggestions(
+                            $category,
+                            $allocation->starts_at,
+                            $allocation->ends_at,
+                            $allocation->quantity,
+                            $requirement,
+                            $reservation->property_id,
+                        ),
+                        'swap' => $this->swapCandidate($allocation, $category, $reservation),
+                    ])->all();
 
                 return [
                     'reservation_id' => $reservation->id,
@@ -87,16 +95,13 @@ final class SharedResourceAttentionService
                     'kind' => $category->kind->value,
                     'required' => $required,
                     'assigned' => $assigned,
+                    'missing' => $missing,
                     'conflicted' => $conflicted,
                     'attention_state' => $conflicted ? 'conflicted' : ($assigned < $required ? 'unassigned' : 'healthy'),
-                    'allocation_id' => $allocation?->id,
-                    'resource_id' => $allocation?->resource_id,
+                    'missing_allocation_id' => $unassignedRequest?->id,
                     'reasons' => $ranked,
-                    'suggestions' => $suggestions,
-                    'swap' => $swap === null ? null : [
-                        'allocation_id' => $swap->id,
-                        'resource_id' => $swap->resource_id,
-                    ],
+                    'missing_suggestions' => $missingSuggestions,
+                    'assignments' => $assignments,
                     'rank' => $conflicted ? 1 : ($assigned === 0 ? 2 : ($assigned < $required ? 3 : 4)),
                 ];
             })->filter()->values()->all();
@@ -108,5 +113,52 @@ final class SharedResourceAttentionService
         $label = mb_strtolower($category->slug.' '.$category->name);
 
         return preg_match('/\b(guide|horse|boat|vehicle)s?\b/', $label) === 1;
+    }
+
+    /** @param array<string, mixed> $requirement @return list<array<string, mixed>> */
+    private function rankedSuggestions(
+        ResourceCategory $category,
+        CarbonInterface $startsAt,
+        CarbonInterface $endsAt,
+        int $quantity,
+        array $requirement,
+        string $propertyId,
+    ): array {
+        return $this->suggestions->suggest(
+            $category,
+            $startsAt,
+            $endsAt,
+            max(1, $quantity),
+            capabilities: $requirement['capabilities'],
+            languages: $requirement['languages'],
+            propertyId: $propertyId,
+        )->take(3)->values()->all();
+    }
+
+    /** @return array{allocation_id: string, resource_id: string}|null */
+    private function swapCandidate(Allocation $allocation, ResourceCategory $category, Reservation $reservation): ?array
+    {
+        $swap = Allocation::query()
+            ->where('id', '!=', $allocation->id)
+            ->where('status', '!=', AllocationStatus::Released)
+            ->whereNotNull('resource_id')
+            ->where('resource_id', '!=', $allocation->resource_id)
+            ->where(function ($query) use ($category): void {
+                $query->where('requested_category_id', $category->id)
+                    ->orWhere(function ($query) use ($category): void {
+                        $query->whereNull('requested_category_id')
+                            ->whereHas('resource', fn ($resource) => $resource->where('category_id', $category->id));
+                    });
+            })
+            ->where('starts_at', $allocation->starts_at)
+            ->where('ends_at', $allocation->ends_at)
+            ->whereHas('reservation', fn ($query) => $query->where('property_id', $reservation->property_id)
+                ->whereIn('status', [ReservationStatus::Hold, ReservationStatus::Confirmed, ReservationStatus::CheckedIn]))
+            ->first();
+
+        return $swap === null ? null : [
+            'allocation_id' => $swap->id,
+            'resource_id' => $swap->resource_id,
+        ];
     }
 }

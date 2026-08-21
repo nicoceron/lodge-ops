@@ -72,6 +72,8 @@ class CalendarProjectionService
             ->when($propertyId, fn ($query) => $query->whereHas('reservation', fn ($query) => $query->where('property_id', $propertyId)))
             ->when($isGuide, fn ($query) => $query->whereIn('resource_id', $guideResourceIds))
             ->get();
+        $allocationsByReservation = $allocations->groupBy('reservation_id');
+        $allocationsByResource = $allocations->whereNotNull('resource_id')->groupBy('resource_id');
         $events = collect();
 
         Reservation::query()
@@ -83,8 +85,9 @@ class CalendarProjectionService
             ->where('starts_at', '<', $end)
             ->where('ends_at', '>', $start)
             ->get()
-            ->each(function (Reservation $reservation) use ($events, $allocations): void {
+            ->each(function (Reservation $reservation) use ($events, $allocationsByReservation): void {
                 $title = $reservation->confirmation_number;
+                $reservationAllocations = $allocationsByReservation->get($reservation->id, collect());
 
                 if ($this->visibility->canSeeGuestIdentity() && $reservation->primaryGuest) {
                     $title = trim("{$reservation->primaryGuest->first_name} {$reservation->primaryGuest->last_name}");
@@ -105,11 +108,9 @@ class CalendarProjectionService
                         'display_color' => $reservation->program->display_color,
                     ] : null,
                     'display_color' => $reservation->program?->display_color,
-                    'is_buyout' => $allocations
-                        ->where('reservation_id', $reservation->id)
+                    'is_buyout' => $reservationAllocations
                         ->contains(fn (Allocation $allocation): bool => $allocation->resource?->isBuyout() === true),
-                    'resource_ids' => $allocations
-                        ->where('reservation_id', $reservation->id)
+                    'resource_ids' => $reservationAllocations
                         ->pluck('resource_id')
                         ->filter()
                         ->unique()
@@ -205,7 +206,12 @@ class CalendarProjectionService
                 'capacity' => $resource->capacity,
                 'user_id' => $resource->user_id,
                 'is_buyout' => $resource->isBuyout(),
-                'utilization_percent' => $this->utilization($resource, $allocations, $start, $end),
+                'utilization_percent' => $this->utilization(
+                    $resource,
+                    $allocationsByResource->get($resource->id, collect()),
+                    $start,
+                    $end,
+                ),
             ]),
             'allocations' => $allocations->map(fn (Allocation $allocation): array => [
                 'id' => $allocation->id,
@@ -227,12 +233,11 @@ class CalendarProjectionService
         ];
     }
 
-    /** @param Collection<int, Allocation> $allocations */
-    private function utilization(Resource $resource, Collection $allocations, CarbonImmutable $start, CarbonImmutable $end): int
+    /** @param Collection<int, Allocation> $resourceAllocations */
+    private function utilization(Resource $resource, Collection $resourceAllocations, CarbonImmutable $start, CarbonImmutable $end): int
     {
         $rangeSeconds = max(1, $start->diffInSeconds($end));
-        $usedSeconds = $allocations
-            ->where('resource_id', $resource->id)
+        $usedSeconds = $resourceAllocations
             ->sum(function (Allocation $allocation) use ($start, $end): int {
                 $allocationStart = $allocation->starts_at->greaterThan($start) ? $allocation->starts_at : $start;
                 $allocationEnd = $allocation->ends_at->lessThan($end) ? $allocation->ends_at : $end;

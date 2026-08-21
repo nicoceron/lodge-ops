@@ -580,7 +580,14 @@ class PostgresFinancialConcurrencyTest extends TestCase
         ]);
         $fake = app(PaymentGatewayFactory::class);
         $this->assertInstanceOf(FakePaymentGateway::class, $fake);
-        $fake->refundResults[$providerRefundId] = new ProviderRefundData($providerRefundId, $payment->provider_reference, 'approved', 5_000, 'ARS', 'seller-1');
+        $fake->refundResults[$providerRefundId] = new ProviderRefundData(
+            $providerRefundId,
+            $payment->provider_reference,
+            'approved',
+            5_000,
+            'ARS',
+            $attempt->provider_account,
+        );
 
         $results = $this->concurrently([
             fn (): string => app(ExecuteProviderRefund::class)->handle($request, $user->id)->state->value,

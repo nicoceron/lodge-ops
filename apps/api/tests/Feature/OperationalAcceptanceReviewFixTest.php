@@ -248,7 +248,7 @@ class OperationalAcceptanceReviewFixTest extends TestCase
         ]);
         $rows = app(SharedResourceAttentionService::class)->build(now()->toImmutable(), now()->addDays(4)->toImmutable(), $property->id, []);
         $this->assertSame('guide', $rows->first()['category_slug']);
-        $this->assertSame($guideResource->id, $rows->first()['suggestions'][0]['id']);
+        $this->assertSame($guideResource->id, $rows->first()['missing_suggestions'][0]['id']);
         Livewire::test(MasterCalendar::class)->call('assignAttention', $reservation->id, $guideCategory->id, $guideResource->id, $request->id)->assertHasNoErrors();
         $this->assertDatabaseHas('allocations', ['reservation_id' => $reservation->id, 'resource_id' => $guideResource->id, 'status' => 'confirmed']);
         $this->assertDatabaseHas('allocations', ['id' => $request->id, 'status' => 'released']);

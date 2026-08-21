@@ -17,8 +17,9 @@ Use a dedicated Compose project and ports so this journey cannot collide with an
 
 1. Sign in as the seeded Guide.
 2. Confirm the calendar contains only reservations allocated to the Guide’s linked crew resource, the Guide’s own blocks, and tasks assigned to that Guide.
-3. Create and edit an availability block for the Guide’s own resource.
-4. Attempt another Guide’s resource block, task, guest directory, reservation directory, payments, and KPI endpoint. Each must be denied without leaking record data; the cross-resource block uses a validation-safe `422` denial and the restricted domains use `403`.
+3. Create, edit, visibly verify, and delete an availability block for the Guide’s own assigned resource.
+4. Attempt to update another Guide’s seeded resource block, then attempt the guest directory, reservation directory, payments, properties, Finance dashboard, and KPI endpoint. Each must be denied without leaking record data; the cross-resource mutation and restricted domains use policy-level `403` responses.
+5. Retain only the redacted availability screenshot and Manager/Guide trace attachments uploaded by CI in the `authenticated-client-uat-*` artifact.
 
 ## Required gates
 

@@ -211,33 +211,54 @@
                             <ol class="mt-3 space-y-1 text-sm text-gray-600 dark:text-gray-300">
                                 @foreach ($row['reasons'] as $reason)<li>{{ $reason }}</li>@endforeach
                             </ol>
-                            <div class="mt-4 flex flex-wrap gap-2">
-                                @foreach ($row['suggestions'] as $suggestion)
-                                    <button
-                                        type="button"
-                                        class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
-                                        wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $row['allocation_id'] ?? '' }}')"
-                                    >
-                                        {{ $row['resource_id'] ? 'Move to' : 'Assign' }} {{ $suggestion['name'] }}
-                                    </button>
+                            @if ($row['missing'] > 0)
+                                <div class="mt-4 rounded-lg border border-warning-300 bg-warning-50 p-3 dark:border-warning-500/40 dark:bg-warning-950/20" data-testid="missing-slot">
+                                    <div class="text-sm font-semibold text-warning-800 dark:text-warning-200">
+                                        Missing {{ $row['missing'] }} {{ \Illuminate\Support\Str::plural('assignment', $row['missing']) }}
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        @foreach ($row['missing_suggestions'] as $suggestion)
+                                            <button
+                                                type="button"
+                                                class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
+                                                wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $row['missing_allocation_id'] ?? '' }}')"
+                                            >Assign {{ $suggestion['name'] }}</button>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                            <div class="mt-4 space-y-3">
+                                @foreach ($row['assignments'] as $assignment)
+                                    <div class="rounded-lg border border-gray-200 p-3 dark:border-white/10" wire:key="assignment-{{ $assignment['allocation_id'] }}">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-sm font-semibold">{{ $assignment['resource'] }} · quantity {{ $assignment['quantity'] }}</div>
+                                            <x-filament::button
+                                                size="sm"
+                                                color="danger"
+                                                wire:click="releaseAttention('{{ $row['reservation_id'] }}', '{{ $assignment['allocation_id'] }}')"
+                                                wire:confirm="Release this assignment?"
+                                            >Release</x-filament::button>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-2">
+                                            @foreach ($assignment['suggestions'] as $suggestion)
+                                                <button
+                                                    type="button"
+                                                    class="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500"
+                                                    wire:click="assignAttention('{{ $row['reservation_id'] }}', '{{ $row['category_id'] }}', '{{ $suggestion['id'] }}', '{{ $assignment['allocation_id'] }}')"
+                                                >Move to {{ $suggestion['name'] }}</button>
+                                            @endforeach
+                                            @if ($assignment['swap'])
+                                                <x-filament::button
+                                                    size="sm"
+                                                    color="warning"
+                                                    wire:click="swapAttention('{{ $row['reservation_id'] }}', '{{ $assignment['allocation_id'] }}', '{{ $assignment['swap']['resource_id'] }}', '{{ $assignment['swap']['allocation_id'] }}')"
+                                                >Swap assignments</x-filament::button>
+                                            @endif
+                                        </div>
+                                    </div>
                                 @endforeach
-                                @if ($row['swap'] && $row['allocation_id'])
-                                    <x-filament::button
-                                        size="sm"
-                                        color="warning"
-                                        wire:click="swapAttention('{{ $row['reservation_id'] }}', '{{ $row['allocation_id'] }}', '{{ $row['swap']['resource_id'] }}', '{{ $row['swap']['allocation_id'] }}')"
-                                    >Swap assignments</x-filament::button>
-                                @endif
-                                @if ($row['allocation_id'])
-                                    <x-filament::button
-                                        size="sm"
-                                        color="danger"
-                                        wire:click="releaseAttention('{{ $row['reservation_id'] }}', '{{ $row['allocation_id'] }}')"
-                                        wire:confirm="Release this assignment?"
-                                    >Release</x-filament::button>
-                                @endif
                             </div>
-                            @if ($row['suggestions'] === [])
+                            @if ($row['missing'] > 0 && $row['missing_suggestions'] === [])
                                 <div class="mt-3 text-sm text-danger-600">No conflict-free matching resource is currently available.</div>
                             @endif
                         </div>

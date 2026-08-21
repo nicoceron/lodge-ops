@@ -59,7 +59,7 @@ class OperationsBoard extends Page
             ->with(['assignee:id,name', 'property:id,name'])
             ->when($propertyId, fn (Builder $query) => $query->where('property_id', $propertyId))
             ->when(! in_array($role, $managerialRoles, true), fn (Builder $query) => $this->applyTaskRoleScope($query, $role))
-            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded])
             ->orderByRaw("case priority when 'urgent' then 1 when 'high' then 2 when 'normal' then 3 else 4 end")
             ->orderBy('due_at')
             ->limit(50)
