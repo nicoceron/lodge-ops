@@ -67,6 +67,9 @@ return new class extends Migration
 
     private function preflightRollback(): void
     {
+        if ((bool) config('direct-booking.allow_operational_fact_rollback', false)) {
+            return;
+        }
         $facts = [];
         if (DB::table('direct_booking_payment_instructions')->exists()) {
             $facts[] = 'localized payment instruction facts';

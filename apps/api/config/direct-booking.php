@@ -17,4 +17,5 @@ return [
         'mutation_per_minute' => 10,
         'holds_per_hour' => 5,
     ],
+    'allow_operational_fact_rollback' => (bool) env('ALLOW_DIRECT_BOOKING_FACT_ROLLBACK', false),
 ];
