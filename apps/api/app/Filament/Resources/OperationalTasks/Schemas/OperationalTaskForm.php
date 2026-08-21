@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\OperationalTasks\Schemas;
 
-use App\Enums\TaskStatus;
 use App\Filament\Support\InnPresentation;
 use App\Support\Tenancy\TenantContext;
 use Filament\Forms\Components\DateTimePicker;
@@ -32,18 +31,21 @@ class OperationalTaskForm
                         ->columnSpanFull(),
                     Select::make('property_id')
                         ->disabled($detailsAreReadOnly)
+                        ->disabledOn('edit')
                         ->options(InnPresentation::propertyOptions(...))
                         ->searchable()
                         ->preload()
                         ->required(),
                     Select::make('reservation_id')
                         ->disabled($detailsAreReadOnly)
+                        ->disabledOn('edit')
                         ->label('Reservation')
                         ->options(fn (Get $get): array => InnPresentation::reservationOptions($get('property_id')))
                         ->searchable()
                         ->preload(),
                     Select::make('assignee_id')
                         ->disabled($detailsAreReadOnly)
+                        ->visibleOn('create')
                         ->label('Assignee')
                         ->relationship(
                             name: 'assignee',
@@ -64,11 +66,6 @@ class OperationalTaskForm
                         )
                         ->searchable()
                         ->preload(),
-                    Select::make('status')
-                        ->options(InnPresentation::enumOptions(TaskStatus::cases()))
-                        ->default(TaskStatus::Todo->value)
-                        ->native(false)
-                        ->required(),
                     Select::make('priority')
                         ->disabled($detailsAreReadOnly)
                         ->options([

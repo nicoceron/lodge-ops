@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "payment_failed",
+    "message": "The authoritative payment attempt failed and may be retried.",
+    "correlation_id": "contract-fixture-40900006",
+    "retryable": true
+  }
+}

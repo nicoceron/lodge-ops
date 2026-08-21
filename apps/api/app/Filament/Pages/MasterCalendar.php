@@ -74,7 +74,7 @@ class MasterCalendar extends Page
             app(AllocationWorkflowService::class)->create($reservation, [
                 'requested_category_id' => $categoryId, 'resource_id' => $resource->id,
                 'starts_at' => $reservation->starts_at, 'ends_at' => $reservation->ends_at, 'quantity' => 1,
-            ]);
+            ], auth()->id(), 'Shared-resource attention workbench assignment.', true);
         } else {
             app(ReallocateResource::class)->handle($reservation, Allocation::query()->findOrFail($allocationId), $resource, auth()->id(), reason: 'Shared-resource attention workbench.');
         }
@@ -99,7 +99,13 @@ class MasterCalendar extends Page
         $reservation = Reservation::query()->findOrFail($reservationId);
         $allocation = Allocation::query()->where('reservation_id', $reservation->id)->findOrFail($allocationId);
         Gate::authorize('delete', $allocation);
-        app(AllocationWorkflowService::class)->release($reservation, $allocation);
+        app(AllocationWorkflowService::class)->release(
+            $reservation,
+            $allocation,
+            auth()->id(),
+            'Shared-resource attention workbench release.',
+            true,
+        );
         Notification::make()->success()->title('Shared resource released')->send();
     }
 

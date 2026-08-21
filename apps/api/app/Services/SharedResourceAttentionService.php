@@ -41,7 +41,7 @@ final class SharedResourceAttentionService
                 }
             }
 
-            return $categories->map(function (array $requirement) use ($reservation, $conflictReservationIds): ?array {
+            return $categories->map(function (array $requirement) use ($reservation, $conflictReservationIds): array {
                 /** @var ResourceCategory $category */
                 $category = $requirement['category'];
                 $active = $reservation->allocations->filter(fn (Allocation $allocation): bool => $allocation->status !== AllocationStatus::Released
@@ -49,14 +49,12 @@ final class SharedResourceAttentionService
                 $assigned = (int) $active->whereNotNull('resource_id')->sum('quantity');
                 $required = (int) $requirement['required'];
                 $conflicted = in_array($reservation->id, $conflictReservationIds, true);
-                if ($assigned >= $required && ! $conflicted) {
-                    return null;
-                }
                 $allocation = $active->first();
                 $ranked = array_values(array_filter([
                     $conflicted ? '1. Hard capacity, block, or property-wide buyout conflict.' : null,
                     $assigned < $required ? '2. Required '.$category->name.': '.$required.'; assigned '.$assigned.'.' : null,
                     $active->contains(fn (Allocation $item): bool => $item->resource_id === null) ? '3. Category request is awaiting an exact instance.' : null,
+                    $assigned >= $required && ! $conflicted ? '1. Required capacity is fully assigned without an authoritative conflict.' : null,
                 ]));
                 $allocationStart = $allocation instanceof Allocation ? $allocation->starts_at : $reservation->starts_at;
                 $allocationEnd = $allocation instanceof Allocation ? $allocation->ends_at : $reservation->ends_at;
@@ -90,6 +88,7 @@ final class SharedResourceAttentionService
                     'required' => $required,
                     'assigned' => $assigned,
                     'conflicted' => $conflicted,
+                    'attention_state' => $conflicted ? 'conflicted' : ($assigned < $required ? 'unassigned' : 'healthy'),
                     'allocation_id' => $allocation?->id,
                     'resource_id' => $allocation?->resource_id,
                     'reasons' => $ranked,
@@ -98,7 +97,7 @@ final class SharedResourceAttentionService
                         'allocation_id' => $swap->id,
                         'resource_id' => $swap->resource_id,
                     ],
-                    'rank' => $conflicted ? 1 : ($assigned === 0 ? 2 : 3),
+                    'rank' => $conflicted ? 1 : ($assigned === 0 ? 2 : ($assigned < $required ? 3 : 4)),
                 ];
             })->filter()->values()->all();
         })->sortBy(fn (array $row): array => [$row['rank'], $row['category'], $row['reference']])->values();

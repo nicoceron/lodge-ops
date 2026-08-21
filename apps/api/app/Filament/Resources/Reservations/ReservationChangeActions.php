@@ -146,7 +146,7 @@ final class ReservationChangeActions
             ->icon('heroicon-o-list-bullet')
             ->color('info')
             ->authorize('update')
-            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true))
+            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow, ReservationStatus::CheckedOut], true))
             ->schema([
                 Select::make('version_id')->label('Published checklist version')
                     ->options(fn (Reservation $record): array => ChecklistTemplateVersion::query()->with('template')
@@ -177,7 +177,7 @@ final class ReservationChangeActions
             ->icon('heroicon-o-adjustments-horizontal')
             ->color('gray')
             ->authorize('update')
-            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow], true))
+            ->visible(fn (Reservation $record): bool => ! in_array($record->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow, ReservationStatus::CheckedOut], true))
             ->fillForm(fn (Reservation $record): array => [
                 'exceptions' => $record->checklistExceptions()->get()->map(fn ($exception): array => [
                     'id' => $exception->id,

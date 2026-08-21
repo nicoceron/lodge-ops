@@ -39,3 +39,21 @@ Schedule::command('payments:recover-refunds --older-than=15 --limit=100')
     ->everyTenMinutes()
     ->withoutOverlapping(15)
     ->onOneServer();
+
+Schedule::command('direct-booking:maintain --batch=100')
+    ->name('direct-booking:expire')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
+Schedule::command('direct-booking:maintain --batch=100 --cleanup')
+    ->name('direct-booking:cleanup')
+    ->dailyAt('03:10')
+    ->withoutOverlapping(60)
+    ->onOneServer();
+
+Schedule::command('integrations:heartbeat')
+    ->name('integrations:heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer();

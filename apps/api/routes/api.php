@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\BookingQuoteController;
 use App\Http\Controllers\Api\V1\CalendarController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DepositController;
+use App\Http\Controllers\Api\V1\DirectBookingContractController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ExtendedOperationsController;
 use App\Http\Controllers\Api\V1\FinanceProjectionController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\Api\V1\FolioController;
 use App\Http\Controllers\Api\V1\FrontDeskTenderController;
 use App\Http\Controllers\Api\V1\GuestController;
 use App\Http\Controllers\Api\V1\GuestPortalController;
+use App\Http\Controllers\Api\V1\IntegrationController;
+use App\Http\Controllers\Api\V1\IntegrationWebhookController;
 use App\Http\Controllers\Api\V1\OperationalAcceptanceController;
 use App\Http\Controllers\Api\V1\OperationsProjectionController;
 use App\Http\Controllers\Api\V1\PaymentController;
@@ -45,6 +48,28 @@ Route::post('v1/payment-webhooks/{webhookKey}', PaymentWebhookController::class)
     ->where('webhookKey', '[A-Za-z0-9_-]{32,128}')
     ->middleware('throttle:payment-webhook')
     ->name('payment-webhooks.receive');
+
+Route::prefix('v1/direct-booking/properties/{propertySlug}')->where(['propertySlug' => '[a-z0-9]+(?:-[a-z0-9]+)*'])->group(function (): void {
+    Route::get('/', [DirectBookingContractController::class, 'property'])->middleware('throttle:direct-booking-read');
+    Route::get('policies/{policyKind}', [DirectBookingContractController::class, 'policy'])
+        ->whereIn('policyKind', ['terms', 'privacy', 'cancellation', 'no_show', 'marketing_consent'])
+        ->middleware('throttle:direct-booking-read');
+    Route::post('availability', [DirectBookingContractController::class, 'availability'])->middleware('throttle:direct-booking-search');
+    Route::post('orders', [DirectBookingContractController::class, 'begin'])->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/quote', [DirectBookingContractController::class, 'quote'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/hold', [DirectBookingContractController::class, 'hold'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware(['throttle:direct-booking-mutation', 'throttle:direct-booking-hold']);
+    Route::get('orders/{orderReference}', [DirectBookingContractController::class, 'status'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-read');
+    Route::post('orders/{orderReference}/checkout', [DirectBookingContractController::class, 'checkout'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/payments/retry', [DirectBookingContractController::class, 'retryPayment'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/manual-payment-evidence', [DirectBookingContractController::class, 'manualEvidence'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::post('orders/{orderReference}/recover', [DirectBookingContractController::class, 'recover'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-mutation');
+    Route::get('orders/{orderReference}/confirmation', [DirectBookingContractController::class, 'confirmation'])->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->middleware('throttle:direct-booking-read');
+});
+
+Route::post('v1/integration-webhooks/{endpointKey}', IntegrationWebhookController::class)
+    ->where('endpointKey', '[A-Za-z0-9]{48,128}')
+    ->middleware('throttle:integration-webhook')
+    ->name('integration-webhooks.receive');
 
 Route::prefix('v1/guest-portal')->group(function (): void {
     Route::post('exchange', [GuestPortalController::class, 'exchange'])->middleware('throttle:guest-exchange');
@@ -165,7 +190,24 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant', 'throttle:120,1'])->g
     Route::get('financial-summary', [ExtendedOperationsController::class, 'finance']);
     Route::post('costs', [ExtendedOperationsController::class, 'storeCost'])->middleware('idempotent');
     Route::get('integrations', [ExtendedOperationsController::class, 'integrations']);
-    Route::put('integrations', [ExtendedOperationsController::class, 'configureIntegration']);
+    Route::put('integrations', [ExtendedOperationsController::class, 'configureIntegration'])->middleware('idempotent');
+    Route::get('integrations/{connection}', [IntegrationController::class, 'show']);
+    Route::post('integrations/{connection}/test', [IntegrationController::class, 'test'])->middleware('idempotent');
+    Route::post('integrations/{connection}/state', [IntegrationController::class, 'state'])->middleware('idempotent');
+    Route::post('integrations/{connection}/rotate-secret', [IntegrationController::class, 'rotateSecret'])->middleware('idempotent');
+    Route::post('integrations/{connection}/rotate-endpoint', [IntegrationController::class, 'rotateEndpoint']);
+    Route::get('integrations/{connection}/runs', [IntegrationController::class, 'runs']);
+    Route::post('integrations/{connection}/runs', [IntegrationController::class, 'startRun'])->middleware('idempotent');
+    Route::get('integration-runs', [IntegrationController::class, 'runs']);
+    Route::post('integration-runs/{run}/resume', [IntegrationController::class, 'resumeRun'])->middleware('idempotent');
+    Route::get('integrations/{connection}/events', [IntegrationController::class, 'events']);
+    Route::post('integration-events/{event}/replay', [IntegrationController::class, 'replayEvent'])->middleware('idempotent');
+    Route::get('integrations/{connection}/dead-letters', [IntegrationController::class, 'deadLetters']);
+    Route::post('integration-dead-letters/{deadLetter}/replay', [IntegrationController::class, 'replayDeadLetter'])->middleware('idempotent');
+    Route::get('integrations/{connection}/mappings', [IntegrationController::class, 'mappings']);
+    Route::post('integrations/{connection}/mappings', [IntegrationController::class, 'storeMapping'])->middleware('idempotent');
+    Route::post('integrations/{connection}/reconcile', [IntegrationController::class, 'reconcile'])->middleware('idempotent');
+    Route::post('integration-reconciliations/{reconciliation}/resolve', [IntegrationController::class, 'resolveReconciliation'])->middleware('idempotent');
     Route::get('organizations', [ExtendedOperationsController::class, 'organizations']);
     Route::post('organizations', [ExtendedOperationsController::class, 'storeOrganization'])->middleware('idempotent');
     Route::get('opportunities', [ExtendedOperationsController::class, 'opportunities']);

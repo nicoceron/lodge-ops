@@ -20,9 +20,11 @@ use App\Models\PaymentRequest;
 use App\Models\ProviderEvent;
 use App\Models\Reservation;
 use App\Services\FolioService;
+use App\Services\IntegrationConnectionService;
 use App\Services\Payments\CreateProviderCheckout;
 use App\Services\Payments\ExecuteProviderRefund;
 use App\Services\Payments\IssuePaymentRequest;
+use App\Services\Payments\PaymentConnectionResolver;
 use App\Services\Payments\ProcessProviderEvent;
 use App\Services\PaymentService;
 use App\Services\RequestRefund;
@@ -94,6 +96,43 @@ class PaymentRequestLifecycleTest extends TestCase
         $this->assertSame(1_000_000, $attempt->charge_amount_minor);
         $this->assertNull($attempt->exchange_rate);
         $this->assertNull($attempt->conversion_snapshot);
+    }
+
+    public function test_payment_connection_selection_prefers_enabled_property_scope_then_global_and_ignores_disabled_or_revoked_rows(): void
+    {
+        [$tenant, $property, $user, $membership] = $this->tenantEnvironment();
+        $connections = app(IntegrationConnectionService::class);
+        app(TenantContext::class)->set($tenant);
+        $global = $connections->configure(
+            'Global MP', 'payment', ['return_url_base' => 'https://inn.test', 'charge_currency' => 'ARS'],
+            'env:GLOBAL_MP', null, 'mercado_pago', 'checkout_pro', 'global-account', 'sandbox', ['payment.hosted_checkout'],
+        );
+        $global = $connections->enable($global, $user->id, 'Enable global payment connection.');
+        app(TenantContext::class)->set($tenant, $membership);
+        $disabled = $connections->configure(
+            'Disabled property MP', 'payment', ['return_url_base' => 'https://inn.test', 'charge_currency' => 'ARS'],
+            'env:DISABLED_MP', $property->id, 'mercado_pago', 'checkout_pro', 'a-disabled-account', 'sandbox', ['payment.hosted_checkout'],
+        );
+        $revoked = $connections->configure(
+            'Revoked property MP', 'payment', ['return_url_base' => 'https://inn.test', 'charge_currency' => 'ARS'],
+            'env:REVOKED_MP', $property->id, 'mercado_pago', 'checkout_pro', 'b-revoked-account', 'sandbox', ['payment.hosted_checkout'],
+        );
+        $revoked = $connections->enable($revoked, $user->id, 'Enable before revoke.');
+        $connections->revoke($revoked, $user->id, 'Revoke property payment connection.');
+        $exact = $connections->configure(
+            'Exact property MP', 'payment', ['return_url_base' => 'https://inn.test', 'charge_currency' => 'ARS'],
+            'env:EXACT_MP', $property->id, 'mercado_pago', 'checkout_pro', 'c-exact-account', 'sandbox', ['payment.hosted_checkout'],
+        );
+        $exact = $connections->enable($exact, $user->id, 'Enable exact property connection.');
+        $resolver = app(PaymentConnectionResolver::class);
+        $this->assertSame($exact->id, $resolver->forProperty($tenant->id, $property->id)->id);
+
+        $connections->disable($exact, $user->id, 'Disable exact property connection.');
+        $this->assertSame($global->id, $resolver->forProperty($tenant->id, $property->id)->id);
+        $connections->disable($global, $user->id, 'Disable global fallback.');
+        $this->expectException(CommercialWorkflowException::class);
+        $resolver->forProperty($tenant->id, $property->id);
+        $this->assertFalse($disabled->is_enabled);
     }
 
     public function test_approved_provider_lookup_posts_one_payment_folio_effect_and_deposit(): void
@@ -324,14 +363,20 @@ class PaymentRequestLifecycleTest extends TestCase
 
     private function connection(): IntegrationConnection
     {
-        return IntegrationConnection::query()->create([
+        $connection = IntegrationConnection::query()->create([
             'name' => 'mercado-pago-argentina',
             'type' => 'payment',
+            'provider' => 'mercado_pago', 'product' => 'checkout_pro', 'external_account_id' => 'seller-1', 'environment' => 'sandbox',
+            'status' => 'connected', 'is_enabled' => true, 'capabilities' => ['payment.hosted_checkout'],
             'configuration' => [
-                'provider' => 'mercado_pago', 'environment' => 'sandbox', 'provider_account' => 'seller-1',
                 'return_url_base' => 'https://inn.test', 'webhook_key' => str_repeat('w', 48),
             ],
             'secret_reference' => 'env:MP_TEST_TOKEN',
         ]);
+        $connection->connectionCapabilities()->create([
+            'capability' => 'payment.hosted_checkout', 'direction' => 'outbound', 'state' => 'enabled', 'configuration_version' => 1,
+        ]);
+
+        return $connection;
     }
 }

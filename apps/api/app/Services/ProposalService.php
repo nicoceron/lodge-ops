@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\BookingQuoteStatus;
 use App\Enums\ProposalStatus;
 use App\Exceptions\CommercialWorkflowException as DomainException;
 use App\Models\BookingQuote;
+use App\Models\Guest;
 use App\Models\Proposal;
 use App\Models\Reservation;
 use App\Services\Automation\OutboxRecorder;
@@ -16,6 +18,7 @@ final class ProposalService
 {
     public function __construct(
         private readonly OutboxRecorder $outbox,
+        private readonly BookingQuoteService $quotes,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -51,7 +54,7 @@ final class ProposalService
                 'title' => $data['title'] ?? data_get($locked->snapshot, 'title'),
                 'notes' => $data['notes'] ?? data_get($locked->snapshot, 'notes'),
             ];
-            $locked->update($this->draftAttributes($merged));
+            $locked->update($this->draftAttributes($merged, $locked->id));
 
             return $locked->fresh(['property', 'primaryGuest']);
         });
@@ -68,6 +71,9 @@ final class ProposalService
 
             $this->assertDraft($locked);
             $this->assertServerPriced($locked);
+            $this->assertLatestVersion($locked);
+            $this->assertPendingQuote($locked);
+            $this->assertGuestIdentity($locked);
             if ($locked->expires_at !== null && $locked->expires_at->isPast()) {
                 throw new DomainException('An expired proposal cannot be sent. Update its expiry first.');
             }
@@ -118,6 +124,7 @@ final class ProposalService
                 throw new DomainException('An accepted proposal cannot be revised.');
             }
             $this->assertServerPriced($locked);
+            $this->assertLatestVersion($locked);
 
             $latestVersion = Proposal::query()
                 ->where('reference', $locked->reference)
@@ -126,26 +133,28 @@ final class ProposalService
                 ->firstOrFail(['version']);
             $version = $latestVersion->version + 1;
 
-            return Proposal::query()->create([
+            $sourceQuote = BookingQuote::query()->findOrFail($locked->booking_quote_id);
+            $quote = $this->quotes->create($sourceQuote->inputs);
+
+            $revision = new Proposal;
+            $revision->forceFill([
+                ...$this->draftAttributes([
+                    'booking_quote_id' => $quote->id,
+                    'inquiry_source' => $locked->inquiry_source,
+                    'primary_guest_id' => $locked->primary_guest_id,
+                    'title' => data_get($locked->snapshot, 'title'),
+                    'notes' => data_get($locked->snapshot, 'notes'),
+                    'expires_at' => $quote->expires_at,
+                ]),
                 'reservation_id' => null,
-                'booking_quote_id' => $locked->booking_quote_id,
-                'inquiry_source' => $locked->inquiry_source,
                 'reference' => $locked->reference,
-                'property_id' => $locked->property_id,
-                'primary_guest_id' => $locked->primary_guest_id,
-                'starts_at' => $locked->starts_at,
-                'ends_at' => $locked->ends_at,
-                'adults' => $locked->adults,
-                'children' => $locked->children,
                 'version' => $version,
                 'status' => ProposalStatus::Draft,
-                'currency' => $locked->currency,
-                'total_minor' => $locked->total_minor,
-                'tax_minor' => $locked->tax_minor,
-                'snapshot' => Arr::except($locked->snapshot, ['sent_at', 'property', 'guest', 'stay']),
-                'expires_at' => $locked->expires_at,
                 'created_by' => $actorId,
             ]);
+            $revision->save();
+
+            return $revision;
         }, 3);
     }
 
@@ -155,18 +164,26 @@ final class ProposalService
             $locked = Proposal::query()->lockForUpdate()->findOrFail($proposal->id);
 
             if ($locked->status === ProposalStatus::Accepted && $locked->reservation_id !== null) {
-                return Reservation::query()->findOrFail($locked->reservation_id);
+                $reservation = Reservation::query()->findOrFail($locked->reservation_id);
+                $this->assertGuestMatchesReservation($locked, $reservation);
+
+                return $reservation;
             }
             if ($locked->status !== ProposalStatus::Sent) {
                 throw new DomainException('Only a sent proposal can be converted to a reservation.');
             }
             $this->assertServerPriced($locked);
+            $this->assertLatestVersion($locked);
+            $this->assertGuestIdentity($locked);
             if ($locked->expires_at !== null && $locked->expires_at->isPast()) {
                 $locked->update(['status' => ProposalStatus::Expired]);
                 throw new DomainException('This proposal has expired. Create a revision before converting it.');
             }
 
-            $quote = BookingQuote::query()->findOrFail($locked->booking_quote_id);
+            $quote = BookingQuote::query()->lockForUpdate()->findOrFail($locked->booking_quote_id);
+            if ($quote->status !== BookingQuoteStatus::Pending || $quote->reservation_id !== null || $quote->committed_at !== null) {
+                throw new DomainException('Only a pending, uncommitted server quote can convert the latest sent proposal.');
+            }
             $reservation = app(CommitBookingQuote::class)->handle(
                 $quote,
                 $locked->primary_guest_id,
@@ -194,14 +211,25 @@ final class ProposalService
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
-    private function draftAttributes(array $data): array
+    private function draftAttributes(array $data, ?string $proposalId = null): array
     {
         if (empty($data['booking_quote_id'])) {
             throw new DomainException('A server-priced booking quote is required for every proposal version.');
         }
-        $quote = BookingQuote::query()->with('lines')->findOrFail($data['booking_quote_id']);
+        $quote = BookingQuote::query()->with('lines')->lockForUpdate()->findOrFail($data['booking_quote_id']);
+        if ($quote->status !== BookingQuoteStatus::Pending || $quote->reservation_id !== null
+            || $quote->committed_at !== null || ! $quote->expires_at->isFuture()) {
+            throw new DomainException('A proposal requires a pending, uncommitted, unexpired server quote.');
+        }
+        if (Proposal::query()->where('booking_quote_id', $quote->id)
+            ->when($proposalId, fn ($query) => $query->whereKeyNot($proposalId))->exists()) {
+            throw new DomainException('A server quote may back only one proposal version. Create a fresh quote for a revision.');
+        }
         if (isset($data['property_id']) && $quote->property_id !== $data['property_id']) {
             throw new DomainException('The server-priced quote must belong to the proposal property.');
+        }
+        if (filled($data['primary_guest_id'] ?? null) && ! Guest::query()->whereKey($data['primary_guest_id'])->exists()) {
+            throw new DomainException('The proposal guest must belong to this tenant.');
         }
         $lines = $quote->lines->map(fn ($line): array => [
             'description' => $line->description,
@@ -257,6 +285,38 @@ final class ProposalService
     {
         if ($proposal->booking_quote_id === null || data_get($proposal->snapshot, 'pricing_source') !== 'booking_quote') {
             throw new DomainException('Legacy manually priced proposals are read-only and cannot be sent, revised, or converted. Create a server-priced proposal.');
+        }
+    }
+
+    private function assertPendingQuote(Proposal $proposal): void
+    {
+        $quote = BookingQuote::query()->lockForUpdate()->findOrFail($proposal->booking_quote_id);
+        if ($quote->status !== BookingQuoteStatus::Pending || $quote->reservation_id !== null
+            || $quote->committed_at !== null || ! $quote->expires_at->isFuture()) {
+            throw new DomainException('The linked server quote is no longer pending and uncommitted. Create a fresh proposal revision.');
+        }
+    }
+
+    private function assertLatestVersion(Proposal $proposal): void
+    {
+        $latest = Proposal::query()->where('reference', $proposal->reference)
+            ->orderByDesc('version')->lockForUpdate()->firstOrFail();
+        if ($latest->id !== $proposal->id) {
+            throw new DomainException('Only the latest proposal version may be sent or converted.');
+        }
+    }
+
+    private function assertGuestIdentity(Proposal $proposal): void
+    {
+        if ($proposal->primary_guest_id === null || ! Guest::query()->whereKey($proposal->primary_guest_id)->exists()) {
+            throw new DomainException('A current tenant guest is required before sending or converting a proposal.');
+        }
+    }
+
+    private function assertGuestMatchesReservation(Proposal $proposal, Reservation $reservation): void
+    {
+        if ($proposal->primary_guest_id === null || $reservation->primary_guest_id !== $proposal->primary_guest_id) {
+            throw new DomainException('The committed quote reservation belongs to a different guest.');
         }
     }
 }

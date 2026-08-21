@@ -204,8 +204,8 @@
                                     <div class="font-semibold">{{ $row['reference'] }} · {{ $row['category'] }}</div>
                                     <div class="mt-1 text-sm text-gray-500">Required {{ $row['required'] }} · assigned {{ $row['assigned'] }}</div>
                                 </div>
-                                <x-filament::badge :color="$row['conflicted'] ? 'danger' : 'warning'">
-                                    {{ $row['conflicted'] ? 'Conflicted' : 'Unassigned' }}
+                                <x-filament::badge :color="match ($row['attention_state']) { 'conflicted' => 'danger', 'healthy' => 'success', default => 'warning' }">
+                                    {{ str($row['attention_state'])->headline() }}
                                 </x-filament::badge>
                             </div>
                             <ol class="mt-3 space-y-1 text-sm text-gray-600 dark:text-gray-300">

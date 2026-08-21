@@ -9,6 +9,21 @@ use Illuminate\Validation\ValidationException;
 
 final class OperationalTaskAssigneeService
 {
+    /** @return array<int, string> */
+    public function eligibleOptions(OperationalTask $task): array
+    {
+        $requiredRole = $this->requiredRole($task);
+
+        return Membership::query()->with('user')
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('property_id')->orWhere('property_id', $task->property_id))
+            ->get()
+            ->filter(fn (Membership $membership): bool => $requiredRole === null || $this->roleMatches($membership->role, $requiredRole))
+            ->sortBy(fn (Membership $membership): string => mb_strtolower($membership->user->name))
+            ->mapWithKeys(fn (Membership $membership): array => [$membership->user_id => $membership->user->name])
+            ->all();
+    }
+
     public function assertEligible(OperationalTask $task, int $assigneeId): void
     {
         $membership = Membership::query()

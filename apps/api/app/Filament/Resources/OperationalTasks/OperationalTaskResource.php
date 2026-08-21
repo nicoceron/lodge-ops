@@ -95,14 +95,12 @@ class OperationalTaskResource extends TenantResource
 
     public static function canDelete(Model $record): bool
     {
-        return parent::canDelete($record)
-            && app(TenantContext::class)->membership()?->role?->canScheduleOperations() === true;
+        return false;
     }
 
     public static function canDeleteAny(): bool
     {
-        return parent::canDeleteAny()
-            && app(TenantContext::class)->membership()?->role?->canScheduleOperations() === true;
+        return false;
     }
 
     public static function form(Schema $schema): Schema

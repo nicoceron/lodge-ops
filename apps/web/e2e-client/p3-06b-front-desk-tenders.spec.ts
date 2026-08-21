@@ -268,9 +268,11 @@ test("P3-06B authenticated PostgreSQL tender, evidence, refund, checkout, and ca
   expect(folio.status()).toBe(200);
   expect(((await folio.json()) as ApiBody).summary?.balance_minor).toBe(0);
   await page.goto(`/manage/workspace/demo-lodge/reservations/${uat.reservation_id}`);
-  await page.getByRole("button", { name: "Close folio", exact: true }).click();
-  const closeFolio = page.getByRole("alertdialog", { name: "Close folio" });
-  await closeFolio.getByRole("button", { name: "Confirm", exact: true }).click();
+  const closeFolioButton = page.getByRole("button", { name: "Close folio", exact: true });
+  await closeFolioButton.scrollIntoViewIfNeeded();
+  await closeFolioButton.click({ force: true });
+  const closeFolioDialog = page.getByRole("alertdialog", { name: "Close folio" });
+  await closeFolioDialog.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("Folio closed", { exact: true })).toBeVisible();
 
   await page.goto(`/manage/workspace/demo-lodge/reservations/${uat.reservation_id}`);

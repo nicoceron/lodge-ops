@@ -38,6 +38,8 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Services\CompleteRefund;
 use App\Services\FolioService;
+use App\Services\IntegrationConnectionService;
+use App\Services\Integrations\EndpointKeyService;
 use App\Services\Payments\CloseCashShift;
 use App\Services\Payments\CompleteManualExternalRefund;
 use App\Services\Payments\CreateProviderCheckout;
@@ -708,18 +710,20 @@ class PostgresFinancialConcurrencyTest extends TestCase
             'total_minor' => 10_000,
         ]);
         $request = app(IssuePaymentRequest::class)->handle($reservation, PaymentRequestPurpose::FullOutstanding, null, null, $user->id)->request;
-        $connection = IntegrationConnection::query()->create([
-            'name' => 'provider-race-'.$providerPaymentId,
-            'type' => 'payment',
-            'configuration' => [
-                'provider' => 'mercado_pago',
-                'environment' => 'sandbox',
-                'provider_account' => 'seller-race',
-                'return_url_base' => 'https://inn.test',
-                'webhook_key' => str_repeat('r', 48),
-            ],
-            'secret_reference' => 'env:RACE_GATEWAY_TOKEN',
-        ]);
+        $connection = app(IntegrationConnectionService::class)->configure(
+            'provider-race-'.$providerPaymentId,
+            'payment',
+            ['return_url_base' => 'https://inn.test'],
+            'env:RACE_GATEWAY_TOKEN',
+            $property->id,
+            'mercado_pago',
+            'checkout_pro',
+            'seller-race',
+            'sandbox',
+            ['payment.hosted_checkout'],
+        );
+        $connection = app(IntegrationConnectionService::class)->enable($connection, $user->id, 'Enable PostgreSQL payment race fixture.');
+        app(EndpointKeyService::class)->rotate($connection, 0, $user->id, 'Issue PostgreSQL payment race webhook endpoint.');
         $fake = new FakePaymentGateway;
         $this->app->instance(PaymentGatewayFactory::class, $fake);
         $attempt = app(CreateProviderCheckout::class)->handle($request, $connection);

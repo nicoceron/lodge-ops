@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The request did not satisfy the booking contract.",
+    "correlation_id": "contract-fixture-42200001",
+    "retryable": false
+  }
+}

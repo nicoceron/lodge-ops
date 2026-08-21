@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Proposals;
 
+use App\Enums\BookingQuoteStatus;
 use App\Enums\ProposalStatus;
 use App\Filament\Resources\Proposals\Pages\CreateProposal;
 use App\Filament\Resources\Proposals\Pages\EditProposal;
@@ -11,6 +12,7 @@ use App\Filament\Resources\Proposals\Schemas\ProposalForm;
 use App\Filament\Resources\Proposals\Schemas\ProposalInfolist;
 use App\Filament\Resources\Proposals\Tables\ProposalsTable;
 use App\Filament\Resources\TenantResource;
+use App\Models\BookingQuote;
 use App\Models\Proposal;
 use BackedEnum;
 use Filament\Schemas\Schema;
@@ -51,7 +53,28 @@ class ProposalResource extends TenantResource
 
     public static function canRunWorkflow(Proposal $proposal): bool
     {
-        return static::belongsToCurrentTenant($proposal) && static::canWrite() && $proposal->booking_quote_id !== null;
+        return static::belongsToCurrentTenant($proposal)
+            && static::canWrite()
+            && $proposal->booking_quote_id !== null
+            && self::isLatestVersion($proposal);
+    }
+
+    public static function hasConvertibleQuote(Proposal $proposal): bool
+    {
+        if ($proposal->booking_quote_id === null) {
+            return false;
+        }
+        $quote = BookingQuote::query()->find($proposal->booking_quote_id);
+
+        return $quote?->status === BookingQuoteStatus::Pending
+            && $quote->reservation_id === null
+            && $quote->committed_at === null
+            && $quote->expires_at->isFuture();
+    }
+
+    private static function isLatestVersion(Proposal $proposal): bool
+    {
+        return Proposal::query()->where('reference', $proposal->reference)->max('version') === $proposal->version;
     }
 
     public static function form(Schema $schema): Schema

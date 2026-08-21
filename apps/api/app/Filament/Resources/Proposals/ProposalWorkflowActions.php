@@ -21,7 +21,9 @@ final class ProposalWorkflowActions
                 ->authorize('send')
                 ->requiresConfirmation()
                 ->modalDescription('Sending freezes this version and its guest-facing pricing snapshot. Future changes require a new revision.')
-                ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record) && $record->status === ProposalStatus::Draft)
+                ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record)
+                    && ProposalResource::hasConvertibleQuote($record)
+                    && $record->status === ProposalStatus::Draft)
                 ->action(function (Proposal $record): void {
                     app(ProposalService::class)->send($record);
                     Notification::make()->success()->title('Proposal sent and snapshot frozen')->send();
@@ -43,7 +45,9 @@ final class ProposalWorkflowActions
                 ->authorize('convert')
                 ->requiresConfirmation()
                 ->modalDescription('This accepts the immutable proposal and creates a draft reservation. Inventory remains uncommitted until reservation confirmation.')
-                ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record) && $record->status === ProposalStatus::Sent)
+                ->visible(fn (Proposal $record): bool => ProposalResource::canRunWorkflow($record)
+                    && ProposalResource::hasConvertibleQuote($record)
+                    && $record->status === ProposalStatus::Sent)
                 ->action(function (Proposal $record): void {
                     app(ProposalService::class)->convertToReservation($record);
                     Notification::make()->success()->title('Draft reservation created')->send();

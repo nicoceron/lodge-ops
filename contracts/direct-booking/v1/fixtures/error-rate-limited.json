@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Too many booking requests were received. Retry after the advertised delay.",
+    "correlation_id": "contract-fixture-42900001",
+    "retryable": true
+  }
+}

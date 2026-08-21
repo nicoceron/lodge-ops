@@ -5,10 +5,12 @@ namespace App\Filament\Resources\OperationalTasks\Tables;
 use App\Enums\TaskStatus;
 use App\Filament\Support\InnPresentation;
 use App\Models\OperationalTask;
+use App\Services\OperationalTaskAssigneeService;
 use App\Services\TaskLifecycleService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
@@ -76,6 +78,17 @@ class OperationalTasksTable
                         ->whereNotIn('status', [TaskStatus::Done->value, TaskStatus::Cancelled->value, TaskStatus::Superseded->value])),
             ])
             ->recordActions([
+                Action::make('assign')
+                    ->icon('heroicon-o-user-plus')
+                    ->color('gray')
+                    ->visible(fn (OperationalTask $record): bool => ! in_array($record->status, [TaskStatus::Done, TaskStatus::Cancelled, TaskStatus::Superseded], true))
+                    ->fillForm(fn (OperationalTask $record): array => ['assignee_id' => $record->assignee_id])
+                    ->schema([
+                        Select::make('assignee_id')->label('Eligible assignee')
+                            ->options(fn (OperationalTask $record): array => app(OperationalTaskAssigneeService::class)->eligibleOptions($record))
+                            ->searchable()->preload()->required(),
+                    ])
+                    ->action(fn (OperationalTask $record, array $data) => self::transition($record, 'assign', $data)),
                 Action::make('start')
                     ->icon('heroicon-o-play')
                     ->color('info')

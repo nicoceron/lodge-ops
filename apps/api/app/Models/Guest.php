@@ -6,7 +6,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** @property string $id @property string $first_name @property string $last_name @property string|null $email @property array<string, mixed>|null $preferences */
+/**
+ * @property string $id
+ * @property string $tenant_id
+ * @property string $first_name
+ * @property string $last_name
+ * @property string|null $email
+ * @property string|null $merged_into_id
+ * @property array<string, mixed>|null $preferences
+ */
 class Guest extends TenantModel
 {
     protected function casts(): array

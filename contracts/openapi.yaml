@@ -32,6 +32,7 @@ tags:
   - name: Integrations
   - name: Documents
   - name: Reports
+  - name: Direct Booking
 
 paths:
   /dashboard:
@@ -1547,6 +1548,23 @@ paths:
       responses:
         '200': { description: Signed notification durably accepted; processing is asynchronous. }
         '401': { description: Invalid or stale provider signature. }
+  /integration-webhooks/{endpointKey}:
+    post:
+      tags: [Integrations]
+      operationId: receiveStandardIntegrationWebhook
+      security: []
+      description: Verifies the Standard Webhooks signature over the exact raw body, records one immutable safe receipt, and queues capability-specific processing.
+      parameters:
+        - { name: endpointKey, in: path, required: true, schema: { type: string, minLength: 48, maxLength: 128 } }
+        - { name: webhook-id, in: header, required: true, schema: { type: string } }
+        - { name: webhook-timestamp, in: header, required: true, schema: { type: string, pattern: '^\d{10}$' } }
+        - { name: webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '202': { description: Verified event receipt accepted; duplicates return the original receipt identity. }
+        '401': { description: Endpoint, capability, signing secret, or signature was invalid or stale. }
   /proposals:
     get:
       tags: [Proposals]
@@ -1765,10 +1783,249 @@ paths:
       operationId: configureIntegration
       parameters:
         - $ref: '#/components/parameters/TenantId'
-      requestBody: { $ref: '#/components/requestBodies/GenericCommand' }
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IntegrationConnectionInput' }
       responses:
         '200': { $ref: '#/components/responses/GenericSuccess' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}:
+    get:
+      tags: [Integrations]
+      operationId: getIntegrationConnectionHealth
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      responses:
+        '200': { description: Safe connection identity, health, lag, backlog, latency, circuit and scheduler-heartbeat projection. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /integrations/{connection}/test:
+    post:
+      tags: [Integrations]
+      operationId: testIntegrationConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [capability], properties: { capability: { $ref: '#/components/schemas/IntegrationCapability' } } } } }
+      responses:
+        '200': { description: Capability-specific connection test result. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}/state:
+    post:
+      tags: [Integrations]
+      operationId: changeIntegrationConnectionState
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [action, reason], properties: { action: { type: string, enum: [enable, disable, revoke] }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: Connection state changed and audited. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/{connection}/rotate-secret:
+    post:
+      tags: [Integrations]
+      operationId: rotateIntegrationSecretReference
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [secret_reference, reason], properties: { secret_reference: { type: string, maxLength: 500 }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: Secret-manager reference rotated; plaintext is never accepted. }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /integrations/{connection}/rotate-endpoint:
+    post:
+      tags: [Integrations]
+      operationId: rotateIntegrationEndpointKey
+      description: Returns the new opaque raw endpoint key exactly once. The response is deliberately excluded from durable response replay storage.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [reason], properties: { overlap_minutes: { type: integer, minimum: 0, maximum: 1440, default: 15 }, reason: { type: string, minLength: 3, maxLength: 500 } } } } }
+      responses:
+        '200': { description: New endpoint key issued once with version and overlap end. }
+        '409': { description: Idempotency identity already completed; its raw key is not retained. }
+  /integrations/{connection}/runs:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationRunsForConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Paginated sync runs and safe item outcomes. }
+    post:
+      tags: [Integrations]
+      operationId: startIntegrationRun
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/IntegrationRunInput' } } }
+      responses:
+        '202': { description: Capability-specific run queued from its committed cursor. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integration-runs:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationRuns
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Property-authorized paginated integration runs. }
+  /integration-runs/{run}/resume:
+    post:
+      tags: [Integrations]
+      operationId: resumeBlockedIntegrationRun
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: run, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: The specifically identified blocked run was resumed without moving its cursor. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /integrations/{connection}/events:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationEvents
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Immutable event facts with safe normalized snapshots and dispositions. }
+  /integration-events/{event}/replay:
+    post:
+      tags: [Integrations]
+      operationId: replayIntegrationEvent
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: Terminal event replay queued and audited. }
+        '409': { description: Original event is still active. }
+  /integrations/{connection}/dead-letters:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationDeadLetters
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Poison and retry-exhausted facts with safe errors and replay history. }
+  /integration-dead-letters/{deadLetter}/replay:
+    post:
+      tags: [Integrations]
+      operationId: replayIntegrationDeadLetter
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: deadLetter, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '202': { description: Terminal item or event replay queued and audited. }
+        '409': { description: Original processing remains active. }
+  /integrations/{connection}/mappings:
+    get:
+      tags: [Integrations]
+      operationId: listIntegrationMappings
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': { description: Versioned mapping facts, validity and conflict state. }
+    post:
+      tags: [Integrations]
+      operationId: createIntegrationMappingVersion
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability, direction, local_entity_type, local_key, external_entity_type, external_key, transform_version]
+              properties:
+                property_id: { type: [string, 'null'], format: uuid }
+                capability: { type: string, maxLength: 80 }
+                direction: { type: string, enum: [inbound, outbound] }
+                local_entity_type: { type: string, maxLength: 120 }
+                local_key: { type: string, maxLength: 255 }
+                external_entity_type: { type: string, maxLength: 120 }
+                external_key: { type: string, maxLength: 255 }
+                transform_version: { type: integer, minimum: 1 }
+                safe_facts:
+                  type: object
+                  description: Operator facts admitted recursively; raw credentials, authentication headers and payment-card data are rejected.
+      responses:
+        '201': { description: Immutable mapping version created; any prior current version was closed and drift projected. }
+        '422': { description: Unsafe operator facts or invalid mapping input. }
+  /integrations/{connection}/reconcile:
+    post:
+      tags: [Integrations]
+      operationId: reconcileIntegrationConnection
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - $ref: '#/components/parameters/IntegrationConnectionId'
+      requestBody: { $ref: '#/components/requestBodies/OperationalReason' }
+      responses:
+        '200': { description: Open dead letters projected into owned reconciliation work and operation audited. }
+  /integration-reconciliations/{reconciliation}/resolve:
+    post:
+      tags: [Integrations]
+      operationId: resolveIntegrationReconciliation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IntegrationIdempotencyKey'
+        - { name: reconciliation, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution]
+              properties:
+                resolution:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                  description: Receipt-safe operator resolution; raw credentials, authentication headers and payment-card data are rejected.
+      responses:
+        '200': { description: Reconciliation resolved and operation audited. }
+        '422': { description: Unsafe or invalid resolution text. }
   /organizations:
     get:
       tags: [CRM]
@@ -2227,6 +2484,201 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/OperationalKpiEnvelope' } } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /direct-booking/properties/{propertySlug}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingProperty
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingLocale'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Property' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/policies/{policyKind}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingPolicy
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingPolicyKind'
+        - $ref: '#/components/parameters/DirectBookingLocale'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Policy' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/availability:
+    post:
+      tags: [Direct Booking]
+      operationId: searchDirectBookingAvailability
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/AvailabilityRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Availability' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders:
+    post:
+      tags: [Direct Booking]
+      operationId: beginDirectBookingOrder
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/BeginOrderRequest' } } } }
+      responses:
+        '201': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderBegun' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingOrderStatus
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderStatus' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/quote:
+    post:
+      tags: [Direct Booking]
+      operationId: quoteDirectBookingOrder
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/QuoteRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Quote' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/hold:
+    post:
+      tags: [Direct Booking]
+      operationId: holdDirectBookingOrder
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/HoldRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Held' }
+        '403': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BotRejected' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/checkout:
+    post:
+      tags: [Direct Booking]
+      operationId: createDirectBookingCheckout
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/CheckoutRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Checkout' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/payments/retry:
+    post:
+      tags: [Direct Booking]
+      operationId: retryDirectBookingPayment
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/PaymentRetryRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Checkout' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/manual-payment-evidence:
+    post:
+      tags: [Direct Booking]
+      operationId: submitDirectBookingManualPaymentEvidence
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { multipart/form-data: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/ManualEvidenceRequest' } } } }
+      responses:
+        '202': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/EvidencePending' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '410': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/HoldExpired' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/recover:
+    post:
+      tags: [Direct Booking]
+      operationId: recoverDirectBookingOrder
+      security: [{ directBookingRecovery: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingIdempotencyKey'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './direct-booking/v1/openapi.yaml#/components/schemas/RecoverRequest' } } } }
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/OrderRecovered' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '422': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Validation' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/confirmation:
+    get:
+      tags: [Direct Booking]
+      operationId: getDirectBookingConfirmation
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Confirmation' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
 
 components:
   securitySchemes:
@@ -2240,6 +2692,16 @@ components:
       scheme: bearer
       bearerFormat: Opaque guest portal session
       description: Short-lived, revocable guest session obtained by exchanging a single-use magic link.
+    directBookingSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Opaque direct-booking session token
+      description: Raw token is returned only when issued or rotated; Inn stores only its SHA-256 hash.
+    directBookingRecovery:
+      type: http
+      scheme: bearer
+      bearerFormat: One-time direct-booking recovery token
+      description: Separate recovery credential that remains usable after session expiry; successful recovery rotates both credentials and renews both expiries.
   parameters:
     TenantId:
       name: X-Tenant-ID
@@ -2253,6 +2715,49 @@ components:
       required: false
       description: Tenant-scoped opaque key for safely retried commands.
       schema: { type: string, minLength: 16, maxLength: 128 }
+    DirectBookingIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable per-mutation key. Same key and canonical body replay exactly; a different body returns idempotency_conflict.
+      schema: { type: string, format: uuid, pattern: '^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$' }
+    DirectBookingCorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    DirectBookingPropertySlug:
+      name: propertySlug
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 80 }
+    DirectBookingOrderReference:
+      name: orderReference
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+    DirectBookingPolicyKind:
+      name: policyKind
+      in: path
+      required: true
+      schema: { type: string, enum: [terms, privacy, cancellation, no_show, marketing_consent] }
+    DirectBookingLocale:
+      name: locale
+      in: query
+      required: false
+      description: BCP 47 locale; unsupported values fail rather than silently synthesizing policy text.
+      schema: { type: string, pattern: '^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$', maxLength: 12 }
+    IntegrationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Required tenant-scoped opaque identity for every externally retried integration command.
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    IntegrationConnectionId:
+      name: connection
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     Search:
       name: search
       in: query
@@ -2299,6 +2804,15 @@ components:
           schema:
             type: object
             additionalProperties: true
+    OperationalReason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 3, maxLength: 500 }
   responses:
     GenericSuccess:
       description: Command completed successfully.
@@ -2340,6 +2854,39 @@ components:
                       type: array
                       items: { type: string }
   schemas:
+    IntegrationCapability:
+      type: string
+      enum: [payment.hosted_checkout, reservations.import, accounting.journal_export, webhook.inbound, webhook.outbound]
+    IntegrationConnectionInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string, maxLength: 160 }
+        type: { type: string, enum: [email, calendar, accounting, payment, signature, webhook] }
+        property_id: { type: [string, 'null'], format: uuid }
+        provider: { type: string, maxLength: 80 }
+        product: { type: string, maxLength: 80 }
+        external_account_id: { type: string, maxLength: 160 }
+        environment: { type: string, enum: [sandbox, production, test] }
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/IntegrationCapability' }
+        configuration:
+          type: object
+          additionalProperties: true
+          description: Non-secret provider configuration. Secret-like keys are rejected unless they end in _reference.
+        secret_reference:
+          type: [string, 'null']
+          maxLength: 500
+          description: Approved vault, cloud-secret-manager, or environment reference; never a credential value.
+    IntegrationRunInput:
+      type: object
+      required: [capability]
+      properties:
+        capability: { type: string, enum: [reservations.import, accounting.journal_export, webhook.outbound] }
+        property_id: { type: [string, 'null'], format: uuid }
+        trigger: { type: string, enum: [manual, scheduled, reconciliation], default: manual }
     DocumentRequestInput:
       type: object
       required: [kind]

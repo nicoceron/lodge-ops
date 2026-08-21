@@ -8,7 +8,10 @@ use App\Enums\TaskStatus;
 use App\Models\Membership;
 use App\Models\OperationalTask;
 use App\Models\OperationalTaskEvent;
+use App\Models\Property;
+use App\Models\Reservation;
 use App\Services\Automation\OutboxRecorder;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,13 +21,52 @@ final class TaskLifecycleService
     public function __construct(
         private readonly OutboxRecorder $outbox,
         private readonly OperationalTaskAssigneeService $assignees,
+        private readonly OperationalTaskAccess $access,
+        private readonly TenantContext $tenantContext,
     ) {}
+
+    /** @param array<string, mixed> $data */
+    public function create(array $data, ?int $actorId): OperationalTask
+    {
+        return DB::transaction(function () use ($data, $actorId): OperationalTask {
+            $propertyId = (string) ($data['property_id'] ?? '');
+            $this->assertActorMaySchedule($actorId, $propertyId);
+            Property::query()->whereKey($propertyId)->where('is_active', true)->firstOrFail();
+
+            $reservationId = filled($data['reservation_id'] ?? null) ? (string) $data['reservation_id'] : null;
+            if ($reservationId !== null && ! Reservation::query()->whereKey($reservationId)->where('property_id', $propertyId)->exists()) {
+                throw ValidationException::withMessages(['reservation_id' => 'The reservation must belong to the selected property.']);
+            }
+
+            $task = new OperationalTask;
+            $task->forceFill([
+                ...collect($data)->only(['property_id', 'reservation_id', 'title', 'description', 'priority', 'due_at', 'metadata'])->all(),
+                'reservation_id' => $reservationId,
+                'status' => TaskStatus::Todo,
+                'priority' => $data['priority'] ?? 'normal',
+                'revision' => 1,
+            ]);
+            $task->save();
+            $this->event($task, 'created', TaskStatus::Todo, TaskStatus::Todo, null, $actorId);
+            $this->outbox->record('operational_task', $task->id, 'operational_task.created', $this->outboxPayload($task));
+
+            if (filled($data['assignee_id'] ?? null)) {
+                $this->assignees->assertEligible($task, (int) $data['assignee_id']);
+                $task->forceFill(['assignee_id' => (int) $data['assignee_id'], 'revision' => 2])->save();
+                $this->event($task, 'assigned', TaskStatus::Todo, TaskStatus::Todo, null, $actorId);
+                $this->outbox->record('operational_task', $task->id, 'operational_task.assigned', $this->outboxPayload($task));
+            }
+
+            return $task->fresh(['assignee', 'events']);
+        }, 3);
+    }
 
     /** @param array<string, mixed> $data */
     public function transition(OperationalTask $task, string $action, array $data, ?int $actorId): OperationalTask
     {
         return DB::transaction(function () use ($task, $action, $data, $actorId): OperationalTask {
             $locked = OperationalTask::query()->lockForUpdate()->findOrFail($task->id);
+            $this->assertActorMayManage($locked, $actorId);
             $expectedRevision = (int) ($data['expected_revision'] ?? 0);
             if ($expectedRevision !== $locked->revision) {
                 throw ValidationException::withMessages(['expected_revision' => 'This task changed. Refresh and retry the action.']);
@@ -41,14 +83,7 @@ final class TaskLifecycleService
             $locked->forceFill([...$attributes, 'status' => $to, 'revision' => $locked->revision + 1]);
             $locked->save();
             $this->event($locked, $event, $from, $to, $data['reason'] ?? null, $actorId);
-            $this->outbox->record('operational_task', $locked->id, 'operational_task.'.$event, [
-                'task_id' => $locked->id,
-                'reservation_id' => $locked->reservation_id,
-                'property_id' => $locked->property_id,
-                'status' => $to->value,
-                'due_at' => $locked->due_at?->toIso8601String(),
-                'assignee_id' => $locked->assignee_id,
-            ]);
+            $this->outbox->record('operational_task', $locked->id, 'operational_task.'.$event, $this->outboxPayload($locked));
 
             return $locked->fresh(['assignee', 'events']);
         }, 3);
@@ -59,6 +94,7 @@ final class TaskLifecycleService
     {
         return DB::transaction(function () use ($task, $data, $actorId): OperationalTask {
             $locked = OperationalTask::query()->lockForUpdate()->findOrFail($task->id);
+            $this->assertActorMayManage($locked, $actorId);
             if ((int) ($data['expected_revision'] ?? 0) !== $locked->revision) {
                 throw ValidationException::withMessages(['expected_revision' => 'This task changed. Refresh and retry the update.']);
             }
@@ -75,6 +111,7 @@ final class TaskLifecycleService
                 'snapshot' => ['revision' => $locked->revision, 'before' => $before],
                 'occurred_at' => now(),
             ]);
+            $this->outbox->record('operational_task', $locked->id, 'operational_task.details_updated', $this->outboxPayload($locked));
 
             return $locked->fresh(['assignee', 'events']);
         }, 3);
@@ -202,5 +239,45 @@ final class TaskLifecycleService
             'snapshot' => ['revision' => $task->revision, 'priority' => $task->priority, 'assignee_id' => $task->assignee_id],
             'occurred_at' => now(),
         ]);
+    }
+
+    private function assertActorMaySchedule(?int $actorId, string $propertyId): void
+    {
+        if ($actorId === null) {
+            throw ValidationException::withMessages(['actor' => 'An active operations scheduler is required.']);
+        }
+        $membership = Membership::query()->where('user_id', $actorId)->where('is_active', true)->first();
+        if ($membership === null || ! $membership->role->canScheduleOperations()
+            || ($membership->property_id !== null && $membership->property_id !== $propertyId)
+            || ! $this->tenantContext->canAccessProperty($propertyId)) {
+            throw ValidationException::withMessages(['property_id' => 'The actor cannot schedule tasks for this property.']);
+        }
+    }
+
+    private function assertActorMayManage(OperationalTask $task, ?int $actorId): void
+    {
+        if ($actorId === null) {
+            return;
+        }
+        $membership = Membership::query()->where('user_id', $actorId)->where('is_active', true)->first();
+        if ($membership === null || ! $membership->role->canManageOperations()
+            || ($membership->property_id !== null && $membership->property_id !== $task->property_id)
+            || ! $this->access->allows($membership->user, $task, $membership->role)) {
+            throw ValidationException::withMessages(['task' => 'The actor cannot mutate this operational task.']);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function outboxPayload(OperationalTask $task): array
+    {
+        return [
+            'task_id' => $task->id,
+            'reservation_id' => $task->reservation_id,
+            'property_id' => $task->property_id,
+            'status' => $task->status->value,
+            'revision' => $task->revision,
+            'due_at' => $task->due_at?->toIso8601String(),
+            'assignee_id' => $task->assignee_id,
+        ];
     }
 }

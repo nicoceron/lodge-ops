@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ReservationStatus;
 use App\Enums\TaskStatus;
 use App\Models\ChecklistTemplate;
 use App\Models\ChecklistTemplateVersion;
@@ -119,6 +120,9 @@ final class ChecklistWorkflowService
     {
         return DB::transaction(function () use ($reservation, $version, $actorId): array {
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+            if (in_array($reservation->status, [ReservationStatus::Cancelled, ReservationStatus::NoShow, ReservationStatus::CheckedOut], true)) {
+                throw ValidationException::withMessages(['reservation' => 'A terminal reservation cannot generate or regenerate operational checklist tasks.']);
+            }
             $version = ChecklistTemplateVersion::query()->with(['template', 'items'])->where('state', 'published')->findOrFail($version->id);
             if ($version->template->property_id !== $reservation->property_id
                 || ($version->template->program_id !== null && $version->template->program_id !== $reservation->program_id)) {
@@ -126,8 +130,12 @@ final class ChecklistWorkflowService
             }
             $generation = ((int) OperationalTask::query()->where('reservation_id', $reservation->id)->max('generation')) + 1;
             $superseded = 0;
+            $lineageVersionIds = ChecklistTemplateVersion::query()
+                ->where('checklist_template_id', $version->checklist_template_id)
+                ->pluck('id');
             $previous = OperationalTask::query()->where('reservation_id', $reservation->id)
-                ->whereNotNull('checklist_template_version_id')
+                ->whereIn('checklist_template_version_id', $lineageVersionIds)
+                ->where('metadata->checklist_role', $version->template->role)
                 ->where('status', TaskStatus::Todo)
                 ->whereNull('started_at')->whereNull('failed_at')->whereNull('escalated_at')
                 ->lockForUpdate()->get();

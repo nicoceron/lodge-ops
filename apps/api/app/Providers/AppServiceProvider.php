@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Contracts\DirectBooking\BotVerifier;
 use App\Contracts\Documents\DocumentRenderer;
 use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
+use App\Contracts\Integrations\SecretReferenceResolver;
 use App\Contracts\Payments\PaymentGatewayFactory;
 use App\Integrations\Payments\MercadoPago\DefaultPaymentGatewayFactory;
+use App\Integrations\Secrets\EnvironmentSecretReferenceResolver;
 use App\Models\Allocation;
 use App\Models\AutomationRule;
 use App\Models\CalendarFeed;
@@ -24,6 +27,15 @@ use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DirectBookingOrder;
+use App\Models\DirectBookingOrderConsent;
+use App\Models\DirectBookingOrderEvent;
+use App\Models\DirectBookingPaymentCapability;
+use App\Models\DirectBookingPaymentInstruction;
+use App\Models\DirectBookingPropertySetting;
+use App\Models\DirectBookingPublication;
+use App\Models\DirectBookingPublicItem;
+use App\Models\DirectBookingPublicMedia;
 use App\Models\DocumentGenerationRequest;
 use App\Models\DocumentTemplate;
 use App\Models\ExchangeRate;
@@ -34,6 +46,16 @@ use App\Models\Guest;
 use App\Models\GuestMergeAlias;
 use App\Models\GuestPaymentEvidence;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationConnectionCapability;
+use App\Models\IntegrationDeadLetter;
+use App\Models\IntegrationEndpointKey;
+use App\Models\IntegrationEvent;
+use App\Models\IntegrationMapping;
+use App\Models\IntegrationOperation;
+use App\Models\IntegrationReconciliation;
+use App\Models\IntegrationSyncCursor;
+use App\Models\IntegrationSyncRun;
+use App\Models\IntegrationSyncRunItem;
 use App\Models\Membership;
 use App\Models\MessageTemplate;
 use App\Models\MessageTemplateVersion;
@@ -74,8 +96,11 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\VoucherRedemptionEvent;
 use App\Observers\TenantAuditObserver;
+use App\Services\DirectBooking\CloudflareTurnstileVerifier;
 use App\Services\Documents\SpatieDocumentRenderer;
 use App\Services\Fiscal\DatabaseFiscalSourceSnapshotFactory;
+use App\Services\Integrations\CapabilityPortRegistry;
+use App\Services\Integrations\EndpointKeyRuntimeStore;
 use App\Services\Payments\SensitivePaymentDataGuard;
 use App\Support\Tenancy\TenantContext;
 use Filament\Facades\Filament;
@@ -95,7 +120,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
         $this->app->scoped(SensitivePaymentDataGuard::class, fn (): SensitivePaymentDataGuard => new SensitivePaymentDataGuard);
         $this->app->bind(DocumentRenderer::class, SpatieDocumentRenderer::class);
+        $this->app->bind(BotVerifier::class, CloudflareTurnstileVerifier::class);
         $this->app->bind(PaymentGatewayFactory::class, DefaultPaymentGatewayFactory::class);
+        $this->app->bind(SecretReferenceResolver::class, EnvironmentSecretReferenceResolver::class);
+        $this->app->singleton(CapabilityPortRegistry::class);
+        $this->app->scoped(EndpointKeyRuntimeStore::class);
         $this->app->bind(FiscalSourceSnapshotFactory::class, DatabaseFiscalSourceSnapshotFactory::class);
     }
 
@@ -104,6 +133,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $contractFake = 'Tests\\Fakes\\MixedIntegrationReservationPort';
+        if ($this->app->environment('testing') && class_exists($contractFake)) {
+            $this->app->make(CapabilityPortRegistry::class)->register(
+                'contract_fake',
+                'mixed_reservations',
+                'reservations.import',
+                $this->app->make($contractFake),
+            );
+        }
+
         RateLimiter::for('guest-link', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('guest-link:'.$request->ip()));
         RateLimiter::for('guest-web', fn (Request $request): Limit => Limit::perMinute(120)
@@ -116,8 +155,39 @@ class AppServiceProvider extends ServiceProvider
             ->by('payment-request-link:'.$request->ip()));
         RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(240)
             ->by('payment-webhook:'.$request->ip()));
+        RateLimiter::for('integration-webhook', fn (Request $request): Limit => Limit::perMinute(240)
+            ->by('integration-webhook:'.$request->ip()));
         RateLimiter::for('commercial-voucher', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('commercial-voucher:'.$request->ip()));
+        RateLimiter::for('direct-booking-read', fn (Request $request): array => [
+            Limit::perMinute((int) config('direct-booking.rate_limits.read_per_minute', 60))
+                ->by('direct-booking:read:ip:'.$request->ip()),
+            Limit::perMinute(300)->by('direct-booking:read:property:'.$request->route('propertySlug')),
+        ]);
+        RateLimiter::for('direct-booking-search', fn (Request $request): array => [
+            Limit::perMinute((int) config('direct-booking.rate_limits.search_per_minute', 20))
+                ->by('direct-booking:search:ip:'.$request->ip()),
+            Limit::perMinute(120)->by('direct-booking:search:property:'.$request->route('propertySlug')),
+        ]);
+        RateLimiter::for('direct-booking-mutation', function (Request $request): array {
+            $session = hash('sha256', (string) $request->bearerToken());
+
+            return [
+                Limit::perMinute((int) config('direct-booking.rate_limits.mutation_per_minute', 10))
+                    ->by('direct-booking:mutation:ip:'.$request->ip()),
+                Limit::perMinute(60)->by('direct-booking:mutation:property:'.$request->route('propertySlug')),
+                Limit::perMinute(30)->by('direct-booking:mutation:session:'.$session),
+            ];
+        });
+        RateLimiter::for('direct-booking-hold', function (Request $request): array {
+            $session = hash('sha256', (string) $request->bearerToken());
+
+            return [
+                Limit::perHour((int) config('direct-booking.rate_limits.holds_per_hour', 5))
+                    ->by('direct-booking:hold:session:'.$session),
+                Limit::perHour(20)->by('direct-booking:hold:ip:'.$request->ip()),
+            ];
+        });
 
         ResetPassword::createUrlUsing(
             fn ($user, string $token): string => Filament::getPanel('admin')->getResetPasswordUrl($token, $user),
@@ -142,6 +212,15 @@ class AppServiceProvider extends ServiceProvider
             DeliveryAttempt::class,
             Deposit::class,
             DepositPolicy::class,
+            DirectBookingOrder::class,
+            DirectBookingOrderConsent::class,
+            DirectBookingOrderEvent::class,
+            DirectBookingPaymentCapability::class,
+            DirectBookingPaymentInstruction::class,
+            DirectBookingPropertySetting::class,
+            DirectBookingPublication::class,
+            DirectBookingPublicItem::class,
+            DirectBookingPublicMedia::class,
             DocumentGenerationRequest::class,
             DocumentTemplate::class,
             ExchangeRate::class,
@@ -151,6 +230,16 @@ class AppServiceProvider extends ServiceProvider
             GuestMergeAlias::class,
             GuestPaymentEvidence::class,
             IntegrationConnection::class,
+            IntegrationConnectionCapability::class,
+            IntegrationDeadLetter::class,
+            IntegrationEndpointKey::class,
+            IntegrationEvent::class,
+            IntegrationMapping::class,
+            IntegrationOperation::class,
+            IntegrationReconciliation::class,
+            IntegrationSyncCursor::class,
+            IntegrationSyncRun::class,
+            IntegrationSyncRunItem::class,
             Membership::class,
             MessageTemplate::class,
             MessageTemplateVersion::class,

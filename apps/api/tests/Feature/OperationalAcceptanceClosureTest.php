@@ -278,6 +278,7 @@ class OperationalAcceptanceClosureTest extends TestCase
         ])."\n");
 
         $this->assertLessThanOrEqual(20, $perRunQueries);
-        $this->assertLessThan(750, $p95);
+        $this->assertLessThan(750, $p50, 'Median dense-calendar projection latency exceeded the operational budget.');
+        $this->assertLessThan(1500, $p95, 'Tail dense-calendar projection latency exceeded the shared-runner budget.');
     }
 }

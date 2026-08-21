@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "conflict",
+    "message": "The booking state changed; refresh before retrying.",
+    "correlation_id": "contract-fixture-40900001",
+    "retryable": true
+  }
+}

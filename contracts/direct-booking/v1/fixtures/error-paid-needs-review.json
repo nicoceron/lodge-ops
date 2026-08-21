@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "paid_needs_review",
+    "message": "Payment was received but the reservation requires Finance review.",
+    "correlation_id": "contract-fixture-40900007",
+    "retryable": false
+  }
+}

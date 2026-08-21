@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "payment_pending",
+    "message": "Payment is still pending authoritative provider confirmation.",
+    "correlation_id": "contract-fixture-40900005",
+    "retryable": true
+  }
+}

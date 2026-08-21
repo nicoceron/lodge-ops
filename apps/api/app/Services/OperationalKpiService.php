@@ -37,11 +37,18 @@ final class OperationalKpiService
             return max(0, $from->timezone($timezone)->startOfDay()->diffInDays($to->timezone($timezone)->startOfDay()));
         });
         $availableRoomNights = (int) $capacity * $days;
-        $currencyRows = $reservations->groupBy('currency')->map(function ($currencyReservations, string $currency) use ($start, $end): array {
+        $postedRevenue = FolioLine::query()
+            ->where('posted_at', '>=', $start)->where('posted_at', '<', $end)
+            ->when($propertyId, fn (Builder $query) => $query->whereHas('reservation', fn (Builder $reservation) => $reservation->where('property_id', $propertyId)))
+            ->selectRaw('currency, SUM(gross_amount_minor) as gross_minor')
+            ->groupBy('currency')
+            ->pluck('gross_minor', 'currency')
+            ->map(fn ($amount): int => (int) $amount);
+        $currencies = $reservations->pluck('currency')->merge($postedRevenue->keys())->unique()->sort()->values();
+        $currencyRows = $currencies->map(function (string $currency) use ($reservations, $postedRevenue): array {
+            $currencyReservations = $reservations->where('currency', $currency);
             $ids = $currencyReservations->pluck('id');
-            $revenue = (int) FolioLine::query()->whereIn('reservation_id', $ids)
-                ->where('posted_at', '>=', $start)->where('posted_at', '<', $end)
-                ->where('currency', $currency)->sum('gross_amount_minor');
+            $revenue = (int) ($postedRevenue->get($currency) ?? 0);
             $paid = (int) Payment::query()->whereIn('reservation_id', $ids)->where('currency', $currency)
                 ->where('status', PaymentStatus::Succeeded)->sum('amount_minor');
             $booked = (int) $currencyReservations->sum('total_minor');
