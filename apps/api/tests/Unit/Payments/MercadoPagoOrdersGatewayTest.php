@@ -5,6 +5,7 @@ namespace Tests\Unit\Payments;
 use App\Data\Payments\PointOrderRequest;
 use App\Data\Payments\ProviderOrderMutation;
 use App\Data\Payments\ProviderOrderRefundRequest;
+use App\Data\Payments\ProviderTerminalQuery;
 use App\Data\Payments\QrOrderRequest;
 use App\Data\Payments\WebhookRequest;
 use App\Integrations\Payments\MercadoPago\MercadoPagoOrdersGateway;
@@ -15,10 +16,26 @@ class MercadoPagoOrdersGatewayTest extends TestCase
 {
     private const FIXTURES = __DIR__.'/../../Fixtures/MercadoPago/Orders';
 
+    public function test_terminal_list_parses_the_documented_production_data_terminals_envelope(): void
+    {
+        $gateway = new MercadoPagoOrdersGateway(
+            new OrdersRecordingTransport([$this->fixture('terminals-production.json')]),
+            'secret', 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'production',
+        );
+
+        $terminal = $gateway->listTerminals(new ProviderTerminalQuery(storeId: 'STORE-PROD-1'))[0];
+
+        $this->assertSame('PAX_A910__PROD0000001', $terminal->id);
+        $this->assertSame('PDV', $terminal->operatingMode);
+        $this->assertSame('STORE-PROD-1', $terminal->storeId);
+        $this->assertSame('POS-PROD-1', $terminal->posId);
+        $this->assertSame('INN-PROD-POS-1', $terminal->externalPosId);
+    }
+
     public function test_point_and_qr_create_use_orders_endpoint_numeric_money_and_operation_idempotency(): void
     {
         $transport = new OrdersRecordingTransport([$this->fixture('point-created.json'), $this->fixture('qr-dynamic-created.json')]);
-        $gateway = new MercadoPagoOrdersGateway($transport, 'secret', 'TEST-SELLER-ID');
+        $gateway = new MercadoPagoOrdersGateway($transport, 'secret', 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
 
         $point = $gateway->createPointOrder(new PointOrderRequest('inn_point_created', 'point-key', 'point-checksum', 2_400, 'ARS', 'Inn deposit', 'NEWLAND_N950__SBX0000001'));
         $this->assertSame('/v1/orders', $transport->calls[0]['path']);
@@ -39,7 +56,7 @@ class MercadoPagoOrdersGatewayTest extends TestCase
     public function test_orders_cancel_and_refund_never_use_payments_refund_endpoint(): void
     {
         $transport = new OrdersRecordingTransport([$this->fixture('point-canceled.json'), $this->fixture('qr-refunded.json')]);
-        $gateway = new MercadoPagoOrdersGateway($transport, 'secret', 'TEST-SELLER-ID');
+        $gateway = new MercadoPagoOrdersGateway($transport, 'secret', 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
         $gateway->cancelOrder(new ProviderOrderMutation('ORD01TESTPOINTCANCELED0000001', 'cancel-key', 'cancel-checksum'));
         $refund = $gateway->refundOrder(new ProviderOrderRefundRequest(
             'ORD01TESTQRREFUNDED000000001',
@@ -63,14 +80,17 @@ class MercadoPagoOrdersGatewayTest extends TestCase
         $id = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
         $manifest = 'id:'.strtolower($id).";request-id:req-order-1;ts:{$timestamp};";
         $signature = hash_hmac('sha256', $manifest, $secret);
-        $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([]), $secret, 'TEST-SELLER-ID');
+        $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([]), $secret, 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
         $event = $gateway->verifyWebhook(new WebhookRequest(
-            json_encode(['type' => 'order', 'action' => 'order.processed', 'data' => ['id' => $id]], JSON_THROW_ON_ERROR),
+            json_encode(['application_id' => 'TEST-APPLICATION-ID', 'live_mode' => false, 'user_id' => 'TEST-SELLER-ID', 'type' => 'order', 'action' => 'order.processed', 'data' => ['id' => $id]], JSON_THROW_ON_ERROR),
             ['x-signature' => "ts={$timestamp},v1={$signature}", 'x-request-id' => 'req-order-1'],
             ['type' => 'order', 'data.id' => $id],
         ));
         $this->assertSame('order', $event->topic);
         $this->assertSame($id, $event->resourceId);
+        $this->assertSame('TEST-APPLICATION-ID', $event->applicationId);
+        $this->assertSame('TEST-SELLER-ID', $event->providerAccount);
+        $this->assertSame('sandbox', $event->environment);
 
         $this->expectException(\RuntimeException::class);
         $gateway->verifyWebhook(new WebhookRequest(
@@ -80,12 +100,61 @@ class MercadoPagoOrdersGatewayTest extends TestCase
         ));
     }
 
+    public function test_signed_order_webhook_rejects_body_query_application_account_and_environment_mismatches(): void
+    {
+        $secret = 'orders-webhook-secret';
+        $id = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
+        $timestamp = (string) (time() * 1000);
+        $requestId = 'req-identity-mismatch';
+        $signature = hash_hmac('sha256', 'id:'.strtolower($id).";request-id:{$requestId};ts:{$timestamp};", $secret);
+        $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([]), $secret, 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
+        $base = ['application_id' => 'TEST-APPLICATION-ID', 'live_mode' => false, 'user_id' => 'TEST-SELLER-ID', 'type' => 'order', 'action' => 'order.processed', 'data' => ['id' => $id]];
+        $cases = [
+            [...$base, 'data' => ['id' => 'OTHER-ORDER']],
+            [...$base, 'application_id' => 'OTHER-APPLICATION'],
+            [...$base, 'user_id' => 'OTHER-SELLER'],
+            [...$base, 'live_mode' => true],
+        ];
+
+        foreach ($cases as $body) {
+            try {
+                $gateway->verifyWebhook(new WebhookRequest(
+                    json_encode($body, JSON_THROW_ON_ERROR),
+                    ['x-signature' => "ts={$timestamp},v1={$signature}", 'x-request-id' => $requestId],
+                    ['type' => 'order', 'data.id' => $id],
+                ));
+                $this->fail('A mismatched signed Orders identity was accepted.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('identity mismatch', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_order_normalization_rejects_unknown_environment_and_invalid_transaction_ids(): void
+    {
+        $base = $this->fixture('point-created.json');
+        $cases = [
+            array_diff_key($base, ['live_mode' => true]),
+            array_replace_recursive($base, ['transactions' => ['payments' => [['id' => '']]]]),
+            array_replace_recursive($base, ['transactions' => ['payments' => [$base['transactions']['payments'][0], $base['transactions']['payments'][0]]]]),
+        ];
+        foreach ($cases as $payload) {
+            $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([$payload]), 'secret', 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
+            try {
+                $gateway->createPointOrder(new PointOrderRequest('inn_point_created', 'point-key', 'checksum', 2_400, 'ARS', 'Inn', 'NEWLAND_N950__SBX0000001'));
+                $this->fail('An Orders resource with unknown identity was accepted.');
+            } catch (\RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_order_signature_rejects_missing_invalid_and_stale_envelopes(): void
     {
         $secret = 'orders-webhook-secret';
         $id = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
-        $body = json_encode(['type' => 'order', 'action' => 'order.processed', 'data' => ['id' => $id]], JSON_THROW_ON_ERROR);
-        $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([]), $secret, 'TEST-SELLER-ID');
+        $body = json_encode(['application_id' => 'TEST-APPLICATION-ID', 'live_mode' => false, 'user_id' => 'TEST-SELLER-ID', 'type' => 'order', 'action' => 'order.processed', 'data' => ['id' => $id]], JSON_THROW_ON_ERROR);
+        $gateway = new MercadoPagoOrdersGateway(new OrdersRecordingTransport([]), $secret, 'TEST-SELLER-ID', 'TEST-APPLICATION-ID', 'sandbox');
         $now = (string) (time() * 1000);
         $stale = (string) ((time() - 1_000) * 1000);
         $cases = [

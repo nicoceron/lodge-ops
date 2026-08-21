@@ -15,10 +15,13 @@ use App\Exceptions\CommercialWorkflowException;
 use App\Jobs\ProcessProviderOrderEventJob;
 use App\Models\IntegrationConnection;
 use App\Models\Payment;
+use App\Models\PaymentAttempt;
 use App\Models\PaymentTerminal;
 use App\Models\Property;
 use App\Models\ProviderPosLocation;
 use App\Models\Reservation;
+use App\Policies\PaymentAttemptPolicy;
+use App\Policies\PaymentRequestPolicy;
 use App\Services\FolioService;
 use App\Services\Payments\ApplyMercadoPagoOrder;
 use App\Services\Payments\CancelInPersonOrder;
@@ -30,7 +33,9 @@ use App\Services\RequestRefund;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CreatesTenant;
 use Tests\Fakes\FakeInPersonPaymentGateway;
 use Tests\TestCase;
@@ -38,6 +43,193 @@ use Tests\TestCase;
 class InPersonOrdersLifecycleTest extends TestCase
 {
     use CreatesTenant, RefreshDatabase;
+
+    public function test_all_roles_have_coherent_initiate_and_monitor_permissions(): void
+    {
+        foreach (MembershipRole::cases() as $role) {
+            [, , $user] = $this->tenantEnvironment($role);
+            $this->assertSame($role->canManageGuestMoney(), app(PaymentRequestPolicy::class)->createInPerson($user), $role->value.' initiate');
+            $this->assertSame($role->canViewGuestMoney(), app(PaymentAttemptPolicy::class)->viewAny($user), $role->value.' monitor');
+        }
+
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Operations);
+        $connection = $this->connection($property->id);
+        $terminal = $this->terminal($property->id, $connection);
+        $reservation = $this->reservation($property->id, 12_000);
+        $this->app->instance(InPersonPaymentGatewayFactory::class, new FakeInPersonPaymentGateway);
+        $attemptId = $this->postJson("/api/v1/reservations/{$reservation->id}/point-orders", [
+            'terminal_id' => $terminal->id, 'purpose' => 'full_outstanding',
+        ], ['X-Tenant-ID' => $tenant->id, 'Idempotency-Key' => 'operations-point-initiate-0001'])
+            ->assertCreated()->json('data.id');
+        $this->getJson("/api/v1/in-person-payment-attempts/{$attemptId}", ['X-Tenant-ID' => $tenant->id])
+            ->assertOk()->assertJsonPath('data.id', $attemptId);
+    }
+
+    public function test_property_scoped_terminal_and_pos_lists_never_expand_when_filter_is_omitted(): void
+    {
+        [$tenant, $property] = $this->tenantEnvironment(MembershipRole::Finance);
+        $connection = $this->connection($property->id);
+        $allowedTerminal = $this->terminal($property->id, $connection);
+        $allowedPos = $this->pos($property->id, $connection);
+        $otherProperty = Property::factory()->create();
+        $otherTerminal = $allowedTerminal->replicate();
+        $otherTerminal->property_id = $otherProperty->id;
+        $otherTerminal->provider_terminal_id = 'NEWLAND_N950__SBX0000099';
+        $otherTerminal->save();
+        $otherPos = $allowedPos->replicate();
+        $otherPos->property_id = $otherProperty->id;
+        $otherPos->external_pos_id = 'INN-TEST-POS-99';
+        $otherPos->save();
+        $headers = ['X-Tenant-ID' => $tenant->id];
+
+        $this->getJson('/api/v1/payment-terminals', $headers)->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $allowedTerminal->id);
+        $this->getJson('/api/v1/provider-pos-locations', $headers)->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $allowedPos->id);
+        $this->getJson('/api/v1/payment-terminals?property_id='.$otherProperty->id, $headers)->assertForbidden();
+        $this->getJson('/api/v1/provider-pos-locations?property_id='.$otherProperty->id, $headers)->assertForbidden();
+        $this->assertNotSame($allowedTerminal->id, $otherTerminal->id);
+        $this->assertNotSame($allowedPos->id, $otherPos->id);
+
+        [$adminTenant, $adminProperty] = $this->tenantEnvironment(MembershipRole::Administrator);
+        $adminConnection = $this->connection($adminProperty->id);
+        $adminTerminal = $this->terminal($adminProperty->id, $adminConnection);
+        $adminOtherProperty = Property::factory()->create();
+        $adminOtherTerminal = $adminTerminal->replicate();
+        $adminOtherTerminal->property_id = $adminOtherProperty->id;
+        $adminOtherTerminal->provider_terminal_id = 'NEWLAND_N950__SBX0000100';
+        $adminOtherTerminal->save();
+        $this->getJson('/api/v1/payment-terminals', ['X-Tenant-ID' => $adminTenant->id])
+            ->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    public function test_create_timeout_after_remote_success_resumes_same_provider_operation(): void
+    {
+        [, $property, $user] = $this->tenantEnvironment(MembershipRole::Operations);
+        $connection = $this->connection($property->id);
+        $terminal = $this->terminal($property->id, $connection);
+        $reservation = $this->reservation($property->id, 16_000);
+        $fake = new FakeInPersonPaymentGateway;
+        $fake->createThrowsAfterRemoteSuccess = true;
+        $this->app->instance(InPersonPaymentGatewayFactory::class, $fake);
+
+        try {
+            app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::IntegratedTerminal, $terminal->id,
+                PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'timeout-after-create-remote-success');
+            $this->fail('The first provider response should be lost after remote success.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('timeout', strtolower($exception->getMessage()));
+        }
+        $uncertain = PaymentAttempt::query()->sole();
+        $this->assertSame('creating', $uncertain->state->value);
+        $this->assertNull($uncertain->provider_order_id);
+
+        $recovered = app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::IntegratedTerminal, $terminal->id,
+            PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'timeout-after-create-remote-success');
+        $this->assertSame($uncertain->id, $recovered->id);
+        $this->assertSame('queued', $recovered->state->value);
+        $this->assertNotNull($recovered->provider_order_id);
+        $this->assertCount(1, $fake->pointCreates);
+    }
+
+    public function test_processed_transaction_money_identity_is_exact_and_multiple_rows_are_deterministic(): void
+    {
+        [, $property, $user] = $this->tenantEnvironment(MembershipRole::Finance);
+        $connection = $this->connection($property->id);
+        $terminal = $this->terminal($property->id, $connection);
+        $reservation = $this->reservation($property->id, 14_000);
+        $fake = new FakeInPersonPaymentGateway;
+        $this->app->instance(InPersonPaymentGatewayFactory::class, $fake);
+        $cases = [
+            [new ProviderOrderTransaction('', 14_000, 'processed', 'accredited', 14_000)],
+            [new ProviderOrderTransaction('PAY-DUP', 14_000, 'processed', 'accredited', 14_000), new ProviderOrderTransaction('PAY-DUP', 14_000, 'processed', 'accredited', 14_000)],
+            [new ProviderOrderTransaction('PAY-AMOUNT', 13_999, 'processed', 'accredited', 14_000)],
+            [new ProviderOrderTransaction('PAY-PAID', 14_000, 'processed', 'accredited', 13_999)],
+        ];
+        foreach ($cases as $index => $transactions) {
+            $attempt = app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::IntegratedTerminal, $terminal->id,
+                PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'transaction-reject-'.$index);
+            $created = $fake->fetchOrder($attempt->provider_order_id);
+            try {
+                app(ApplyMercadoPagoOrder::class)->handle($attempt, new ProviderOrder(
+                    ...$this->orderArguments($created, payments: $transactions, status: 'processed', statusDetail: 'processed')
+                ));
+                $this->fail('An invalid transaction identity/money tuple was applied.');
+            } catch (CommercialWorkflowException) {
+                $this->assertSame('mismatched', $attempt->fresh()->state->value);
+            }
+        }
+        $this->assertDatabaseCount('payments', 0);
+
+        $attempt = app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::IntegratedTerminal, $terminal->id,
+            PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'transaction-deterministic-success');
+        $created = $fake->fetchOrder($attempt->provider_order_id);
+        $valid = new ProviderOrderTransaction('PAY-Z-AUTHORITATIVE', 14_000, 'processed', 'accredited', 14_000);
+        $result = app(ApplyMercadoPagoOrder::class)->handle($attempt, new ProviderOrder(
+            ...$this->orderArguments($created, payments: [new ProviderOrderTransaction('PAY-A-PENDING', 14_000, 'created', 'created'), $valid], status: 'processed', statusDetail: 'processed')
+        ));
+        $this->assertSame('approved', $result->state->value);
+        $this->assertSame($valid->id, Payment::query()->sole()->provider_reference);
+    }
+
+    public function test_qr_expiry_is_exact_and_purges_ciphertext_before_or_after_responsive_reads(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-20T12:00:00Z');
+        try {
+            [$tenant, $property, $user] = $this->tenantEnvironment(MembershipRole::Operations);
+            $connection = $this->connection($property->id);
+            $pos = $this->pos($property->id, $connection);
+            $reservation = $this->reservation($property->id, 11_000);
+            $this->app->instance(InPersonPaymentGatewayFactory::class, new FakeInPersonPaymentGateway);
+            $attempt = app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::Qr, $pos->id,
+                PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'qr-expiry-boundary-0001');
+            $attempt->update(['order_expires_at' => now()->addSecond()]);
+
+            CarbonImmutable::setTestNow('2026-08-20T12:00:00.999999Z');
+            $this->assertTrue($attempt->fresh()->hasDisplayableQr());
+            $this->getJson("/api/v1/in-person-payment-attempts/{$attempt->id}", ['X-Tenant-ID' => $tenant->id])
+                ->assertOk()->assertJsonPath('data.qr_data', '000201010212FAKE-INN-QR');
+
+            CarbonImmutable::setTestNow('2026-08-20T12:00:01Z');
+            $this->assertFalse($attempt->fresh()->hasDisplayableQr());
+            $this->getJson("/api/v1/in-person-payment-attempts/{$attempt->id}", ['X-Tenant-ID' => $tenant->id])
+                ->assertOk()->assertJsonMissingPath('data.qr_data');
+            $this->assertSame(0, Artisan::call('payments:expire-in-person-orders', ['--tenant' => $tenant->id]));
+
+            CarbonImmutable::setTestNow('2026-08-20T12:00:01.000001Z');
+            $expired = $attempt->fresh();
+            $this->assertSame('expired', $expired->state->value);
+            $this->assertNull($expired->qr_data_ciphertext);
+            $this->assertFalse($expired->hasDisplayableQr());
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_in_person_migration_rollback_preflights_staff_null_tokens_before_any_ddl(): void
+    {
+        [, $property, $user] = $this->tenantEnvironment(MembershipRole::Finance);
+        $connection = $this->connection($property->id);
+        $terminal = $this->terminal($property->id, $connection);
+        $reservation = $this->reservation($property->id, 10_000);
+        $this->app->instance(InPersonPaymentGatewayFactory::class, new FakeInPersonPaymentGateway);
+        $attempt = app(InitiateInPersonPayment::class)->handle($reservation, PaymentChannel::IntegratedTerminal, $terminal->id,
+            PaymentRequestPurpose::FullOutstanding, null, null, $user->id, 'rollback-staff-null-token-0001');
+        $migration = require database_path('migrations/2026_08_20_020001_create_in_person_payment_orders.php');
+
+        try {
+            $migration->down();
+            $this->fail('Staff requests without guest tokens must block rollback before DDL.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('no guest public/token credentials', $exception->getMessage());
+            $this->assertStringContainsString('no schema changes were made', strtolower($exception->getMessage()));
+        }
+        $this->assertTrue(Schema::hasTable('payment_terminals'));
+        $this->assertTrue(Schema::hasTable('provider_pos_locations'));
+        $this->assertTrue(Schema::hasColumn('payment_attempts', 'provider_order_id'));
+        $this->assertTrue(Schema::hasColumn('integration_connections', 'provider_application_id'));
+        $this->assertDatabaseHas('payment_attempts', ['id' => $attempt->id]);
+    }
 
     public function test_point_order_uses_staff_request_and_authoritative_processed_order_applies_exactly_once(): void
     {
@@ -110,6 +302,7 @@ class InPersonOrdersLifecycleTest extends TestCase
             $processed->id, 'qr', $processed->providerAccount, $processed->externalReference,
             'failed', 'failed', $processed->amountMinor, $processed->currency, $processed->payments,
             externalPosId: $processed->externalPosId, qrMode: $processed->qrMode,
+            applicationId: $processed->applicationId, environment: $processed->environment,
         ));
     }
 
@@ -130,6 +323,7 @@ class InPersonOrdersLifecycleTest extends TestCase
             $created->id, 'point', $created->providerAccount, $created->externalReference,
             'at_terminal', 'at_terminal', $created->amountMinor, $created->currency, $created->payments,
             terminalId: $created->terminalId,
+            applicationId: $created->applicationId, environment: $created->environment,
         );
         $fake->orders[$created->externalReference] = $atTerminal;
         $result = app(CancelInPersonOrder::class)->handle($attempt->fresh(), 'point-cancel-command-0002');
@@ -291,6 +485,8 @@ class InPersonOrdersLifecycleTest extends TestCase
             fn (ProviderOrder $order): ProviderOrder => new ProviderOrder(...$this->orderArguments($order, terminalId: 'OTHER-TERMINAL')),
             fn (ProviderOrder $order): ProviderOrder => new ProviderOrder(...$this->orderArguments($order, amountMinor: $order->amountMinor + 1)),
             fn (ProviderOrder $order): ProviderOrder => new ProviderOrder(...$this->orderArguments($order, currency: 'USD')),
+            fn (ProviderOrder $order): ProviderOrder => new ProviderOrder(...$this->orderArguments($order, applicationId: 'OTHER-APPLICATION')),
+            fn (ProviderOrder $order): ProviderOrder => new ProviderOrder(...$this->orderArguments($order, environment: 'production')),
         ];
         foreach ($mutations as $index => $mutation) {
             $attempt = app(InitiateInPersonPayment::class)->handle(
@@ -382,6 +578,7 @@ class InPersonOrdersLifecycleTest extends TestCase
             $created->id, 'point', $created->providerAccount, $created->externalReference,
             'action_required', 'terminal_action_required', $created->amountMinor, $created->currency, $created->payments,
             terminalId: $created->terminalId,
+            applicationId: $created->applicationId, environment: $created->environment,
         );
         $attempt = app(ApplyMercadoPagoOrder::class)->handle($attempt, $actionRequired);
         $stillRequired = app(ApplyMercadoPagoOrder::class)->handle($attempt, $created);
@@ -473,6 +670,7 @@ class InPersonOrdersLifecycleTest extends TestCase
         $connection = IntegrationConnection::query()->create([
             'name' => 'mercado-pago-orders', 'type' => 'payment', 'property_id' => $propertyId,
             'provider' => 'mercado_pago', 'product' => 'orders', 'external_account_id' => 'TEST-SELLER-ID',
+            'provider_application_id' => 'TEST-APPLICATION-ID',
             'environment' => 'sandbox', 'status' => 'connected', 'is_enabled' => true,
             'configuration' => [
                 'charge_currency' => 'ARS',
@@ -523,6 +721,7 @@ class InPersonOrdersLifecycleTest extends TestCase
             'processed', 'processed', $order->amountMinor, $order->currency,
             [new ProviderOrderTransaction($order->payments[0]->id, $order->amountMinor, 'processed', 'accredited', $order->amountMinor)],
             terminalId: $order->terminalId, externalPosId: $order->externalPosId, qrMode: $order->qrMode,
+            applicationId: $order->applicationId, environment: $order->environment,
         );
     }
 
@@ -534,17 +733,22 @@ class InPersonOrdersLifecycleTest extends TestCase
         ?int $amountMinor = null,
         ?string $currency = null,
         ?string $terminalId = null,
+        ?array $payments = null,
+        ?string $status = null,
+        ?string $statusDetail = null,
+        ?string $applicationId = null,
+        ?string $environment = null,
     ): array {
         return [
             'id' => $order->id,
             'type' => $type ?? $order->type,
             'providerAccount' => $providerAccount ?? $order->providerAccount,
             'externalReference' => $order->externalReference,
-            'status' => $order->status,
-            'statusDetail' => $order->statusDetail,
+            'status' => $status ?? $order->status,
+            'statusDetail' => $statusDetail ?? $order->statusDetail,
             'amountMinor' => $amountMinor ?? $order->amountMinor,
             'currency' => $currency ?? $order->currency,
-            'payments' => $order->payments,
+            'payments' => $payments ?? $order->payments,
             'refunds' => $order->refunds,
             'terminalId' => $terminalId ?? $order->terminalId,
             'externalPosId' => $order->externalPosId,
@@ -552,6 +756,8 @@ class InPersonOrdersLifecycleTest extends TestCase
             'qrData' => $order->qrData,
             'createdAt' => $order->createdAt,
             'updatedAt' => $order->updatedAt,
+            'applicationId' => $applicationId ?? $order->applicationId,
+            'environment' => $environment ?? $order->environment,
         ];
     }
 }

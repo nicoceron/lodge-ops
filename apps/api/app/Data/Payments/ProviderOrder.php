@@ -27,5 +27,7 @@ final readonly class ProviderOrder
         public ?string $qrData = null,
         public ?CarbonImmutable $createdAt = null,
         public ?CarbonImmutable $updatedAt = null,
+        public ?string $applicationId = null,
+        public ?string $environment = null,
     ) {}
 }

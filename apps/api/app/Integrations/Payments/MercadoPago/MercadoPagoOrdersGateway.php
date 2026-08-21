@@ -27,6 +27,8 @@ final class MercadoPagoOrdersGateway implements InPersonPaymentGateway
         private readonly MercadoPagoTransport $transport,
         private readonly string $webhookSecret,
         private readonly string $providerAccount,
+        private readonly string $applicationId,
+        private readonly string $environment,
     ) {}
 
     public function listTerminals(ProviderTerminalQuery $query): array
@@ -37,7 +39,7 @@ final class MercadoPagoOrdersGateway implements InPersonPaymentGateway
             'limit' => $query->limit,
             'offset' => $query->offset,
         ], fn (mixed $value): bool => $value !== null));
-        $rows = data_get($payload, 'terminals', data_get($payload, 'results', []));
+        $rows = data_get($payload, 'data.terminals', data_get($payload, 'terminals', data_get($payload, 'results', [])));
         if (! is_array($rows)) {
             throw new RuntimeException('Mercado Pago returned a malformed terminal list.');
         }
@@ -171,15 +173,28 @@ final class MercadoPagoOrdersGateway implements InPersonPaymentGateway
             || (($request->query['type'] ?? 'order') !== 'order')) {
             throw new RuntimeException('Mercado Pago Orders webhook topic is not order.');
         }
+        $bodyResourceId = data_get($payload, 'data.id');
+        $bodyApplicationId = data_get($payload, 'application_id');
+        $bodyProviderAccount = data_get($payload, 'user_id');
+        $liveMode = data_get($payload, 'live_mode');
+        if ((! is_string($bodyResourceId) && ! is_int($bodyResourceId)) || (string) $bodyResourceId !== $dataId
+            || (! is_string($bodyApplicationId) && ! is_int($bodyApplicationId)) || (string) $bodyApplicationId !== $this->applicationId
+            || (! is_string($bodyProviderAccount) && ! is_int($bodyProviderAccount)) || (string) $bodyProviderAccount !== $this->providerAccount
+            || ! is_bool($liveMode) || ($liveMode ? 'production' : 'sandbox') !== $this->environment) {
+            throw new RuntimeException('Mercado Pago Orders webhook resource/application/account/environment identity mismatch.');
+        }
 
         return new VerifiedProviderEvent(
-            $requestId,
-            'order',
-            'order',
-            (string) data_get($payload, 'action'),
-            $dataId,
-            $payload,
-            isset($payload['date_created']) ? CarbonImmutable::parse($payload['date_created']) : null,
+            deliveryId: $requestId,
+            topic: 'order',
+            type: 'order',
+            action: (string) data_get($payload, 'action'),
+            resourceId: $dataId,
+            payload: $payload,
+            providerCreatedAt: isset($payload['date_created']) ? CarbonImmutable::parse($payload['date_created']) : null,
+            applicationId: (string) $bodyApplicationId,
+            environment: $liveMode ? 'production' : 'sandbox',
+            providerAccount: (string) $bodyProviderAccount,
         );
     }
 
@@ -189,14 +204,19 @@ final class MercadoPagoOrdersGateway implements InPersonPaymentGateway
         $id = data_get($payload, 'id');
         $type = data_get($payload, 'type');
         $account = data_get($payload, 'user_id');
+        $applicationId = data_get($payload, 'integration_data.application_id');
+        $environment = $this->providerEnvironment($payload);
         $externalReference = data_get($payload, 'external_reference');
         $currency = data_get($payload, 'currency');
         if (! is_string($id) || ! in_array($type, ['point', 'qr'], true)
-            || (! is_string($account) && ! is_int($account)) || ! is_string($externalReference) || ! is_string($currency)) {
+            || (! is_string($account) && ! is_int($account))
+            || (! is_string($applicationId) && ! is_int($applicationId))
+            || ! is_string($externalReference) || ! is_string($currency)) {
             throw new RuntimeException('Mercado Pago returned a malformed Orders resource identity.');
         }
-        if ((string) $account !== $this->providerAccount) {
-            throw new RuntimeException('Mercado Pago returned an order owned by another account.');
+        if ((string) $account !== $this->providerAccount || (string) $applicationId !== $this->applicationId
+            || $environment !== $this->environment) {
+            throw new RuntimeException('Mercado Pago returned an order owned by another application/account/environment.');
         }
         $payments = $this->transactions((array) data_get($payload, 'transactions.payments', []));
         if ($payments === []) {
@@ -232,24 +252,55 @@ final class MercadoPagoOrdersGateway implements InPersonPaymentGateway
                 ? CarbonImmutable::parse(data_get($payload, 'created_date', data_get($payload, 'date_created'))) : null,
             data_get($payload, 'last_updated_date', data_get($payload, 'last_updated'))
                 ? CarbonImmutable::parse(data_get($payload, 'last_updated_date', data_get($payload, 'last_updated'))) : null,
+            (string) $applicationId,
+            $environment,
         );
     }
 
     /** @param list<mixed> $rows @return list<ProviderOrderTransaction> */
     private function transactions(array $rows): array
     {
-        return array_values(array_map(fn (array $row): ProviderOrderTransaction => new ProviderOrderTransaction(
-            (string) data_get($row, 'id'),
-            $this->minor(data_get($row, 'amount')),
-            (string) data_get($row, 'status'),
-            $this->nullableString(data_get($row, 'status_detail')),
-            data_get($row, 'paid_amount') === null ? null : $this->minor(data_get($row, 'paid_amount')),
-            data_get($row, 'refunded_amount') === null ? null : $this->minor(data_get($row, 'refunded_amount')),
-            $this->nullableString(data_get($row, 'reference.id', data_get($row, 'reference_id'))),
-            $this->nullableString(data_get($row, 'payment_method.type')),
-            $this->nullableString(data_get($row, 'payment_method.id')),
-            is_int(data_get($row, 'payment_method.installments')) ? data_get($row, 'payment_method.installments') : null,
-        ), array_filter($rows, 'is_array')));
+        $transactions = array_values(array_map(function (array $row): ProviderOrderTransaction {
+            $id = data_get($row, 'id');
+            if ((! is_string($id) && ! is_int($id)) || trim((string) $id) === '') {
+                throw new RuntimeException('Mercado Pago returned a payment transaction without an identity.');
+            }
+
+            return new ProviderOrderTransaction(
+                trim((string) $id),
+                $this->minor(data_get($row, 'amount')),
+                (string) data_get($row, 'status'),
+                $this->nullableString(data_get($row, 'status_detail')),
+                data_get($row, 'paid_amount') === null ? null : $this->minor(data_get($row, 'paid_amount')),
+                data_get($row, 'refunded_amount') === null ? null : $this->minor(data_get($row, 'refunded_amount')),
+                $this->nullableString(data_get($row, 'reference.id', data_get($row, 'reference_id'))),
+                $this->nullableString(data_get($row, 'payment_method.type')),
+                $this->nullableString(data_get($row, 'payment_method.id')),
+                is_int(data_get($row, 'payment_method.installments')) ? data_get($row, 'payment_method.installments') : null,
+            );
+        }, array_filter($rows, 'is_array')));
+        $ids = array_map(fn (ProviderOrderTransaction $transaction): string => $transaction->id, $transactions);
+        if (count($ids) !== count(array_unique($ids))) {
+            throw new RuntimeException('Mercado Pago returned duplicate payment transaction identities.');
+        }
+        usort($transactions, fn (ProviderOrderTransaction $left, ProviderOrderTransaction $right): int => strcmp($left->id, $right->id));
+
+        return $transactions;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function providerEnvironment(array $payload): string
+    {
+        $liveMode = data_get($payload, 'live_mode');
+        if (is_bool($liveMode)) {
+            return $liveMode ? 'production' : 'sandbox';
+        }
+        $environment = data_get($payload, 'environment');
+        if (is_string($environment) && in_array(strtolower($environment), ['sandbox', 'production'], true)) {
+            return strtolower($environment);
+        }
+
+        throw new RuntimeException('Mercado Pago returned an order without a known environment identity.');
     }
 
     private function major(int $minor): ExactJsonDecimal

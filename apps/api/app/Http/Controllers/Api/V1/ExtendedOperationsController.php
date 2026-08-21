@@ -219,6 +219,7 @@ class ExtendedOperationsController extends Controller
             'provider' => ['sometimes', 'string', 'max:80'],
             'product' => ['sometimes', 'string', 'max:80'],
             'external_account_id' => ['sometimes', 'string', 'max:160'],
+            'provider_application_id' => ['sometimes', 'string', 'max:160'],
             'environment' => ['sometimes', Rule::in(['sandbox', 'production', 'test'])],
             'capabilities' => ['sometimes', 'array'],
             'capabilities.*' => ['string', Rule::in([
@@ -241,6 +242,7 @@ class ExtendedOperationsController extends Controller
             $data['external_account_id'] ?? null,
             $data['environment'] ?? null,
             $data['capabilities'] ?? [],
+            $data['provider_application_id'] ?? null,
         );
 
         $response = collect($connection->attributesToArray())->except(['secret_reference', 'payment_webhook_key', 'legacy_endpoint_key_ciphertext'])->all();

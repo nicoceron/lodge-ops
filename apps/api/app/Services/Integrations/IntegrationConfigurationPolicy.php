@@ -9,6 +9,7 @@ final class IntegrationConfigurationPolicy
     private const RESERVED_IDENTITY_KEYS = [
         'tenant_id', 'property_id', 'property_scope_key', 'type', 'provider', 'product',
         'provider_account', 'external_account_id', 'environment', 'capabilities',
+        'application_id', 'provider_application_id',
     ];
 
     /** @param array<string,mixed> $configuration @param list<string> $capabilities @return array<string,mixed> */

@@ -32,6 +32,11 @@ final class ReceiveProviderWebhook
         $topic = strtolower((string) ($query['type'] ?? (is_array($untrustedBody) ? data_get($untrustedBody, 'type') : '')));
         $verified = ($topic === 'order' ? $this->inPersonGateways->for($connection) : $this->gateways->for($connection))
             ->verifyWebhook(new WebhookRequest($rawBody, $headers, $query));
+        if ($topic === 'order') {
+            abort_unless($verified->applicationId === $connection->provider_application_id
+                && $verified->environment === $connection->environment
+                && $verified->providerAccount === $connection->external_account_id, 404);
+        }
         $checksum = hash('sha256', $rawBody);
 
         try {

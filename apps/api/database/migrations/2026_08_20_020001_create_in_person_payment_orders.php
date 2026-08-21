@@ -9,6 +9,9 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('integration_connections', function (Blueprint $table): void {
+            $table->string('provider_application_id', 160)->nullable()->after('external_account_id');
+        });
         Schema::table('payment_requests', function (Blueprint $table): void {
             $table->uuid('public_id')->nullable()->change();
             $table->char('access_token_hash', 64)->nullable()->change();
@@ -117,6 +120,14 @@ return new class extends Migration
 
     public function down(): void
     {
+        $legacyUnsafeCount = DB::table('payment_requests')
+            ->whereNull('public_id')->orWhereNull('access_token_hash')->count();
+        if ($legacyUnsafeCount > 0) {
+            throw new RuntimeException(
+                "Cannot roll back in-person Orders: {$legacyUnsafeCount} staff payment request(s) have no guest public/token credentials. "
+                .'Archive or migrate those requests to a legacy-safe representation before retrying; no schema changes were made.'
+            );
+        }
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('DROP INDEX IF EXISTS payment_attempts_one_active_pos_idx');
             DB::statement('DROP INDEX IF EXISTS payment_attempts_one_active_terminal_idx');
@@ -154,6 +165,9 @@ return new class extends Migration
         });
         Schema::dropIfExists('provider_pos_locations');
         Schema::dropIfExists('payment_terminals');
+        Schema::table('integration_connections', function (Blueprint $table): void {
+            $table->dropColumn('provider_application_id');
+        });
         Schema::table('payment_requests', function (Blueprint $table): void {
             $table->uuid('public_id')->nullable(false)->change();
             $table->char('access_token_hash', 64)->nullable(false)->change();

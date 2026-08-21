@@ -9,12 +9,12 @@ class PaymentAttemptPolicy extends TenantPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->canViewFinance($user);
+        return $this->canViewGuestMoney($user);
     }
 
     public function view(User $user, PaymentAttempt $attempt): bool
     {
-        return $this->canViewFinance($user, $attempt);
+        return $this->canViewGuestMoney($user, $attempt);
     }
 
     public function reconcile(User $user, PaymentAttempt $attempt): bool

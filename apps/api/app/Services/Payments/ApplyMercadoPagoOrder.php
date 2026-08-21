@@ -3,6 +3,7 @@
 namespace App\Services\Payments;
 
 use App\Data\Payments\ProviderOrder;
+use App\Data\Payments\ProviderOrderTransaction;
 use App\Data\Payments\ProviderPayment;
 use App\Data\Payments\ProviderPaymentApplication;
 use App\Enums\PaymentAttemptState;
@@ -27,6 +28,7 @@ final class ApplyMercadoPagoOrder
             $locked = DB::transaction(function () use ($attempt, $order): PaymentAttempt {
                 $locked = PaymentAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
                 $this->assertMatches($locked, $order);
+                $transaction = $this->authoritativeTransaction($locked, $order);
                 if ($locked->state === PaymentAttemptState::Mismatched) {
                     $locked->update([
                         'provider_status' => $order->status,
@@ -49,7 +51,7 @@ final class ApplyMercadoPagoOrder
                     $locked->update([
                         'state' => PaymentAttemptState::Mismatched,
                         'provider_order_id' => $order->id,
-                        'provider_transaction_id' => $order->payments[0]->id,
+                        'provider_transaction_id' => $transaction->id,
                         'provider_status' => $order->status,
                         'provider_status_detail' => $order->statusDetail,
                         'provider_order_created_at' => $order->createdAt ?? $locked->provider_order_created_at,
@@ -91,7 +93,7 @@ final class ApplyMercadoPagoOrder
                 $locked->update([
                     'state' => $state,
                     'provider_order_id' => $order->id,
-                    'provider_transaction_id' => $order->payments[0]->id,
+                    'provider_transaction_id' => $transaction->id,
                     'provider_order_type' => $order->type,
                     'provider_status' => $order->status,
                     'provider_status_detail' => $order->statusDetail,
@@ -123,12 +125,7 @@ final class ApplyMercadoPagoOrder
         if ($order->status !== 'processed' || $locked->state === PaymentAttemptState::Mismatched) {
             return $locked->fresh();
         }
-        $transaction = $order->payments[0];
-        if ($transaction->status !== 'processed' || $transaction->statusDetail !== 'accredited') {
-            $locked->update(['state' => PaymentAttemptState::Mismatched, 'last_error' => 'Processed order lacks a processed/accredited payment transaction.']);
-
-            return $locked->fresh();
-        }
+        $transaction = $this->authoritativeTransaction($locked, $order);
         try {
             $application = new ProviderPaymentApplication(
                 $transaction->id,
@@ -168,17 +165,42 @@ final class ApplyMercadoPagoOrder
         if ($order->payments === []) {
             throw new DomainException('Mercado Pago order lacks its authoritative payment transaction identity.');
         }
+        $ids = array_map(fn ($transaction): string => trim($transaction->id), $order->payments);
+        if (in_array('', $ids, true) || count($ids) !== count(array_unique($ids))) {
+            throw new DomainException('Mercado Pago order payment transaction identities must be nonempty and unique.');
+        }
         $expectedType = $attempt->channel === PaymentChannel::IntegratedTerminal->value ? 'point' : 'qr';
         $expectedTarget = $expectedType === 'point'
             ? PaymentTerminal::query()->find($attempt->payment_terminal_id)?->provider_terminal_id
             : ProviderPosLocation::query()->find($attempt->provider_pos_location_id)?->external_pos_id;
         $actualTarget = $expectedType === 'point' ? $order->terminalId : $order->externalPosId;
-        if ($order->providerAccount !== $attempt->provider_account || $order->type !== $expectedType
+        $connection = $attempt->integrationConnection;
+        if ($order->providerAccount !== $attempt->provider_account
+            || $order->applicationId !== $connection->provider_application_id || $order->environment !== $connection->environment
+            || $order->type !== $expectedType
             || $order->externalReference !== $attempt->external_reference || $order->amountMinor !== $attempt->charge_amount_minor
             || $order->currency !== $attempt->charge_currency || $expectedTarget === null || $actualTarget !== $expectedTarget
             || ($attempt->provider_order_id !== null && $attempt->provider_order_id !== $order->id)) {
-            throw new DomainException('Mercado Pago order account/channel/reference/device/POS/money identity mismatch.');
+            throw new DomainException('Mercado Pago order application/account/environment/channel/reference/device/POS/money identity mismatch.');
         }
+    }
+
+    private function authoritativeTransaction(PaymentAttempt $attempt, ProviderOrder $order): ProviderOrderTransaction
+    {
+        $transactions = $order->payments;
+        usort($transactions, fn ($left, $right): int => strcmp($left->id, $right->id));
+        if ($order->status !== 'processed') {
+            return $transactions[0];
+        }
+        $eligible = array_values(array_filter($transactions, fn ($transaction): bool => $transaction->status === 'processed'
+            && $transaction->statusDetail === 'accredited'
+            && $transaction->amountMinor === $attempt->charge_amount_minor
+            && $transaction->paidAmountMinor === $attempt->charge_amount_minor));
+        if (count($eligible) !== 1) {
+            throw new DomainException('Processed order requires exactly one processed/accredited transaction whose amount and paid amount equal the authoritative request.');
+        }
+
+        return $eligible[0];
     }
 
     private function state(ProviderOrder $order): ?PaymentAttemptState

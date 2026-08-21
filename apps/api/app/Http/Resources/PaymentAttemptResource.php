@@ -32,7 +32,7 @@ class PaymentAttemptResource extends JsonResource
             'provider_transaction_id' => $this->provider_transaction_id,
             'provider_order_type' => $this->provider_order_type,
             'qr_mode' => $this->qr_mode,
-            'qr_data' => $this->when($this->channel === 'qr' && $this->state->reusable(), $this->qr_data_ciphertext),
+            'qr_data' => $this->when($this->hasDisplayableQr(), fn (): ?string => $this->qr_data_ciphertext),
             'qr_data_checksum' => $this->qr_data_checksum,
             'order_expires_at' => $this->order_expires_at?->toIso8601String(),
             'provider_order_created_at' => $this->provider_order_created_at?->toIso8601String(),

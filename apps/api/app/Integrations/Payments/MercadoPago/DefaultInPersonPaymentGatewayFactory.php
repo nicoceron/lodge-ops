@@ -15,19 +15,22 @@ final class DefaultInPersonPaymentGatewayFactory implements InPersonPaymentGatew
     {
         if ($connection->type !== 'payment' || $connection->provider !== 'mercado_pago'
             || ! in_array($connection->product, ['checkout_pro', 'orders'], true)
-            || $connection->external_account_id === '' || ! in_array($connection->environment, ['sandbox', 'production'], true)
+            || $connection->external_account_id === '' || trim((string) $connection->provider_application_id) === ''
+            || ! in_array($connection->environment, ['sandbox', 'production'], true)
             || ! $connection->is_enabled || $connection->revoked_at !== null || $connection->secret_reference === null) {
             throw new RuntimeException('The selected Mercado Pago Orders connection is not supported.');
         }
 
         $transport = data_get($connection->configuration, 'transport') === 'deterministic_fixture'
-            ? new DeterministicMercadoPagoTransport((array) data_get($connection->configuration, 'fixture', []), $connection->external_account_id)
+            ? new DeterministicMercadoPagoTransport((array) data_get($connection->configuration, 'fixture', []), $connection->external_account_id, $connection->provider_application_id, $connection->environment)
             : new LaravelHttpMercadoPagoTransport($this->secrets->resolve($connection->secret_reference));
 
         return new MercadoPagoOrdersGateway(
             $transport,
             $this->secrets->resolve(data_get($connection->configuration, 'webhook_secret_reference')),
             $connection->external_account_id,
+            $connection->provider_application_id,
+            $connection->environment,
         );
     }
 }

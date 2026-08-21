@@ -35,7 +35,7 @@ class PaymentAttemptResource extends TenantResource
 
     protected static bool $canDeleteRecords = false;
 
-    protected static ?string $viewCapability = 'canViewFinance';
+    protected static ?string $viewCapability = 'canViewGuestMoney';
 
     protected static string $writeCapability = 'canManageMoney';
 
@@ -64,17 +64,16 @@ class PaymentAttemptResource extends TenantResource
         ])->filters([SelectFilter::make('state')->options(InnPresentation::enumOptions(PaymentAttemptState::cases()))])
             ->recordActions([
                 Action::make('display_qr')->label('Display QR')->icon('heroicon-o-qr-code')
-                    ->visible(fn (PaymentAttempt $record): bool => $record->channel === 'qr'
-                        && $record->state->reusable() && $record->qr_data_ciphertext !== null)
+                    ->visible(fn (PaymentAttempt $record): bool => $record->hasDisplayableQr())
                     ->modalHeading('Mercado Pago QR')
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
-                    ->modalContent(fn (PaymentAttempt $record) => view('filament.payments.qr-order', [
+                    ->modalContent(fn (PaymentAttempt $record) => $record->hasDisplayableQr() ? view('filament.payments.qr-order', [
                         'qrImage' => (new QRCode)->render((string) $record->qr_data_ciphertext),
                         'expiresAt' => $record->order_expires_at,
                         'amountMinor' => $record->charge_amount_minor,
                         'currency' => $record->charge_currency,
-                    ])),
+                    ]) : null),
                 Action::make('reconcile')->icon('heroicon-o-arrow-path')->authorize('reconcile')
                     ->visible(fn (PaymentAttempt $record): bool => ($record->provider_payment_id !== null || $record->provider_order_id !== null) && $record->state !== PaymentAttemptState::Approved)
                     ->requiresConfirmation()->action(function (PaymentAttempt $record): void {

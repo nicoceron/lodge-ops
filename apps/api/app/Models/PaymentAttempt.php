@@ -116,4 +116,10 @@ class PaymentAttempt extends TenantModel
     {
         return $this->hasMany(ProviderDispute::class);
     }
+
+    public function hasDisplayableQr(): bool
+    {
+        return $this->channel === 'qr' && $this->state->reusable() && $this->qr_data_ciphertext !== null
+            && $this->order_expires_at !== null && $this->order_expires_at->isFuture();
+    }
 }

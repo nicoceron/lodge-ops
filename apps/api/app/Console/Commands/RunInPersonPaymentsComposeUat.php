@@ -23,7 +23,7 @@ use RuntimeException;
 
 class RunInPersonPaymentsComposeUat extends Command
 {
-    protected $signature = 'payments:in-person-compose-uat {--channel=point : point or qr}';
+    protected $signature = 'payments:in-person-compose-uat {--channel=point : point or qr} {--expires-in=900 : Local deterministic QR expiry in seconds}';
 
     protected $description = 'Prepare a local deterministic Point/QR Orders journey for normal HTTP and queue-worker UAT.';
 
@@ -44,6 +44,12 @@ class RunInPersonPaymentsComposeUat extends Command
         };
         if ($channel === null) {
             $this->error('The channel must be point or qr.');
+
+            return self::INVALID;
+        }
+        $expiresIn = filter_var($this->option('expires-in'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 900]]);
+        if ($expiresIn === false) {
+            $this->error('The deterministic expiry must be between 1 and 900 seconds.');
 
             return self::INVALID;
         }
@@ -84,6 +90,7 @@ class RunInPersonPaymentsComposeUat extends Command
             $providerAccount,
             'sandbox',
             ['payment.point_orders', 'payment.qr_orders'],
+            'TEST-APPLICATION-ID',
         );
         $connection = $connections->enable($connection, $membership->user_id, 'Enable deterministic Orders Compose UAT connection.');
         $webhookKey = $endpointKeys->rotate($connection, 0, $membership->user_id, 'Issue deterministic Orders UAT callback key.')['key'];
@@ -126,11 +133,16 @@ class RunInPersonPaymentsComposeUat extends Command
         );
         $orderId = $attempt->provider_order_id ?? throw new RuntimeException('Deterministic Orders UAT did not create an order identity.');
         $transactionId = $attempt->provider_transaction_id ?? throw new RuntimeException('Deterministic Orders UAT did not create a transaction identity.');
+        if ($channel === PaymentChannel::Qr) {
+            $attempt->update(['order_expires_at' => now()->addSeconds($expiresIn)]);
+        }
         $configuration = $connection->configuration;
         data_set($configuration, 'fixture.order', [
             'id' => $orderId,
             'type' => $channel === PaymentChannel::IntegratedTerminal ? 'point' : 'qr',
             'user_id' => $providerAccount,
+            'integration_data' => ['application_id' => 'TEST-APPLICATION-ID'],
+            'live_mode' => false,
             'external_reference' => $attempt->external_reference,
             'status' => 'processed',
             'status_detail' => 'processed',
@@ -160,6 +172,10 @@ class RunInPersonPaymentsComposeUat extends Command
             'channel' => $channel->value,
             'provider_order_id' => $orderId,
             'provider_transaction_id' => $transactionId,
+            'provider_account' => $providerAccount,
+            'application_id' => 'TEST-APPLICATION-ID',
+            'live_mode' => false,
+            'order_expires_at' => $attempt->fresh()->order_expires_at?->toIso8601String(),
             'webhook_key' => $webhookKey,
         ], JSON_THROW_ON_ERROR);
         if (file_put_contents($handoffPath, $descriptor, LOCK_EX) === false || ! chmod($handoffPath, 0600)) {

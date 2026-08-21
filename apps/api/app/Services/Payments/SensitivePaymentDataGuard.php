@@ -27,7 +27,8 @@ final class SensitivePaymentDataGuard
                 ]);
             }
 
-            if ($this->isGeneratedEndpointKeyDigest($path, $text) || $this->isVerifiedProviderDeliveryIdentity($path)) {
+            if ($this->isGeneratedEndpointKeyDigest($path, $text) || $this->isGeneratedFinancialCommandDigest($path, $text)
+                || $this->isVerifiedProviderDeliveryIdentity($path)) {
                 continue;
             }
             if (preg_match('/(?:^|\.)(?:id|[a-z_]+_id|phone|sha256|[a-z_]*(?:checksum|hash))$/i', $path) === 1) {
@@ -112,7 +113,16 @@ final class SensitivePaymentDataGuard
 
     private function isVerifiedProviderDeliveryIdentity(string $path): bool
     {
-        return $path === 'ProviderEvent.sanitized_headers.x-request-id';
+        return in_array($path, [
+            'ProviderEvent.sanitized_headers.x-request-id',
+            'Audit.new_values.sanitized_headers.x-request-id',
+        ], true);
+    }
+
+    private function isGeneratedFinancialCommandDigest(string $path, string $value): bool
+    {
+        return preg_match('/(?:^|\.)command_key$/i', $path) === 1
+            && preg_match('/\A[0-9a-f]{64}\z/i', $value) === 1;
     }
 
     /** @return iterable<array{string, string}> */

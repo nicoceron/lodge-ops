@@ -14,6 +14,8 @@ final class DeterministicMercadoPagoTransport implements MercadoPagoTransport
     public function __construct(
         private readonly array $fixture,
         private readonly ?string $providerAccount = null,
+        private readonly ?string $applicationId = null,
+        private readonly string $environment = 'sandbox',
     ) {}
 
     public function request(string $method, string $path, array $payload = [], array $headers = []): array
@@ -37,7 +39,7 @@ final class DeterministicMercadoPagoTransport implements MercadoPagoTransport
             }
         }
         if (strtoupper($method) === 'GET' && $path === '/terminals/v1/list') {
-            return ['terminals' => (array) data_get($this->fixture, 'terminals', [])];
+            return ['data' => ['terminals' => (array) data_get($this->fixture, 'terminals', [])]];
         }
         if (strtoupper($method) === 'POST' && $path === '/v1/orders') {
             $order = data_get($this->fixture, 'order');
@@ -55,6 +57,8 @@ final class DeterministicMercadoPagoTransport implements MercadoPagoTransport
                     'id' => 'ORD'.$suffix,
                     'type' => $type,
                     'user_id' => $this->providerAccount ?? (string) data_get($this->fixture, 'provider_account', 'seller-orders-compose-uat'),
+                    'integration_data' => ['application_id' => $this->applicationId ?? (string) data_get($this->fixture, 'application_id', 'TEST-APPLICATION-ID')],
+                    'live_mode' => $this->environment === 'production',
                     'external_reference' => $reference,
                     'status' => 'created',
                     'status_detail' => 'created',

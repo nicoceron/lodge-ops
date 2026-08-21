@@ -12,6 +12,10 @@ type InPersonUat = {
   channel: "integrated_terminal" | "qr";
   provider_order_id: string;
   provider_transaction_id: string;
+  provider_account: string;
+  application_id: string;
+  live_mode: boolean;
+  order_expires_at: string;
   webhook_key: string;
 };
 
@@ -19,11 +23,11 @@ const enabled = process.env.INN_IN_PERSON_COMPOSE_UAT === "1";
 const composeProject = process.env.INN_COMPOSE_PROJECT ?? "inn";
 const webhookSecret = "local-fixture-webhook-secret";
 
-function prepare(channel: "point" | "qr"): InPersonUat {
+function prepare(channel: "point" | "qr", expiresIn = 900): InPersonUat {
   const root = path.resolve(process.cwd(), "../..");
   const output = execFileSync(
     "docker",
-    ["compose", "-p", composeProject, "exec", "-T", "api", "php", "artisan", "payments:in-person-compose-uat", `--channel=${channel}`],
+    ["compose", "-p", composeProject, "exec", "-T", "api", "php", "artisan", "payments:in-person-compose-uat", `--channel=${channel}`, `--expires-in=${expiresIn}`],
     { cwd: root, encoding: "utf8" },
   );
   const handle = output.split("\n").find((line) => line.startsWith("IN_PERSON_UAT_HANDLE="))?.slice(21);
@@ -50,7 +54,14 @@ async function deliverProcessedOrder(page: Page, uat: InPersonUat): Promise<void
     `/api/v1/payment-webhooks/${uat.webhook_key}?type=order&data.id=${encodeURIComponent(uat.provider_order_id)}`,
     {
       headers: { "x-request-id": requestId, "x-signature": `ts=${timestamp},v1=${signature}` },
-      data: { type: "order", action: "order.processed", data: { id: uat.provider_order_id } },
+      data: {
+        application_id: uat.application_id,
+        live_mode: uat.live_mode,
+        user_id: uat.provider_account,
+        type: "order",
+        action: "order.processed",
+        data: { id: uat.provider_order_id },
+      },
     },
   );
   expect(response.status(), await response.text()).toBe(200);
@@ -113,4 +124,38 @@ test("P3-06C active QR is usable on phone, tablet and desktop then disappears af
   await waitForApproved(page, uat.provider_order_id);
   const approved = page.getByRole("row").filter({ hasText: uat.provider_order_id }).first();
   await expect(approved.getByRole("button", { name: "Display QR", exact: true })).toHaveCount(0);
+});
+
+test("P3-06C expired QR is hidden and purged on phone, tablet and desktop", async ({ browser, baseURL }) => {
+  test.skip(!enabled, "Run explicitly against the isolated deterministic Orders Compose stack.");
+  test.setTimeout(120_000);
+  if (!baseURL) throw new Error("P3-06C requires an API base URL.");
+  const uat = prepare("qr", 12);
+
+  const before = await browser.newContext({ baseURL, storageState: process.env.INN_PLAYWRIGHT_AUTH_STATE ?? "/tmp/inn-playwright-client-auth.json", viewport: { width: 390, height: 844 } });
+  try {
+    const page = await before.newPage();
+    await page.goto("/manage/workspace/demo-lodge/payment-attempts");
+    await expect(page.getByRole("row").filter({ hasText: uat.provider_order_id }).first().getByRole("button", { name: "Display QR", exact: true })).toBeVisible();
+  } finally {
+    await before.close();
+  }
+
+  await expect.poll(() => Date.now(), { timeout: 20_000 }).toBeGreaterThanOrEqual(Date.parse(uat.order_expires_at));
+  const root = path.resolve(process.cwd(), "../..");
+  execFileSync("docker", ["compose", "-p", composeProject, "exec", "-T", "api", "php", "artisan", "payments:expire-in-person-orders"], { cwd: root });
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
+    const context = await browser.newContext({ baseURL, storageState: process.env.INN_PLAYWRIGHT_AUTH_STATE ?? "/tmp/inn-playwright-client-auth.json", viewport });
+    try {
+      const page = await context.newPage();
+      await page.goto("/manage/workspace/demo-lodge/payment-attempts");
+      const row = page.getByRole("row").filter({ hasText: uat.provider_order_id }).first();
+      await expect(row).toContainText("Expired");
+      await expect(row.getByRole("button", { name: "Display QR", exact: true })).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  }
 });

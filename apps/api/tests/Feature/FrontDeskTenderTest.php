@@ -333,6 +333,12 @@ class FrontDeskTenderTest extends TestCase
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'sanitized_headers' => ['x-request-id' => 'orders-provider-1234567890128'],
         ], 'ProviderEvent');
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'new_values' => ['sanitized_headers' => ['x-request-id' => 'orders-provider-1234567890128']],
+        ], 'Audit');
+        app(SensitivePaymentDataGuard::class)->assertSafe([
+            'command_key' => hash('sha256', 'generated-financial-command-key-4111111111111111'),
+        ], 'PaymentTenderDetail');
         app(SensitivePaymentDataGuard::class)->assertSafe(['price_snapshot' => json_encode(['amount_minor' => 14_000, 'tax_minor' => 2_000], JSON_THROW_ON_ERROR)]);
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'storage_path' => 'guest-payment-evidence/00000000-0000-4000-8000-000000abcd05/20260000-0000-4000-8000-000000000000/receipt.pdf',
@@ -349,7 +355,7 @@ class FrontDeskTenderTest extends TestCase
         app(SensitivePaymentDataGuard::class)->assertSafe([
             'storage_path' => 'guest-payment-evidence/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.pdf',
         ]);
-        $this->addToAssertionCount(10);
+        $this->addToAssertionCount(12);
         try {
             app(SensitivePaymentDataGuard::class)->assertSafe(['storage_path' => 'payment-evidence/synthetic/4111111111111111.pdf']);
             $this->fail('Only generated storage locator grammars may bypass PAN detection.');
@@ -381,6 +387,12 @@ class FrontDeskTenderTest extends TestCase
             $this->fail('Only a complete SHA-256 digest may bypass PAN detection for an endpoint key.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payload.payment_webhook_key', $exception->errors());
+        }
+        try {
+            app(SensitivePaymentDataGuard::class)->assertSafe(['command_key' => 'manual-command-1234567890128'], 'PaymentTenderDetail');
+            $this->fail('Only a complete generated command digest may bypass PAN detection for a persisted command key.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('PaymentTenderDetail.command_key', $exception->errors());
         }
         $unsafe = 'Guest supplied PAN 4111 1111 1111 1111 and CVV 123';
         $ingresses = [

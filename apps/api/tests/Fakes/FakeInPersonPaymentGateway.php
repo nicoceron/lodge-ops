@@ -39,6 +39,8 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
 
     public bool $cancelThrowsAfterRemoteSuccess = false;
 
+    public bool $createThrowsAfterRemoteSuccess = false;
+
     public string $refundStatus = 'processed';
 
     /** @var array<string, string> */
@@ -93,7 +95,13 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
             terminalId: $request->terminalId,
         );
 
-        return $this->operationOrders[$operationKey] = $order;
+        $this->operationOrders[$operationKey] = $order;
+        if ($this->createThrowsAfterRemoteSuccess) {
+            $this->createThrowsAfterRemoteSuccess = false;
+            throw new \RuntimeException('Synthetic timeout after remote create success.');
+        }
+
+        return $order;
     }
 
     public function createQrOrder(QrOrderRequest $request): ProviderOrder
@@ -125,7 +133,13 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
             qrData: in_array($request->mode, ['dynamic', 'hybrid'], true) ? '000201010212FAKE-INN-QR' : null,
         );
 
-        return $this->operationOrders[$operationKey] = $order;
+        $this->operationOrders[$operationKey] = $order;
+        if ($this->createThrowsAfterRemoteSuccess) {
+            $this->createThrowsAfterRemoteSuccess = false;
+            throw new \RuntimeException('Synthetic timeout after remote create success.');
+        }
+
+        return $order;
     }
 
     public function fetchOrder(string $providerOrderId): ProviderOrder
@@ -166,6 +180,8 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
             terminalId: $order->terminalId,
             externalPosId: $order->externalPosId,
             qrMode: $order->qrMode,
+            applicationId: $order->applicationId,
+            environment: $order->environment,
         );
 
         $this->orders[$order->externalReference] = $canceled;
@@ -216,6 +232,9 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
             action: (string) data_get($payload, 'action'),
             resourceId: $resourceId,
             payload: $payload,
+            applicationId: 'TEST-APPLICATION-ID',
+            environment: 'sandbox',
+            providerAccount: 'TEST-SELLER-ID',
         );
     }
 
@@ -276,6 +295,8 @@ final class FakeInPersonPaymentGateway implements InPersonPaymentGateway, InPers
             externalPosId: $externalPosId,
             qrMode: $qrMode,
             qrData: $qrData,
+            applicationId: 'TEST-APPLICATION-ID',
+            environment: 'sandbox',
         );
     }
 }

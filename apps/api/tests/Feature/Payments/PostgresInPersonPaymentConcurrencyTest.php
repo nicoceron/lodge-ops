@@ -134,6 +134,7 @@ class PostgresInPersonPaymentConcurrencyTest extends TestCase
             'processed', 'processed', $created->amountMinor, $created->currency,
             [new ProviderOrderTransaction($created->payments[0]->id, $created->amountMinor, 'processed', 'accredited', $created->amountMinor)],
             terminalId: $created->terminalId,
+            applicationId: $created->applicationId, environment: $created->environment,
         );
         $results = $this->concurrently([
             fn (): string => app(ApplyMercadoPagoOrder::class)->handle($attempt, $processed)->state->value,
@@ -203,6 +204,7 @@ class PostgresInPersonPaymentConcurrencyTest extends TestCase
         $connection = IntegrationConnection::query()->create([
             'name' => 'orders-pg-race', 'type' => 'payment', 'property_id' => $propertyId,
             'provider' => 'mercado_pago', 'product' => 'orders', 'external_account_id' => 'TEST-SELLER-ID',
+            'provider_application_id' => 'TEST-APPLICATION-ID',
             'environment' => 'sandbox', 'status' => 'connected', 'is_enabled' => true,
             'configuration' => ['charge_currency' => 'ARS'], 'secret_reference' => 'env:MP_ORDERS_TEST_TOKEN',
         ]);

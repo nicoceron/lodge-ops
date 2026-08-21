@@ -169,7 +169,7 @@ final class InitiateInPersonPayment
             ]);
         });
 
-        if ($attempt->provider_order_id !== null || $attempt->state !== PaymentAttemptState::Creating) {
+        if ($attempt->provider_order_id !== null) {
             return $attempt->fresh();
         }
         $gateway = $this->gateways->for($attempt->integrationConnection);
@@ -209,17 +209,20 @@ final class InitiateInPersonPayment
 
                 return $this->orders->handle($attempt, $remote);
             }
-            DB::transaction(function () use ($attempt, $exception): void {
+            $operatorAction = $exception instanceof MercadoPagoTransportException
+                && in_array($exception->providerCode, ['already_queued_order_for_terminal', 'terminal_busy', 'terminal_offline'], true);
+            DB::transaction(function () use ($attempt, $exception, $operatorAction): void {
                 $locked = PaymentAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
                 $locked->update([
-                    'state' => PaymentAttemptState::ActionRequired,
-                    'action_required_at' => now(),
+                    'state' => $operatorAction ? PaymentAttemptState::ActionRequired : PaymentAttemptState::Creating,
+                    'action_required_at' => $operatorAction ? now() : null,
                     'error_count' => $locked->error_count + 1,
-                    'last_error' => Str::limit('Create result is uncertain; reconcile before retry or replacement. '.$exception->getMessage(), 500),
+                    'last_error' => Str::limit($operatorAction
+                        ? 'Provider or terminal action is required before retry. '.$exception->getMessage()
+                        : 'Create result is uncertain; retrying this same request will safely resume the same provider operation. '.$exception->getMessage(), 500),
                 ]);
             });
-            if ($exception instanceof MercadoPagoTransportException
-                && in_array($exception->providerCode, ['already_queued_order_for_terminal', 'terminal_busy', 'terminal_offline'], true)) {
+            if ($operatorAction) {
                 return $attempt->fresh();
             }
             throw $exception;

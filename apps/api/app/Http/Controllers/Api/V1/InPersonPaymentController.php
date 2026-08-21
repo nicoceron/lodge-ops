@@ -33,9 +33,8 @@ class InPersonPaymentController extends Controller
     {
         $this->authorize('viewAny', PaymentTerminal::class);
         $query = PaymentTerminal::query()->orderBy('display_name');
-        if ($request->filled('property_id')) {
-            abort_unless(app(TenantContext::class)->canAccessProperty((string) $request->input('property_id')), 403);
-            $query->where('property_id', $request->input('property_id'));
+        if (($propertyId = $this->listPropertyScope($request)) !== null) {
+            $query->where('property_id', $propertyId);
         }
 
         return PaymentTerminalResource::collection($query->get());
@@ -45,9 +44,8 @@ class InPersonPaymentController extends Controller
     {
         $this->authorize('viewAny', ProviderPosLocation::class);
         $query = ProviderPosLocation::query()->orderBy('display_name');
-        if ($request->filled('property_id')) {
-            abort_unless(app(TenantContext::class)->canAccessProperty((string) $request->input('property_id')), 403);
-            $query->where('property_id', $request->input('property_id'));
+        if (($propertyId = $this->listPropertyScope($request)) !== null) {
+            $query->where('property_id', $propertyId);
         }
 
         return ProviderPosLocationResource::collection($query->get());
@@ -170,6 +168,25 @@ class InPersonPaymentController extends Controller
         return $this->initiate($request, $reservation, $command, PaymentChannel::IntegratedTerminal, 'terminal_id');
     }
 
+    private function listPropertyScope(Request $request): ?string
+    {
+        $context = app(TenantContext::class);
+        $membership = $context->membership();
+        abort_unless($membership !== null && $membership->is_active, 403);
+        $requested = $request->filled('property_id') ? (string) $request->input('property_id') : null;
+        if ($membership->role->hasTenantWidePropertyAccess()) {
+            if ($requested !== null) {
+                abort_unless(Property::query()->whereKey($requested)->exists(), 403);
+            }
+
+            return $requested;
+        }
+        abort_unless($membership->property_id !== null, 403);
+        abort_if($requested !== null && $requested !== $membership->property_id, 403);
+
+        return $membership->property_id;
+    }
+
     public function qr(Request $request, Reservation $reservation, InitiateInPersonPayment $command): JsonResponse
     {
         return $this->initiate($request, $reservation, $command, PaymentChannel::Qr, 'pos_location_id');
@@ -213,7 +230,7 @@ class InPersonPaymentController extends Controller
     private function initiate(Request $request, Reservation $reservation, InitiateInPersonPayment $command, PaymentChannel $channel, string $targetField): JsonResponse
     {
         abort_unless(app(TenantContext::class)->canAccessProperty($reservation->property_id), 403);
-        $this->authorize('create', PaymentRequest::class);
+        $this->authorize('createInPerson', PaymentRequest::class);
         $data = $request->validate([
             $targetField => ['required', 'uuid'],
             'purpose' => ['required', Rule::enum(PaymentRequestPurpose::class)],

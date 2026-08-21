@@ -15,5 +15,8 @@ final readonly class VerifiedProviderEvent
         public string $resourceId,
         public array $payload,
         public ?CarbonImmutable $providerCreatedAt = null,
+        public ?string $applicationId = null,
+        public ?string $environment = null,
+        public ?string $providerAccount = null,
     ) {}
 }

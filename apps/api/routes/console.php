@@ -34,6 +34,12 @@ Schedule::command('payments:expire-requests')
     ->withoutOverlapping(10)
     ->onOneServer();
 
+Schedule::command('payments:expire-in-person-orders')
+    ->name('payments:expire-in-person-orders')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
 Schedule::command('payments:recover-refunds --older-than=15 --limit=100')
     ->name('payments:recover-refunds')
     ->everyTenMinutes()
