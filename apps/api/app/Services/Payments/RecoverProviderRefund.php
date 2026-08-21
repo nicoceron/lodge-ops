@@ -11,6 +11,7 @@ use App\Models\ProviderRefund;
 use App\Models\Reservation;
 use App\Models\ReservationChange;
 use App\Services\CompleteRefund;
+use App\Services\DirectBooking\DirectBookingPaymentReconciler;
 use Illuminate\Support\Facades\DB;
 
 final class RecoverProviderRefund
@@ -18,6 +19,7 @@ final class RecoverProviderRefund
     public function __construct(
         private readonly PaymentGatewayFactory $gateways,
         private readonly CompleteRefund $completeRefund,
+        private readonly DirectBookingPaymentReconciler $directBooking,
     ) {}
 
     public function handle(ProviderRefund $refund, string $providerRefundId, ?int $actorId): ProviderRefund
@@ -50,14 +52,19 @@ final class RecoverProviderRefund
             return [$locked->fresh(), true];
         }, 3);
         if (! $shouldFetch) {
+            $this->directBooking->refunded($snapshot);
+
             return $snapshot;
         }
 
+        $payment = Payment::query()->findOrFail($snapshot->payment_id);
+        $attemptId = data_get($payment->metadata, 'payment_attempt_id');
         $attempt = PaymentAttempt::query()
-            ->where('provider', $snapshot->provider)
-            ->where('environment', $snapshot->environment)
-            ->where('provider_account', $snapshot->provider_account)
-            ->where('provider_payment_id', $snapshot->provider_payment_id)
+            ->when(is_string($attemptId), fn ($query) => $query->whereKey($attemptId))
+            ->when(! is_string($attemptId), fn ($query) => $query
+                ->where('provider', $snapshot->provider)
+                ->where('environment', $snapshot->environment)
+                ->where('provider_payment_id', $snapshot->provider_payment_id))
             ->firstOrFail();
         $remote = $this->gateways->for($attempt->integrationConnection)
             ->fetchRefund($snapshot->provider_payment_id, $providerRefundId);
@@ -94,7 +101,7 @@ final class RecoverProviderRefund
             'currency' => $remote->currency,
         ], JSON_THROW_ON_ERROR));
 
-        return DB::transaction(function () use ($snapshot, $providerRefundId, $remote, $actorId, $checksum): ProviderRefund {
+        $result = DB::transaction(function () use ($snapshot, $providerRefundId, $remote, $actorId, $checksum): ProviderRefund {
             $row = ProviderRefund::query()->findOrFail($snapshot->id);
             Reservation::query()->lockForUpdate()->findOrFail($row->reservationChange->reservation_id);
             Payment::query()->lockForUpdate()->findOrFail($row->payment_id);
@@ -117,5 +124,8 @@ final class RecoverProviderRefund
 
             return $locked->fresh();
         }, 3);
+        $this->directBooking->refunded($result);
+
+        return $result;
     }
 }

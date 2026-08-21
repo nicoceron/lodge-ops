@@ -48,6 +48,9 @@ final class RequestRefund
                 ->sum('amount_minor');
             $availableOnPayment = max(0, $lockedPayment->amount_minor - $paymentRefunds);
             $availableCredit = max(0, -$this->folio->summary($lockedReservation)['balance_minor'] - $openRequests);
+            if (data_get($lockedPayment->metadata, 'unapplied_direct_booking_funds') === true) {
+                $availableCredit = max($availableCredit, $availableOnPayment);
+            }
             if ($amountMinor > min($availableOnPayment, $availableCredit)) {
                 throw ValidationException::withMessages(['amount_minor' => 'The requested refund exceeds the payment or guest credit available.']);
             }

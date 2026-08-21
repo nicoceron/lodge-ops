@@ -142,4 +142,13 @@ final class GenerateDocument implements ShouldBeEncrypted, ShouldQueue
             }
         }
     }
+
+    public function failed(?Throwable $exception): void
+    {
+        DocumentGenerationRequest::withoutGlobalScopes()->whereKey($this->requestId)->update([
+            'status' => DocumentGenerationStatus::Failed->value,
+            'failed_at' => now(),
+            'last_error' => Str::limit($exception === null ? 'Document job exhausted retries.' : class_basename($exception).': '.$exception->getMessage(), 1000),
+        ]);
+    }
 }

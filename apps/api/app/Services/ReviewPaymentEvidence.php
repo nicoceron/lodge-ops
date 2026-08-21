@@ -14,6 +14,7 @@ use App\Models\Reservation;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Automation\OutboxRecorder;
+use App\Services\DirectBooking\DirectBookingManualReviewReconciler;
 use App\Services\Payments\RecordFrontDeskPayment;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -24,11 +25,14 @@ final class ReviewPaymentEvidence
     public function __construct(
         private readonly RecordFrontDeskPayment $payments,
         private readonly OutboxRecorder $outbox,
+        private readonly DirectBookingManualReviewReconciler $directBooking,
     ) {}
 
     public function approve(GuestPaymentEvidence $evidence, ?string $depositId, ?int $actorId, ?string $note = null): Payment
     {
-        return DB::transaction(function () use ($evidence, $depositId, $actorId, $note): Payment {
+        $this->directBooking->prepareApproval($evidence);
+
+        $payment = DB::transaction(function () use ($evidence, $depositId, $actorId, $note): Payment {
             Tenant::query()->whereKey(app(TenantContext::class)->id())->lockForUpdate()->firstOrFail();
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($evidence->reservation_id);
             $locked = GuestPaymentEvidence::query()->lockForUpdate()->findOrFail($evidence->id);
@@ -86,6 +90,9 @@ final class ReviewPaymentEvidence
 
             return $payment;
         }, 3);
+        $this->directBooking->approved($evidence->fresh());
+
+        return $payment;
     }
 
     public function reject(GuestPaymentEvidence $evidence, string $note, ?int $actorId): GuestPaymentEvidence
@@ -100,7 +107,7 @@ final class ReviewPaymentEvidence
 
     private function decideWithoutPayment(GuestPaymentEvidence $evidence, PaymentEvidenceStatus $status, string $note, ?int $actorId): GuestPaymentEvidence
     {
-        return DB::transaction(function () use ($evidence, $status, $note, $actorId): GuestPaymentEvidence {
+        $result = DB::transaction(function () use ($evidence, $status, $note, $actorId): GuestPaymentEvidence {
             Tenant::query()->whereKey(app(TenantContext::class)->id())->lockForUpdate()->firstOrFail();
             $reservation = Reservation::query()->lockForUpdate()->findOrFail($evidence->reservation_id);
             $locked = GuestPaymentEvidence::query()->lockForUpdate()->findOrFail($evidence->id);
@@ -132,6 +139,11 @@ final class ReviewPaymentEvidence
 
             return $locked->fresh();
         }, 3);
+        if ($status === PaymentEvidenceStatus::Rejected) {
+            $this->directBooking->rejected($result);
+        }
+
+        return $result;
     }
 
     private function queueGuestNotification(GuestPaymentEvidence $evidence, PaymentEvidenceStatus $status, ?string $note): void

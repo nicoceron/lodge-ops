@@ -7,6 +7,8 @@ use App\Contracts\Documents\DocumentRenderer;
 use App\Contracts\Fiscal\FiscalSourceSnapshotFactory;
 use App\Contracts\Integrations\SecretReferenceResolver;
 use App\Contracts\Payments\PaymentGatewayFactory;
+use App\Enums\DirectBookingErrorCode;
+use App\Http\Responses\DirectBookingErrorResponse;
 use App\Integrations\Payments\MercadoPago\DefaultPaymentGatewayFactory;
 use App\Integrations\Secrets\EnvironmentSecretReferenceResolver;
 use App\Models\Allocation;
@@ -27,6 +29,7 @@ use App\Models\CrmActivity;
 use App\Models\DeliveryAttempt;
 use App\Models\Deposit;
 use App\Models\DepositPolicy;
+use App\Models\DirectBookingCommandResponse;
 use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingOrderConsent;
 use App\Models\DirectBookingOrderEvent;
@@ -160,32 +163,32 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('commercial-voucher', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('commercial-voucher:'.$request->ip()));
         RateLimiter::for('direct-booking-read', fn (Request $request): array => [
-            Limit::perMinute((int) config('direct-booking.rate_limits.read_per_minute', 60))
-                ->by('direct-booking:read:ip:'.$request->ip()),
-            Limit::perMinute(300)->by('direct-booking:read:property:'.$request->route('propertySlug')),
+            $this->directBookingLimit(Limit::perMinute((int) config('direct-booking.rate_limits.read_per_minute', 60))
+                ->by('direct-booking:read:ip:'.$request->ip())),
+            $this->directBookingLimit(Limit::perMinute(300)->by('direct-booking:read:property:'.$request->route('propertySlug'))),
         ]);
         RateLimiter::for('direct-booking-search', fn (Request $request): array => [
-            Limit::perMinute((int) config('direct-booking.rate_limits.search_per_minute', 20))
-                ->by('direct-booking:search:ip:'.$request->ip()),
-            Limit::perMinute(120)->by('direct-booking:search:property:'.$request->route('propertySlug')),
+            $this->directBookingLimit(Limit::perMinute((int) config('direct-booking.rate_limits.search_per_minute', 20))
+                ->by('direct-booking:search:ip:'.$request->ip())),
+            $this->directBookingLimit(Limit::perMinute(120)->by('direct-booking:search:property:'.$request->route('propertySlug'))),
         ]);
         RateLimiter::for('direct-booking-mutation', function (Request $request): array {
             $session = hash('sha256', (string) $request->bearerToken());
 
             return [
-                Limit::perMinute((int) config('direct-booking.rate_limits.mutation_per_minute', 10))
-                    ->by('direct-booking:mutation:ip:'.$request->ip()),
-                Limit::perMinute(60)->by('direct-booking:mutation:property:'.$request->route('propertySlug')),
-                Limit::perMinute(30)->by('direct-booking:mutation:session:'.$session),
+                $this->directBookingLimit(Limit::perMinute((int) config('direct-booking.rate_limits.mutation_per_minute', 10))
+                    ->by('direct-booking:mutation:ip:'.$request->ip())),
+                $this->directBookingLimit(Limit::perMinute(60)->by('direct-booking:mutation:property:'.$request->route('propertySlug'))),
+                $this->directBookingLimit(Limit::perMinute(30)->by('direct-booking:mutation:session:'.$session)),
             ];
         });
         RateLimiter::for('direct-booking-hold', function (Request $request): array {
             $session = hash('sha256', (string) $request->bearerToken());
 
             return [
-                Limit::perHour((int) config('direct-booking.rate_limits.holds_per_hour', 5))
-                    ->by('direct-booking:hold:session:'.$session),
-                Limit::perHour(20)->by('direct-booking:hold:ip:'.$request->ip()),
+                $this->directBookingLimit(Limit::perHour((int) config('direct-booking.rate_limits.holds_per_hour', 5))
+                    ->by('direct-booking:hold:session:'.$session)),
+                $this->directBookingLimit(Limit::perHour(20)->by('direct-booking:hold:ip:'.$request->ip())),
             ];
         });
 
@@ -213,6 +216,7 @@ class AppServiceProvider extends ServiceProvider
             Deposit::class,
             DepositPolicy::class,
             DirectBookingOrder::class,
+            DirectBookingCommandResponse::class,
             DirectBookingOrderConsent::class,
             DirectBookingOrderEvent::class,
             DirectBookingPaymentCapability::class,
@@ -283,5 +287,18 @@ class AppServiceProvider extends ServiceProvider
         ] as $model) {
             $model::observe(TenantAuditObserver::class);
         }
+    }
+
+    private function directBookingLimit(Limit $limit): Limit
+    {
+        return $limit->response(function (Request $request, array $headers) {
+            $retryAfter = max(1, (int) ($headers['Retry-After'] ?? 1));
+
+            return DirectBookingErrorResponse::make(
+                $request,
+                DirectBookingErrorCode::RateLimited,
+                headers: ['Retry-After' => (string) $retryAfter],
+            );
+        });
     }
 }

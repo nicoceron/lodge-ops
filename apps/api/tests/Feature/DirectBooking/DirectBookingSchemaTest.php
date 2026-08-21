@@ -201,6 +201,16 @@ class DirectBookingSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('direct_booking_orders', 'session_expires_at'));
     }
 
+    public function test_command_response_migration_round_trips(): void
+    {
+        $migration = require database_path('migrations/2026_08_20_070001_create_direct_booking_command_responses.php');
+
+        $migration->down();
+        $this->assertFalse(Schema::hasTable('direct_booking_command_responses'));
+        $migration->up();
+        $this->assertTrue(Schema::hasTable('direct_booking_command_responses'));
+    }
+
     public function test_hardening_rollback_preflights_every_live_fact_before_any_ddl(): void
     {
         [$tenant, $property] = $this->tenantEnvironment();
@@ -229,6 +239,13 @@ class DirectBookingSchemaTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $migration = require database_path('migrations/2026_08_20_060002_harden_direct_booking_contract_boundaries.php');
+
+        // The pgsql suite sets ALLOW_DIRECT_BOOKING_FACT_ROLLBACK=true so
+        // DatabaseMigrations/RefreshDatabase can roll back the hardening migration
+        // during teardown. This assertion must verify the production guard refuses
+        // rollback when live facts exist, so override the config back to false
+        // before invoking down() regardless of the global test environment.
+        config(['direct-booking.allow_operational_fact_rollback' => false]);
 
         try {
             $migration->down();

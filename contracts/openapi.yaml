@@ -271,6 +271,21 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PropertyCollection' }
+  /properties/{property}/direct-booking-readiness:
+    get:
+      tags: [Properties, Direct Booking]
+      operationId: getDirectBookingReadiness
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: property, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Authorized launch diagnostics; blocking reasons are never exposed by public booking endpoints.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DirectBookingReadinessEnvelope' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /programs:
     get:
       tags: [Programs]
@@ -2679,6 +2694,21 @@ paths:
         '409': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/Conflict' }
         '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
         '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
+  /direct-booking/properties/{propertySlug}/orders/{orderReference}/confirmation/documents/{documentReference}:
+    get:
+      tags: [Direct Booking]
+      operationId: downloadDirectBookingConfirmationDocument
+      security: [{ directBookingSession: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DirectBookingPropertySlug'
+        - $ref: '#/components/parameters/DirectBookingOrderReference'
+        - $ref: '#/components/parameters/DirectBookingDocumentReference'
+        - $ref: '#/components/parameters/DirectBookingCorrelationId'
+      responses:
+        '200': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/ConfirmationDocument' }
+        '404': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/NotFound' }
+        '429': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/RateLimited' }
+        '503': { $ref: './direct-booking/v1/openapi.yaml#/components/responses/BookingUnavailable' }
 
 components:
   securitySchemes:
@@ -2736,6 +2766,12 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+    DirectBookingDocumentReference:
+      name: documentReference
+      in: path
+      required: true
+      description: Opaque property- and order-scoped document reference; it is not a database or provider identifier.
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
     DirectBookingPolicyKind:
       name: policyKind
       in: path
@@ -3107,6 +3143,21 @@ components:
           items: { $ref: '#/components/schemas/Property' }
         meta: { type: object, additionalProperties: true }
         links: { type: object, additionalProperties: true }
+    DirectBookingReadinessEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [ready, blocking_reasons]
+          properties:
+            ready: { type: boolean }
+            blocking_reasons:
+              type: array
+              uniqueItems: true
+              items: { type: string, minLength: 1, maxLength: 200 }
     ProgramRequirement:
       type: object
       required: [id, resource_category_id, category_slug, kind, category, capabilities, languages, quantity]

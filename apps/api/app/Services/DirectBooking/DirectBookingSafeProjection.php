@@ -8,6 +8,8 @@ use App\Models\DirectBookingPaymentCapability;
 use App\Models\DirectBookingPropertySetting;
 use App\Models\DirectBookingPublication;
 use App\Models\DirectBookingPublicItem;
+use App\Models\RatePlan;
+use App\Models\RatePlanService;
 
 final class DirectBookingSafeProjection
 {
@@ -43,6 +45,19 @@ final class DirectBookingSafeProjection
                             ->where('state', DirectBookingPublicationState::Published)
                             ->where(fn ($published) => $published->whereNull('effective_at')->orWhere('effective_at', '<=', now()))));
             })->orderBy('currency')->orderBy('method')->get();
+        $optionalServices = RatePlan::query()
+            ->where('property_id', $setting->property_id)
+            ->where('state', 'published')->where('is_active', true)
+            ->whereIn('currency', $setting->supported_currencies)
+            ->with(['services' => fn ($query) => $query
+                ->where('selection_type', 'optional')->where('is_active', true)
+                ->whereNotNull('direct_booking_public_key')->with('catalogItem')])
+            ->orderBy('currency')->orderByDesc('version')->get()
+            ->flatMap(fn (RatePlan $plan) => $plan->services
+                ->filter(fn (RatePlanService $service): bool => $service->catalogItem->is_active
+                    && $service->catalogItem->currency === $plan->currency)
+                ->map(fn (RatePlanService $service): array => $this->optionalService($service, $plan->currency)))
+            ->unique('key')->values()->all();
 
         return [
             'slug' => $setting->public_slug,
@@ -70,10 +85,31 @@ final class DirectBookingSafeProjection
                     'media' => $copy === null ? [] : $this->media($copy->media),
                 ];
             })->values()->all(),
+            'optional_services' => $optionalServices,
             'payment_capabilities' => $capabilities->map(fn ($capability): array => [
                 'method' => $capability->method->value,
                 'currency' => $capability->currency,
             ])->values()->all(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function optionalService(RatePlanService $service, string $currency): array
+    {
+        return [
+            'key' => $service->direct_booking_public_key,
+            'name' => $service->catalogItem->name,
+            'description' => null,
+            'pricing' => [
+                'unit_amount' => [
+                    'amount_minor' => $service->amount_minor ?? $service->catalogItem->price_minor,
+                    'currency' => strtoupper($currency),
+                ],
+                'quantity_basis' => $service->quantity_basis,
+                'default_quantity' => $service->default_quantity,
+                'maximum_quantity' => $service->maximum_quantity,
+            ],
+            'applicability' => 'selected_rate_plan',
         ];
     }
 

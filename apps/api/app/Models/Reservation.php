@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use LogicException;
 
 /**
@@ -157,6 +158,11 @@ class Reservation extends TenantModel
     public function paymentRequests(): HasMany
     {
         return $this->hasMany(PaymentRequest::class);
+    }
+
+    public function directBookingOrder(): HasOne
+    {
+        return $this->hasOne(DirectBookingOrder::class);
     }
 
     public function folioLines(): HasMany

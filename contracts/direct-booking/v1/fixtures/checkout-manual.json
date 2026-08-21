@@ -1,0 +1,19 @@
+{
+  "data": {
+    "order_reference": "01K3A6S2V4T8N9R7W1X0Y3Z5QM",
+    "state": "awaiting_manual_payment",
+    "state_version": 4,
+    "method": "manual_bank_transfer",
+    "checkout_url": null,
+    "hold_expires_at": "2026-09-01T12:30:00Z",
+    "checkout_expires_at": "2026-09-01T12:30:00Z",
+    "manual_payment_instructions": {
+      "locale": "en",
+      "currency": "USD",
+      "title": "Bank transfer instructions",
+      "body": "Transfer the exact quoted deposit using the property-issued reference.",
+      "version": 3,
+      "checksum": "9a546cbc507125d03289d3a742667e6502dedae44f78b322e45e9cb3195949f4"
+    }
+  }
+}

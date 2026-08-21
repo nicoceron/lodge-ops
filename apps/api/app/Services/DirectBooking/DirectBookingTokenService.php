@@ -2,6 +2,7 @@
 
 namespace App\Services\DirectBooking;
 
+use App\Enums\DirectBookingOrderState;
 use App\Models\DirectBookingOrder;
 use App\Models\DirectBookingPropertySetting;
 use Illuminate\Auth\AuthenticationException;
@@ -28,6 +29,8 @@ final class DirectBookingTokenService
             'recovery_token_hash' => self::hash($recoveryToken),
             'locale' => $locale,
             'currency' => strtoupper($currency),
+            'state' => DirectBookingOrderState::Started,
+            'state_version' => 1,
             'attribution' => app(DirectBookingPrivacy::class)->attribution($attribution),
             'ip_prefix_hash' => app(DirectBookingPrivacy::class)->ipPrefixHash($remoteIp),
             'expires_at' => $sessionExpiresAt,

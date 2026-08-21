@@ -22,6 +22,8 @@ use App\Models\ReservationChange;
 use App\Models\Tenant;
 use App\Services\Automation\OutboxRecorder;
 use App\Services\Documents\RequestDocumentGeneration;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -122,8 +124,79 @@ final class PaymentService
         }, 3);
     }
 
+    public function recordProviderNeedsReview(PaymentAttempt $attempt, ProviderPayment $providerPayment, string $reason): Payment
+    {
+        return DB::transaction(function () use ($attempt, $providerPayment, $reason): Payment {
+            Tenant::query()->whereKey($attempt->tenant_id)->lockForUpdate()->firstOrFail();
+            $reservation = Reservation::query()->lockForUpdate()->findOrFail($attempt->reservation_id);
+            $request = PaymentRequest::query()->lockForUpdate()->findOrFail($attempt->payment_request_id);
+            $lockedAttempt = PaymentAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
+            $providerAccount = trim($providerPayment->providerAccount) ?: $lockedAttempt->provider_account;
+            $existing = Payment::query()
+                ->where('provider', $lockedAttempt->provider)
+                ->where('environment', $lockedAttempt->environment)
+                ->where('provider_account', $providerAccount)
+                ->where('provider_reference', $providerPayment->id)
+                ->lockForUpdate()->first();
+            if ($existing !== null) {
+                if ($existing->reservation_id !== $reservation->id
+                    || (string) data_get($existing->metadata, 'payment_attempt_id') !== $lockedAttempt->id) {
+                    throw new DomainException('The provider payment identity is already attached to a different reservation or attempt.');
+                }
+
+                return $existing;
+            }
+            $sourceAmount = $providerPayment->currency === $request->source_currency
+                ? $providerPayment->amountMinor
+                : ($providerPayment->currency === $lockedAttempt->charge_currency && $lockedAttempt->charge_amount_minor > 0
+                    ? BigDecimal::of($providerPayment->amountMinor)->multipliedBy($lockedAttempt->source_amount_minor)
+                        ->dividedBy($lockedAttempt->charge_amount_minor, 0, RoundingMode::HalfUp)->toInt()
+                    : $request->source_amount_minor);
+            $payment = Payment::query()->create([
+                'reservation_id' => $reservation->id,
+                'status' => PaymentStatus::Succeeded,
+                'method' => 'mercado_pago_checkout_pro',
+                'channel' => PaymentChannel::OnlineCheckout,
+                'entry_mode' => PaymentEntryMode::ProviderReported,
+                'origin' => PaymentOrigin::Provider,
+                'provider' => $lockedAttempt->provider,
+                'environment' => $lockedAttempt->environment,
+                'provider_account' => $providerAccount,
+                'provider_reference' => $providerPayment->id,
+                'currency' => $request->source_currency,
+                'amount_minor' => max(1, $sourceAmount),
+                'processed_at' => now(),
+                'reconciled_at' => now(),
+                'metadata' => [
+                    'payment_attempt_id' => $lockedAttempt->id,
+                    'external_reference' => $providerPayment->externalReference,
+                    'unapplied_direct_booking_funds' => true,
+                    'needs_review_reason' => $reason,
+                    'actual_charge_amount_minor' => $providerPayment->amountMinor,
+                    'actual_charge_currency' => strtoupper($providerPayment->currency),
+                    'actual_provider_account' => $providerAccount,
+                    'expected_charge_amount_minor' => $lockedAttempt->charge_amount_minor,
+                    'expected_charge_currency' => $lockedAttempt->charge_currency,
+                ],
+            ]);
+            $this->folio->postPayment($payment->load('reservation'), null);
+            $this->outbox->record('payment', $payment->id, 'payment.needs_review', [
+                'payment_id' => $payment->id,
+                'reservation_id' => $reservation->id,
+                'amount_minor' => $payment->amount_minor,
+                'origin' => 'provider',
+                'safe_reason_code' => $reason,
+            ]);
+
+            return $payment->fresh(['reservation']);
+        }, 3);
+    }
+
     private function requestProviderReceipt(Reservation $reservation, Payment $payment): void
     {
+        if ($reservation->directBookingOrder()->exists()) {
+            return;
+        }
         $this->documents->handleSystem(
             $reservation,
             DocumentKind::PaymentReceipt,

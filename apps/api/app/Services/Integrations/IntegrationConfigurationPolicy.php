@@ -22,6 +22,7 @@ final class IntegrationConfigurationPolicy
             $allowed += [
                 'return_url_base' => 'url',
                 'charge_currency' => 'currency',
+                'site' => 'site',
                 'use_sandbox_checkout_url' => 'bool',
                 'transport' => 'transport',
                 'fixture' => 'fixture',
@@ -83,6 +84,7 @@ final class IntegrationConfigurationPolicy
             'string' => is_string($value) && trim($value) !== '' && mb_strlen($value) <= 500,
             'bool' => is_bool($value),
             'currency' => is_string($value) && preg_match('/^[A-Z]{3}$/', $value) === 1,
+            'site' => is_string($value) && preg_match('/^[A-Z]{3}$/', $value) === 1,
             'transport' => $value === 'deterministic_fixture',
             'fixture' => is_array($value) && app()->environment(['local', 'testing']),
             'reference' => is_string($value) && $this->isSecretReference($value),

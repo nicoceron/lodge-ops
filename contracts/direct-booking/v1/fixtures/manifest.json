@@ -1,5 +1,5 @@
 {
-  "contract_version": "2026-08-20",
+  "contract_version": "2026-08-20.1",
   "screens": {
     "property": "property.json",
     "policy": "policy.json",
@@ -8,10 +8,14 @@
     "quote": "quote.json",
     "hold": "order-held.json",
     "checkout": "checkout.json",
+    "checkout_manual": "checkout-manual.json",
     "manual_evidence_pending": "evidence-pending.json",
     "confirmation": "confirmation.json"
   },
   "state_catalog": "order-states.json",
+  "request_fixtures": {
+    "hold_with_companions": "hold-request-companions.json"
+  },
   "error_catalog": "errors.json",
   "error_fixtures": {
     "validation_error": "error-validation.json",

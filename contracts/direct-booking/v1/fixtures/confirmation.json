@@ -6,6 +6,27 @@
     "arrival_date": "2026-09-10",
     "departure_date": "2026-09-13",
     "timezone": "America/Argentina/Ushuaia",
-    "total": {"amount_minor": 360000, "currency": "USD"}
+    "total": {"amount_minor": 360000, "currency": "USD"},
+    "documents": [
+      {
+        "kind": "payment_receipt",
+        "status": "generated",
+        "document_reference": "5f21bfe8c13873ba1ccc1e9f3a16cc0325ae988dd4d175696a5e9e7611dd8742",
+        "download_path": "/api/v1/direct-booking/properties/api-lodge/orders/01K3A6S2V4T8N9R7W1X0Y3Z5QM/confirmation/documents/5f21bfe8c13873ba1ccc1e9f3a16cc0325ae988dd4d175696a5e9e7611dd8742"
+      },
+      {
+        "kind": "reservation_confirmation",
+        "status": "pending",
+        "document_reference": null,
+        "download_path": null
+      }
+    ],
+    "links": {
+      "self_path": "/api/v1/direct-booking/properties/api-lodge/orders/01K3A6S2V4T8N9R7W1X0Y3Z5QM/confirmation",
+      "guest_portal": {
+        "status": "invitation_required",
+        "entry_path": "/guest/stay"
+      }
+    }
   }
 }

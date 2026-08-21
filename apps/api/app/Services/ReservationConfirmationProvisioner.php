@@ -2,20 +2,61 @@
 
 namespace App\Services;
 
+use App\Enums\AllocationStatus;
 use App\Enums\DepositStatus;
 use App\Enums\TaskStatus;
+use App\Models\Allocation;
 use App\Models\Membership;
 use App\Models\Reservation;
+use App\Models\ServiceOccurrence;
 use App\Services\Automation\OutboxRecorder;
+use RuntimeException;
 
 class ReservationConfirmationProvisioner
 {
-    public function __construct(private OutboxRecorder $outbox) {}
+    public function __construct(private OutboxRecorder $outbox, private AvailabilityService $availability) {}
 
     public function provision(Reservation $reservation): void
     {
+        if (app()->environment('testing') && config('direct-booking.testing.fail_confirmation_provisioning') === true) {
+            throw new RuntimeException('Injected confirmation provisioning failure.');
+        }
+        $this->serviceOccurrence($reservation);
         $this->tasks($reservation);
         $this->paymentSchedule($reservation);
+    }
+
+    private function serviceOccurrence(Reservation $reservation): void
+    {
+        if ($reservation->program_id === null || $reservation->allocations()->whereNotNull('service_occurrence_id')->exists()) {
+            return;
+        }
+        $reservation->loadMissing('program');
+        $program = $reservation->program;
+        if ($program === null) {
+            return;
+        }
+        $partySize = max(1, $reservation->adults + $reservation->children);
+        $startsAt = $reservation->starts_at;
+        $endsAt = $startsAt->addMinutes(max(1, $program->default_duration_minutes ?? 60));
+        $occurrence = ServiceOccurrence::query()->create([
+            'program_id' => $program->id,
+            'property_id' => $reservation->property_id,
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'capacity' => max($partySize, $program->capacity ?? $partySize),
+            'is_cancelled' => false,
+        ]);
+        $allocation = Allocation::query()->create([
+            'reservation_id' => $reservation->id,
+            'service_occurrence_id' => $occurrence->id,
+            'status' => AllocationStatus::Tentative,
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'quantity' => $partySize,
+        ]);
+        $this->availability->assertAvailable($allocation);
+        $allocation->forceFill(['status' => AllocationStatus::Confirmed])->save();
     }
 
     private function tasks(Reservation $reservation): void

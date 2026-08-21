@@ -29,6 +29,8 @@
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="PAYMENT_EVIDENCE_SCANNER_AVAILABLE" value="true" force="true"/>
         <env name="ALLOW_P3_06B_OPERATIONAL_FACT_ROLLBACK" value="true" force="true"/>
+        <env name="ALLOW_DIRECT_BOOKING_FACT_ROLLBACK" value="true" force="true"/>
+        <env name="COMMERCIAL_TEST_TEARDOWN" value="1" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
