@@ -90,6 +90,8 @@ return [
         'offline' => 'Parece que no tienes conexión. Volveremos a intentar cuando regrese.',
         'changed' => 'El estado de la reserva cambió. Actualizando la página…',
         'expired_at' => 'Plazo actual: :time',
+        'policy_title' => 'Políticas de esta reserva',
+        'policy_summary' => 'Tu cotización incluye estas versiones publicadas de las políticas.',
         'payment_title' => 'Elige cómo pagar el depósito',
         'hosted_checkout' => 'Pagar de forma segura con Mercado Pago',
         'hosted_hint' => 'Saldrás de Inn hacia el checkout alojado. Inn nunca recibe ni almacena número de tarjeta, CVV o vencimiento.',

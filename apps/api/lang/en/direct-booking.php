@@ -90,6 +90,8 @@ return [
         'offline' => 'You appear to be offline. We will retry when the connection returns.',
         'changed' => 'The booking status changed. Updating this page…',
         'expired_at' => 'Current deadline: :time',
+        'policy_title' => 'Policies for this booking',
+        'policy_summary' => 'Your quote includes these published policy versions.',
         'payment_title' => 'Choose how to pay the deposit',
         'hosted_checkout' => 'Pay securely with Mercado Pago',
         'hosted_hint' => 'You will leave Inn for hosted checkout. Inn never receives or stores card number, CVV, or expiry.',

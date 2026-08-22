@@ -7,6 +7,9 @@
     $state = $status['state'];
     $pollingStates = ['payment_pending','evidence_pending','finance_review','paid_pending_confirmation'];
     $deadline = $status['checkout_expires_at'] ?? $status['hold_expires_at'] ?? $status['quote_expires_at'] ?? $status['session_expires_at'] ?? null;
+    $quotePolicies = collect($quote['policies'] ?? [])
+        ->filter(fn ($policy) => in_array(data_get($policy, 'kind'), ['terms', 'privacy', 'cancellation', 'no_show'], true))
+        ->values();
     $paymentLabel = match ($state) {
         'held', 'expired', 'payment_failed', 'evidence_rejected' => __('direct-booking.status.not_paid'),
         'confirmed' => __('direct-booking.status.paid'),
@@ -25,6 +28,8 @@
         <dl class="status-meta">
             <div><dt>{{ __('direct-booking.status.reference') }}</dt><dd>{{ $orderReference }}</dd></div>
             @if(isset($quote['total']))
+                @if(isset($quote['arrival_date']))<div><dt>{{ __('direct-booking.property.arrival') }}</dt><dd><time datetime="{{ $quote['arrival_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['arrival_date'], $locale) }}</time></dd></div>@endif
+                @if(isset($quote['departure_date']))<div><dt>{{ __('direct-booking.property.departure') }}</dt><dd><time datetime="{{ $quote['departure_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['departure_date'], $locale) }}</time></dd></div>@endif
                 <div><dt>{{ __('direct-booking.review.nights') }}</dt><dd>{{ __('direct-booking.review.nights_value', ['count' => collect($quote['lines'] ?? [])->where('type', 'nightly_rate')->count()]) }}</dd></div>
                 <div><dt>{{ __('direct-booking.review.total') }}</dt><dd>{{ \App\View\DirectBookingPresenter::money($quote['total'], $locale) }}</dd></div>
                 @if(isset($quote['deposit']))<div><dt>{{ __('direct-booking.review.deposit') }}</dt><dd>{{ \App\View\DirectBookingPresenter::money($quote['deposit'], $locale) }}</dd></div>@endif
@@ -52,6 +57,17 @@
                 </div>
                 <button class="button wide" type="submit">{{ __('direct-booking.status.continue_payment') }}</button>
             </form>
+        </section>
+    @endif
+
+    @if($quotePolicies->isNotEmpty())
+        <section class="booking-card status-policy" aria-labelledby="status-policy-title">
+            <div class="section-heading compact"><span>02</span><div><h2 id="status-policy-title">{{ __('direct-booking.status.policy_title') }}</h2><p>{{ __('direct-booking.status.policy_summary') }}</p></div></div>
+            <dl class="policy-summary">
+                @foreach($quotePolicies as $policy)
+                    <div><dt>{{ __('direct-booking.policy.'.data_get($policy, 'kind')) }}</dt><dd>v{{ data_get($policy, 'version', '—') }}</dd></div>
+                @endforeach
+            </dl>
         </section>
     @endif
 
@@ -89,7 +105,7 @@
         <section class="booking-card confirmation-panel" aria-labelledby="confirmation-title">
             <p class="eyebrow">{{ __('direct-booking.status.confirmation_title') }}</p>
             <h2 id="confirmation-title">{{ $confirmation['confirmation_number'] }}</h2>
-            <div class="confirmation-grid"><div><span>{{ __('direct-booking.property.arrival') }}</span><strong>{{ \App\View\DirectBookingPresenter::date($confirmation['arrival_date'], $locale) }}</strong></div><div><span>{{ __('direct-booking.property.departure') }}</span><strong>{{ \App\View\DirectBookingPresenter::date($confirmation['departure_date'], $locale) }}</strong></div><div><span>{{ __('direct-booking.review.total') }}</span><strong>{{ \App\View\DirectBookingPresenter::money($confirmation['total'], $locale) }}</strong></div></div>
+            <div class="confirmation-grid"><div><span>{{ __('direct-booking.property.arrival') }}</span><strong><time datetime="{{ $confirmation['arrival_date'] }}">{{ \App\View\DirectBookingPresenter::date($confirmation['arrival_date'], $locale) }}</time></strong></div><div><span>{{ __('direct-booking.property.departure') }}</span><strong><time datetime="{{ $confirmation['departure_date'] }}">{{ \App\View\DirectBookingPresenter::date($confirmation['departure_date'], $locale) }}</time></strong></div><div><span>{{ __('direct-booking.review.total') }}</span><strong>{{ \App\View\DirectBookingPresenter::money($confirmation['total'], $locale) }}</strong></div></div>
             <h3>{{ __('direct-booking.status.next_steps') }}</h3><p>{{ __('direct-booking.status.next_steps_body') }}</p>
             @if($confirmedDocuments !== [])
                 <nav class="confirmation-links" aria-label="{{ __('direct-booking.status.documents') }}">

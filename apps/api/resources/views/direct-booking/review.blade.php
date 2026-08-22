@@ -8,7 +8,12 @@
     <header class="page-intro">
         <p class="eyebrow">{{ __('direct-booking.review.eyebrow') }}</p>
         <h1>{{ __('direct-booking.review.title') }}</h1>
-        <p class="lede">{{ $property['name'] }} · {{ __('direct-booking.review.dates', ['arrival' => \App\View\DirectBookingPresenter::date($quote['arrival_date'], $locale), 'departure' => \App\View\DirectBookingPresenter::date($quote['departure_date'], $locale)]) }}</p>
+        <p class="lede">
+            {{ $property['name'] }} ·
+            <time datetime="{{ $quote['arrival_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['arrival_date'], $locale) }}</time>
+            <span aria-hidden="true"> → </span>
+            <time datetime="{{ $quote['departure_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['departure_date'], $locale) }}</time>
+        </p>
         <div class="deadline" data-countdown="{{ $quote['quote_expires_at'] }}" data-warning-seconds="300">
             <strong>{{ __('direct-booking.review.expires', ['time' => \App\View\DirectBookingPresenter::dateTime($quote['quote_expires_at'], $quote['timezone'], $locale)]) }}</strong>
             <span aria-live="polite" data-countdown-output></span>
@@ -70,8 +75,8 @@
         <aside class="booking-card stay-summary" aria-labelledby="stay-summary-title">
             <h2 id="stay-summary-title">{{ __('direct-booking.review.stay') }}</h2>
             <dl>
-                <div><dt>{{ __('direct-booking.property.arrival') }}</dt><dd>{{ \App\View\DirectBookingPresenter::date($quote['arrival_date'], $locale) }}</dd></div>
-                <div><dt>{{ __('direct-booking.property.departure') }}</dt><dd>{{ \App\View\DirectBookingPresenter::date($quote['departure_date'], $locale) }}</dd></div>
+                <div><dt>{{ __('direct-booking.property.arrival') }}</dt><dd><time datetime="{{ $quote['arrival_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['arrival_date'], $locale) }}</time></dd></div>
+                <div><dt>{{ __('direct-booking.property.departure') }}</dt><dd><time datetime="{{ $quote['departure_date'] }}">{{ \App\View\DirectBookingPresenter::date($quote['departure_date'], $locale) }}</time></dd></div>
                 <div><dt>{{ __('direct-booking.property.adults') }}</dt><dd>{{ $search['adults'] ?? '—' }}</dd></div>
                 <div><dt>{{ __('direct-booking.review.deposit') }}</dt><dd>{{ \App\View\DirectBookingPresenter::money($quote['deposit'], $locale) }}</dd></div>
             </dl>

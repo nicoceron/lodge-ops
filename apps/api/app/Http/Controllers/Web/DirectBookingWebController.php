@@ -172,7 +172,7 @@ final class DirectBookingWebController extends Controller
         }
         $property = (array) $flow['property'];
         $apiLocale = (string) ($flow['search']['api_locale'] ?? $property['locale'] ?? 'en');
-        $locale = $this->activateLocale((string) ($flow['search']['ui_locale'] ?? $apiLocale));
+        $locale = $this->flowLocale($request, $flow, $apiLocale);
         $quote = (array) $flow['quote'];
         $policies = [];
         foreach ((array) ($quote['policies'] ?? []) as $policySnapshot) {
@@ -271,7 +271,7 @@ final class DirectBookingWebController extends Controller
         }
         $flow = (array) $request->session()->get($this->flowKey($propertySlug, $orderReference), []);
         $apiLocale = (string) data_get($flow, 'search.api_locale', $this->requestedLocale($request));
-        $uiLocale = (string) data_get($flow, 'search.ui_locale', $this->requestedLocale($request));
+        $uiLocale = $this->flowLocale($request, $flow, $apiLocale);
         $propertyResponse = $this->propertyResponse($request, $propertySlug, $apiLocale);
         $statusResponse = $this->call(fn () => $this->client->status($request, $propertySlug, $orderReference, $credentials['session']));
         if (! $propertyResponse?->successful() || ! $statusResponse?->successful()) {
@@ -771,5 +771,24 @@ final class DirectBookingWebController extends Controller
         }
 
         return $this->call(fn () => $this->client->property($request, $propertySlug, 'en'));
+    }
+
+    /** @param array<string, mixed> $flow */
+    private function flowLocale(Request $request, array $flow, string $fallback): string
+    {
+        $stored = (string) data_get($flow, 'search.ui_locale', $fallback);
+        $locale = $request->hasAny(['lang', 'ui_locale'])
+            ? $this->requestedLocale($request)
+            : $stored;
+
+        if ($locale !== $stored && isset($flow['search']) && is_array($flow['search'])) {
+            $flow['search']['ui_locale'] = $locale;
+            $request->session()->put($this->flowKey(
+                (string) $request->route('propertySlug'),
+                (string) $request->route('orderReference'),
+            ), $flow);
+        }
+
+        return $this->activateLocale($locale);
     }
 }

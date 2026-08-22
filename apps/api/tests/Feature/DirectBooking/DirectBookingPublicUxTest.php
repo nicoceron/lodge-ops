@@ -168,6 +168,73 @@ class DirectBookingPublicUxTest extends TestCase
         $this->assertSame('USD 3,600.00', DirectBookingPresenter::money(['amount_minor' => 360000, 'currency' => 'USD'], 'en'));
         $this->assertSame('USD 3.600,00', DirectBookingPresenter::money(['amount_minor' => 360000, 'currency' => 'USD'], 'es-AR'));
         $this->assertSame('-ARS 1.200,05', DirectBookingPresenter::money(['amount_minor' => -120005, 'currency' => 'ARS'], 'es-AR'));
+        $this->assertSame(
+            DirectBookingPresenter::money(['amount_minor' => 80000, 'currency' => 'COP'], 'en'),
+            DirectBookingPresenter::money(['amount_minor' => 80000, 'currency' => 'COP'], 'es-AR'),
+        );
+    }
+
+    public function test_english_and_spanish_quote_and_hold_chrome_keep_cop_dates_and_policy_summary_aligned(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        $this->fakeIntegratedApi();
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+        $flowKey = 'direct_booking_ui.'.hash('sha256', 'estancia-viento-sur:'.self::REFERENCE);
+        $cookies = fn ($request) => $request
+            ->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('a', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('b', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+        $flow = [
+            'quote' => $this->integratedQuote(),
+            'property' => $this->integratedProperty(),
+            'search' => ['adults' => 2, 'children' => 0, 'infants' => 0, 'locale' => 'en', 'ui_locale' => 'en'],
+        ];
+        $englishFlow = $flow;
+
+        $englishReview = $cookies($this->withSession([$flowKey => $englishFlow]))
+            ->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/review');
+        $englishReview->assertOk()
+            ->assertSee('Your server-priced quote')
+            ->assertSee('COP 800.00')
+            ->assertSee('September 10, 2026')
+            ->assertSee('datetime="2026-09-10"', false)
+            ->assertSee('Policies and consent')
+            ->assertSee('Hold this stay and continue to payment');
+
+        $spanishFlow = $flow;
+        $spanishFlow['search']['ui_locale'] = 'es-AR';
+        $spanishReview = $cookies($this->withSession([$flowKey => $spanishFlow]))
+            ->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/review');
+        $spanishReview->assertOk()
+            ->assertSee('Tu cotización calculada por el servidor')
+            ->assertSee('COP 800.00')
+            ->assertSee('10 de septiembre de 2026')
+            ->assertSee('datetime="2026-09-10"', false)
+            ->assertSee('Políticas y consentimiento')
+            ->assertSee('Datos del huésped principal')
+            ->assertSee('Reservar temporalmente y continuar al pago');
+
+        $englishStatus = $cookies($this->withSession([$flowKey => $englishFlow]))
+            ->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status');
+        $englishStatus->assertOk()
+            ->assertSee('Stay held temporarily')
+            ->assertSee('COP 800.00')
+            ->assertSee('Policies for this booking')
+            ->assertSee('cancellation policy')
+            ->assertSee('Continue with selected payment method');
+
+        $spanishStatus = $cookies($this->withSession([$flowKey => $spanishFlow]))
+            ->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status?lang=es');
+        $spanishStatus->assertOk()
+            ->assertSee('Estadía reservada temporalmente')
+            ->assertSee('COP 800.00')
+            ->assertSee('Políticas de esta reserva')
+            ->assertSee('política de cancelación')
+            ->assertSee('Continuar con el método seleccionado');
     }
 
     public function test_integrated_booking_uses_the_real_api_shape_and_enables_the_hosted_checkout_path(): void

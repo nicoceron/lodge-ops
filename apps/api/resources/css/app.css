@@ -27,8 +27,9 @@
 }
 
 * { box-sizing: border-box; }
-.booking-body { margin: 0; color: var(--booking-ink); background: var(--booking-paper); font: 16px/1.55 "Instrument Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.booking-body { overflow-x: hidden; margin: 0; color: var(--booking-ink); background: var(--booking-paper); font: 16px/1.55 "Instrument Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .booking-body a { color: var(--booking-forest); }
+.booking-shell,.booking-card,.review-grid,.status-shell { min-width: 0; }
 .booking-shell { width: min(1160px, calc(100% - 40px)); margin-inline: auto; }
 .booking-skip { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px 16px; color: #fff !important; background: var(--booking-forest-dark); border-radius: 8px; transform: translateY(-150%); }
 .booking-skip:focus { transform: translateY(0); }
@@ -43,7 +44,7 @@
 .booking-hero { display: grid; grid-template-columns: 1.05fr .95fr; align-items: stretch; gap: 42px; margin-bottom: 34px; }
 .booking-hero-copy { align-self: center; padding-block: 36px; }
 .eyebrow { margin: 0 0 15px; color: var(--booking-forest); font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.booking-body h1,.booking-body h2,.booking-body h3 { margin-top: 0; font-family: Georgia, "Times New Roman", serif; line-height: 1.1; letter-spacing: -.025em; }
+.booking-body h1,.booking-body h2,.booking-body h3 { margin-top: 0; font-family: Georgia, "Times New Roman", serif; line-height: 1.1; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .booking-body h1 { margin-bottom: 18px; font-size: clamp(42px, 6vw, 72px); }
 .booking-body h2 { font-size: clamp(26px, 3vw, 36px); }
 .booking-body h3 { font-size: 22px; }
@@ -71,7 +72,7 @@
 .form-actions { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .form-actions.end { justify-content: flex-end; }
 .currency-field { width: min(180px, 100%); }
-.button,.booking-body button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: 1px solid var(--booking-forest); border-radius: 10px; color: #fff !important; background: var(--booking-forest); font: 750 15px/1.3 inherit; text-decoration: none; cursor: pointer; }
+.button,.booking-body button { max-width: 100%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: 1px solid var(--booking-forest); border-radius: 10px; color: #fff !important; background: var(--booking-forest); font: 750 15px/1.3 inherit; overflow-wrap: anywhere; text-align: center; text-decoration: none; cursor: pointer; white-space: normal; }
 .button:hover,.booking-body button:hover { background: var(--booking-forest-dark); }
 .button.secondary { color: var(--booking-ink) !important; border-color: #b8c3ba; background: #fff; }
 .button.secondary:hover { background: var(--booking-cream); }
@@ -84,7 +85,8 @@
 .option-card:has(input:checked) { border-color: var(--booking-forest); box-shadow: 0 0 0 2px rgba(23,74,50,.18); }
 .option-card.unavailable { opacity: .62; cursor: not-allowed; }
 .option-visual { position: relative; width: 110px; height: 110px; overflow: hidden; border-radius: 12px; background: linear-gradient(145deg, #96ad8a, #285d40); }
-.option-copy { display: grid; gap: 7px; font-weight: 400; }
+.option-copy { min-width: 0; display: grid; gap: 7px; font-weight: 400; overflow-wrap: anywhere; }
+.option-card > * { min-width: 0; }
 .option-copy strong { font-size: 20px; }
 .option-copy > span:last-child { color: var(--booking-muted); }
 .pill { width: fit-content; padding: 4px 8px; border-radius: 999px; color: var(--booking-success); background: #e4f2e8; font-size: 12px; font-weight: 800; }
@@ -109,11 +111,11 @@
 .review-main { display: grid; gap: 22px; }
 .price-table { display: grid; }
 .price-row { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--booking-line); }
-.price-row > div:first-child { display: grid; gap: 4px; }
+.price-row > div:first-child { min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .line-kind { color: var(--booking-muted); font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
 .amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .price-row.total { padding-top: 20px; border: 0; font-size: 21px; }
-.deposit-row { display: flex; justify-content: space-between; gap: 20px; padding: 16px; border-radius: 12px; color: var(--booking-forest-dark); background: var(--booking-moss); }
+.deposit-row { display: flex; justify-content: space-between; gap: 20px; padding: 16px; border-radius: 12px; color: var(--booking-forest-dark); background: var(--booking-moss); overflow-wrap: anywhere; }
 .policy-section details { margin-top: 12px; border: 1px solid var(--booking-line); border-radius: 10px; }
 .policy-section summary { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; font-weight: 750; }
 .policy-section summary span { color: var(--booking-muted); font-size: 13px; }
@@ -136,12 +138,17 @@
 .status-meta { width: min(560px,100%); margin: 28px auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; text-align: left; }
 .status-meta > div { padding: 12px; border-radius: 10px; background: var(--booking-cream); overflow-wrap: anywhere; }
 .status-meta dt { color: var(--booking-muted); font-size: 12px; }
-.status-meta dd { margin: 4px 0 0; font-weight: 720; }
+.status-meta dd { margin: 4px 0 0; font-weight: 720; overflow-wrap: anywhere; }
 .authority-note,.status-live { color: var(--booking-muted); font-size: 14px; }
 .payment-methods { display: grid; gap: 12px; }
 .payment-method { grid-template-columns: 22px 1fr !important; align-items: start !important; padding: 16px; border: 1px solid var(--booking-line); border-radius: 12px; }
 .payment-method span { display: grid; gap: 6px; }
 .payment-method small { color: var(--booking-muted); font-weight: 450; }
+.status-policy { text-align: left; }
+.policy-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 0; }
+.policy-summary > div { display: flex; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 10px; background: var(--booking-cream); }
+.policy-summary dt { color: var(--booking-muted); overflow-wrap: anywhere; }
+.policy-summary dd { margin: 0; font-weight: 750; }
 .manual-panel > p { white-space: pre-line; }
 .action-panel form { display: grid; gap: 16px; }
 .confirmation-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 24px 0; }
@@ -172,13 +179,15 @@
 }
 
 @media (max-width: 620px) {
-    .booking-shell { width: min(100% - 28px,1160px); }
-    .booking-header-inner { min-height: 66px; }
+    .booking-shell { width: min(100% - 24px,1160px); }
+    .booking-header-inner { min-height: 66px; gap: 10px; }
     .booking-brand strong { display: none; }
     .booking-language a { padding-inline: 9px; font-size: 14px; }
     .booking-main { padding-block: 34px 60px; }
     .booking-body h1 { font-size: 42px; }
-    .booking-card { padding: 20px; border-radius: 16px; }
+    .booking-card { padding: 18px; border-radius: 16px; }
+    .section-heading { gap: 10px; }
+    .section-heading > span { width: 32px; height: 32px; flex-basis: 32px; }
     .booking-hero { gap: 12px; }
     .booking-hero-copy { padding-block: 10px; }
     .hero-media { min-height: 220px; border-radius: 18px; }
@@ -186,10 +195,15 @@
     .form-grid.five label:nth-child(-n+2) { grid-column: 1 / -1; }
     .form-actions,.booking-footer-grid,.analytics-consent { align-items: stretch; flex-direction: column; }
     .currency-field { width: 100%; }
-    .option-card { grid-template-columns: 22px 76px 1fr; padding: 10px; }
-    .option-visual { width: 76px; height: 92px; }
+    .option-card { grid-template-columns: 22px 64px minmax(0,1fr); padding: 10px; }
+    .option-visual { width: 64px; height: 86px; }
+    .price-row { gap: 10px; }
+    .deposit-row { align-items: flex-start; }
+    .status-card { padding-block: 30px; }
+    .policy-summary { grid-template-columns: 1fr; }
     .published-options,.confirmation-grid { grid-template-columns: 1fr; }
     .status-meta { grid-template-columns: 1fr; }
+    .status-actions .button,.confirmation-links .button { width: 100%; }
     .booking-help { text-align: left; }
     .button-row .button { flex: 1; }
 }

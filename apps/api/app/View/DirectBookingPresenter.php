@@ -15,8 +15,13 @@ final class DirectBookingPresenter
         $major = intdiv($absolute, 100);
         $minor = $absolute % 100;
         $spanish = str_starts_with($locale, 'es');
-        $majorText = number_format($major, 0, $spanish ? ',' : '.', $spanish ? '.' : ',');
-        $formatted = $majorText.($spanish ? ',' : '.').str_pad((string) $minor, 2, '0', STR_PAD_LEFT);
+        // Keep COP's numeric representation stable when a guest switches
+        // language so quote, hold, and payment amounts can be compared
+        // directly. Other currencies retain their locale-specific separators.
+        $separator = $currency === 'COP' ? '.' : ($spanish ? ',' : '.');
+        $thousands = $currency === 'COP' ? ',' : ($spanish ? '.' : ',');
+        $majorText = number_format($major, 0, $separator, $thousands);
+        $formatted = $majorText.$separator.str_pad((string) $minor, 2, '0', STR_PAD_LEFT);
 
         return ($negative ? '-' : '').$currency.' '.$formatted;
     }

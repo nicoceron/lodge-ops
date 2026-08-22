@@ -21,8 +21,15 @@
             <strong>Inn</strong>
         </a>
         <nav class="booking-language" aria-label="{{ __('direct-booking.language') }}">
-            <a href="{{ route('direct-booking.show', [$propertySlug, 'lang' => 'en']) }}" @if(!str_starts_with($locale ?? '', 'es')) aria-current="page" @endif lang="en">{{ __('direct-booking.english') }}</a>
-            <a href="{{ route('direct-booking.show', [$propertySlug, 'lang' => 'es']) }}" @if(str_starts_with($locale ?? '', 'es')) aria-current="page" @endif lang="es">{{ __('direct-booking.spanish') }}</a>
+            @php
+                $languageOrderReference = $orderReference ?? request()->route('orderReference');
+                $languageRoute = $languageOrderReference !== null && request()->routeIs('direct-booking.review')
+                    ? 'direct-booking.review'
+                    : ($languageOrderReference !== null && request()->routeIs('direct-booking.status') ? 'direct-booking.status' : 'direct-booking.show');
+                $languageParameters = $languageOrderReference !== null ? [$propertySlug, $languageOrderReference] : [$propertySlug];
+            @endphp
+            <a href="{{ route($languageRoute, array_merge($languageParameters, ['lang' => 'en'])) }}" @if(!str_starts_with($locale ?? '', 'es')) aria-current="page" @endif lang="en">{{ __('direct-booking.english') }}</a>
+            <a href="{{ route($languageRoute, array_merge($languageParameters, ['lang' => 'es'])) }}" @if(str_starts_with($locale ?? '', 'es')) aria-current="page" @endif lang="es">{{ __('direct-booking.spanish') }}</a>
         </nav>
     </div>
 </header>

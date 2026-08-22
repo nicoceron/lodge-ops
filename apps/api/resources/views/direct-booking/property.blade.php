@@ -47,7 +47,7 @@
             $availableCount = collect($property['bookables'])->filter(fn($item) => (bool) data_get($bookability->get($item['key']), 'bookable'))->count();
         @endphp
         <section class="results-section" aria-labelledby="results-title" data-analytics-event="availability_searched">
-            <div class="section-heading"><span>02</span><div><h2 id="results-title">{{ __('direct-booking.property.results') }}</h2><p>{{ \App\View\DirectBookingPresenter::date($availability['arrival_date'], $locale) }} — {{ \App\View\DirectBookingPresenter::date($availability['departure_date'], $locale) }}</p></div></div>
+            <div class="section-heading"><span>02</span><div><h2 id="results-title">{{ __('direct-booking.property.results') }}</h2><p><time datetime="{{ $availability['arrival_date'] }}">{{ \App\View\DirectBookingPresenter::date($availability['arrival_date'], $locale) }}</time> <span aria-hidden="true">—</span> <time datetime="{{ $availability['departure_date'] }}">{{ \App\View\DirectBookingPresenter::date($availability['departure_date'], $locale) }}</time></p></div></div>
             @if($availableCount === 0)
                 <div class="booking-card empty-state"><h3>{{ __('direct-booking.property.empty_title') }}</h3><p>{{ __('direct-booking.property.empty_body') }}</p><a class="button secondary" href="#search-title">{{ __('direct-booking.property.another_date') }}</a></div>
             @else
