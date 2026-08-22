@@ -727,6 +727,25 @@ final class DirectBookingApiService
         return $order;
     }
 
+    /**
+     * Resolve credentials for the status display only. Mutations must use resolveOrder().
+     *
+     * @throws AuthenticationException
+     */
+    public function resolveOrderForDisplay(DirectBookingPropertySetting $setting, string $reference, ?string $bearer): DirectBookingOrder
+    {
+        try {
+            $order = $this->tokens->resolveForDisplay((string) $bearer, $setting->property_id);
+        } catch (AuthenticationException) {
+            throw new AuthenticationException;
+        }
+        if (! hash_equals($reference, $order->public_reference)) {
+            throw new AuthenticationException;
+        }
+
+        return $order;
+    }
+
     /** @return array<string, mixed> */
     private function quoteProjection(DirectBookingOrder $order, BookingQuote $quote): array
     {

@@ -27,6 +27,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Configure the exact local reverse-proxy address at deployment time.
+        // Never trust an entire private network for forwarded host or scheme headers.
+        $trustedProxies = array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('TRUSTED_PROXIES', '127.0.0.1,::1')),
+        )));
+        $middleware->trustProxies($trustedProxies);
         $middleware->alias([
             'idempotent' => EnsureIdempotentCommand::class,
             'direct-booking.idempotent' => EnsureDirectBookingIdempotency::class,

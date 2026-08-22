@@ -113,7 +113,8 @@ final class DirectBookingContractController extends Controller
         return $this->execute($request, function () use ($request, $orderReference): array {
             $setting = $this->setting($request);
 
-            return $this->api->status($setting, $this->api->resolveOrder($setting, $orderReference, $request->bearerToken()));
+            // Status is a read-only projection and may remain visible after session expiry.
+            return $this->api->status($setting, $this->api->resolveOrderForDisplay($setting, $orderReference, $request->bearerToken()));
         });
     }
 

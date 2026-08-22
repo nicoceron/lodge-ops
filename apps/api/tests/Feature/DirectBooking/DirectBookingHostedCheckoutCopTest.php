@@ -121,9 +121,18 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
         $this->getJson($base."/orders/{$reference}", $auth)
             ->assertOk()
             ->assertJsonPath('data.state', 'payment_pending');
-        $this->get('/pay/return/'.$externalReference)
+        $return = $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
+            ->withHeaders([
+                'X-Forwarded-Proto' => 'https',
+                'X-Forwarded-Host' => 'book.example.test',
+            ])
+            ->get('/pay/return/'.$externalReference);
+        $return
             ->assertOk()
-            ->assertSee('never records money');
+            ->assertSee('never records money')
+            ->assertSee('/book/'.$setting->public_slug.'/orders/'.$reference.'/status')
+            ->assertSee('https://book.example.test/book/'.$setting->public_slug.'/orders/'.$reference.'/status')
+            ->assertSee('provider query is informational');
 
         $this->getJson($base."/orders/{$reference}", $auth)
             ->assertOk()
@@ -317,6 +326,39 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
             ->assertJsonPath('error.code', 'not_found');
         $this->assertDatabaseCount('payments', 0);
         $this->assertNotSame('confirmed', $recovered->json('data.state'));
+    }
+
+    public function test_expired_session_can_display_expired_state_but_display_credentials_cannot_mutate(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        [$setting, $categoryItem] = $this->launchReadyCopProperty($property);
+        $base = '/api/v1/direct-booking/properties/'.$setting->public_slug;
+        [$reference, $auth, $held, $recoveryToken] = $this->heldOrder($base, $this->stay($categoryItem->public_key));
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $order = DirectBookingOrder::query()->where('public_reference', $reference)->firstOrFail();
+        $order->forceFill([
+            'state' => 'expired',
+            'state_version' => $held->json('data.state_version') + 1,
+            'session_expires_at' => now()->subMinute(),
+            'expires_at' => now()->subMinute(),
+        ])->save();
+
+        $this->getJson($base."/orders/{$reference}", $auth)
+            ->assertOk()
+            ->assertJsonPath('data.state', 'expired');
+        $this->getJson($base."/orders/{$reference}", ['Authorization' => 'Bearer '.$recoveryToken])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'expired');
+
+        foreach ([$auth, ['Authorization' => 'Bearer '.$recoveryToken]] as $credentials) {
+            $this->postJson($base."/orders/{$reference}/checkout", [
+                'expected_state_version' => $order->state_version,
+                'method' => 'hosted_checkout',
+            ], $credentials + ['Idempotency-Key' => (string) Str::uuid()])
+                ->assertNotFound()
+                ->assertJsonPath('error.code', 'not_found');
+        }
     }
 
     public function test_recover_reprices_the_authoritative_quote_for_selected_dates(): void
