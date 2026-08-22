@@ -41,7 +41,7 @@
     @if($state === 'held' && in_array('checkout', $status['actions'], true))
         <section class="booking-card" aria-labelledby="payment-title">
             <h2 id="payment-title">{{ __('direct-booking.status.payment_title') }}</h2>
-            <form method="post" action="{{ route('direct-booking.checkout', [$propertySlug, $orderReference]) }}" class="booking-form" data-disable-submit data-analytics-submit="checkout_selected">
+            <form method="post" action="{{ route('direct-booking.checkout', [$propertySlug, $orderReference] + $fixtureQuery) }}" class="booking-form" data-disable-submit data-analytics-submit="checkout_selected">
                 @csrf
                 <input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}">
                 <input type="hidden" name="checkout_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
@@ -66,7 +66,7 @@
                 <div class="notice error" role="alert">{{ __('direct-booking.status.manual_not_ready') }}</div>
             @endif
             @if($manualInstructions && in_array('submit_manual_evidence', $status['actions'], true))
-                <form method="post" action="{{ route('direct-booking.evidence', [$propertySlug, $orderReference]) }}" enctype="multipart/form-data" class="booking-form" data-disable-submit>
+                <form method="post" action="{{ route('direct-booking.evidence', [$propertySlug, $orderReference] + $fixtureQuery) }}" enctype="multipart/form-data" class="booking-form" data-disable-submit>
                     @csrf
                     <input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}">
                     <input type="hidden" name="evidence_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
@@ -78,11 +78,11 @@
     @endif
 
     @if(in_array('retry_payment', $status['actions'], true))
-        <section class="booking-card action-panel"><form method="post" action="{{ route('direct-booking.retry-payment', [$propertySlug, $orderReference]) }}" data-disable-submit>@csrf<input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}"><input type="hidden" name="retry_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}"><button class="button" type="submit">{{ __('direct-booking.status.retry_payment') }}</button></form></section>
+        <section class="booking-card action-panel"><form method="post" action="{{ route('direct-booking.retry-payment', [$propertySlug, $orderReference] + $fixtureQuery) }}" data-disable-submit>@csrf<input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}"><input type="hidden" name="retry_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}"><button class="button" type="submit">{{ __('direct-booking.status.retry_payment') }}</button></form></section>
     @endif
 
     @if($state === 'expired' && in_array('recover', $status['actions'], true))
-        <section class="booking-card action-panel"><h2>{{ __('direct-booking.status.recover_dates') }}</h2><form method="post" action="{{ route('direct-booking.recover', [$propertySlug, $orderReference]) }}" class="booking-form" data-disable-submit>@csrf<input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}"><input type="hidden" name="recover_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}"><div class="form-grid two"><label>{{ __('direct-booking.property.arrival') }}<input type="date" name="arrival_date"></label><label>{{ __('direct-booking.property.departure') }}<input type="date" name="departure_date"></label></div><button class="button" type="submit">{{ __('direct-booking.status.recover') }}</button></form></section>
+        <section class="booking-card action-panel"><h2>{{ __('direct-booking.status.recover_dates') }}</h2><form method="post" action="{{ route('direct-booking.recover', [$propertySlug, $orderReference] + $fixtureQuery) }}" class="booking-form" data-disable-submit>@csrf<input type="hidden" name="expected_state_version" value="{{ $status['state_version'] }}"><input type="hidden" name="recover_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}"><div class="form-grid two"><label>{{ __('direct-booking.property.arrival') }}<input type="date" name="arrival_date"></label><label>{{ __('direct-booking.property.departure') }}<input type="date" name="departure_date"></label></div><button class="button" type="submit">{{ __('direct-booking.status.recover') }}</button></form></section>
     @endif
 
     @if($state === 'confirmed' && $confirmation)

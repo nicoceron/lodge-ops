@@ -57,6 +57,14 @@ final class DirectBookingWebController extends Controller
                 $availabilityResponse = $this->call(fn () => $this->client->availability($request, $propertySlug, $this->availabilityFacts($search)));
                 if ($availabilityResponse?->successful()) {
                     $availability = (array) $availabilityResponse->json('data', []);
+                } elseif ($this->errorCode($availabilityResponse) === 'unavailable') {
+                    $availability = [
+                        'arrival_date' => $search['arrival_date'],
+                        'departure_date' => $search['departure_date'],
+                        'timezone' => $property['timezone'] ?? 'UTC',
+                        'currency' => $search['currency'],
+                        'options' => [],
+                    ];
                 } else {
                     $errors->add('booking', $this->errorMessage($availabilityResponse));
                 }
@@ -340,7 +348,7 @@ final class DirectBookingWebController extends Controller
 
     public function checkout(Request $request, string $propertySlug, string $orderReference): RedirectResponse
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true);
         if ($credentials === null) {
             return redirect()->route('direct-booking.unavailable', $propertySlug);
         }
@@ -376,7 +384,7 @@ final class DirectBookingWebController extends Controller
 
     public function retryPayment(Request $request, string $propertySlug, string $orderReference): RedirectResponse
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true);
         if ($credentials === null) {
             return redirect()->route('direct-booking.unavailable', $propertySlug);
         }
@@ -399,7 +407,7 @@ final class DirectBookingWebController extends Controller
 
     public function evidence(Request $request, string $propertySlug, string $orderReference): RedirectResponse
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true);
         if ($credentials === null) {
             return redirect()->route('direct-booking.unavailable', $propertySlug);
         }
@@ -425,7 +433,7 @@ final class DirectBookingWebController extends Controller
 
     public function recover(Request $request, string $propertySlug, string $orderReference): RedirectResponse
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference, allowExpiredSession: true);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true, allowExpiredSession: true);
         if ($credentials === null || ! isset($credentials['recovery'])) {
             return redirect()->route('direct-booking.unavailable', $propertySlug);
         }
@@ -593,6 +601,7 @@ final class DirectBookingWebController extends Controller
         $boundReference = (string) $request->cookie($this->cookieName('order', $propertySlug), '');
         if ($fixtureFallback && (bool) config('direct-booking-ui.allow_fixture_controls') && $request->hasAny(['fixture_state', 'fixture_error'])) {
             $session = str_repeat('A', 64);
+            $recovery = str_repeat('R', 64);
             $boundReference = $reference;
         }
         if (! hash_equals($reference, $boundReference) || (! $allowExpiredSession && ! $this->validToken($session))) {

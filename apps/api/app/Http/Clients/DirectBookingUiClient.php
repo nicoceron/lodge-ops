@@ -80,7 +80,7 @@ final class DirectBookingUiClient
 
     public function evidence(Request $browserRequest, string $propertySlug, string $reference, string $token, int $expectedVersion, UploadedFile $file, string $idempotencyKey): Response
     {
-        return $this->mutation($browserRequest, $idempotencyKey, $token)
+        return $this->mutation($browserRequest, $idempotencyKey, $token, multipart: true)
             ->attach('evidence', $file->get(), $file->getClientOriginalName(), ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'])
             ->post($this->orderPath($propertySlug, $reference).'/manual-payment-evidence', [
                 'expected_state_version' => (string) $expectedVersion,
@@ -105,15 +105,22 @@ final class DirectBookingUiClient
             ->get($this->orderPath($propertySlug, $reference).'/confirmation/documents/'.$documentReference);
     }
 
-    private function mutation(Request $request, string $idempotencyKey, ?string $token = null): PendingRequest
+    private function mutation(Request $request, string $idempotencyKey, ?string $token = null, bool $multipart = false): PendingRequest
     {
-        return $this->client($request, $token)->withHeader('Idempotency-Key', $idempotencyKey);
+        return $this->client($request, $token, $multipart)->withHeader('Idempotency-Key', $idempotencyKey);
     }
 
-    private function client(Request $request, ?string $token = null): PendingRequest
+    private function client(Request $request, ?string $token = null, bool $multipart = false): PendingRequest
     {
-        $pending = Http::acceptJson()
-            ->asJson()
+        $pending = Http::acceptJson();
+        if (! $multipart) {
+            $pending = $pending->asJson();
+        } else {
+            // Guzzle supplies the multipart boundary. An inherited JSON
+            // Content-Type header prevents Symfony from parsing the upload.
+            $pending = $pending->withOptions(['headers' => []])->asMultipart()->acceptJson();
+        }
+        $pending = $pending
             ->timeout(10)
             ->connectTimeout(3)
             ->withHeader('X-Correlation-ID', (string) Str::uuid());

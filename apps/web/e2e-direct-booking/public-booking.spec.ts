@@ -122,3 +122,25 @@ test("real API Spanish chrome stays separate from the API locale", async ({ page
   await expect(page.locator("input[name=card_number], input[name=pan], input[name=cvv], input[name=expiry]")).toHaveCount(0);
   await expectNoCriticalAccessibilityFindings(page);
 });
+
+test("not-ready properties fail closed without quote or hold controls", async ({ page }) => {
+  await page.goto("/book/not-ready-lodge");
+
+  await expect(page.getByRole("heading", { name: "Direct booking unavailable" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check availability" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review this stay" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hold this stay and continue to payment" })).toHaveCount(0);
+  await expect(page.locator("input[name=card_number], input[name=pan], input[name=cvv], input[name=expiry]")).toHaveCount(0);
+  await expectNoCriticalAccessibilityFindings(page);
+});
+
+test("unavailable dates show a closed results state without hold or checkout controls", async ({ page }) => {
+  await page.goto(searchUrl("en", 1200) + "&adults=50");
+
+  await expect(page.getByRole("heading", { name: "Available options" })).toBeVisible();
+  await expect(page.getByText("No published option is available for these dates")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review this stay" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue with selected payment method" })).toHaveCount(0);
+  await expect(page.locator("input[name=card_number], input[name=pan], input[name=cvv], input[name=expiry]")).toHaveCount(0);
+  await expectNoCriticalAccessibilityFindings(page);
+});

@@ -22,7 +22,7 @@ Route::prefix('book/{propertySlug}')
             ->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->name('review');
         Route::post('orders/{orderReference}/hold', [DirectBookingWebController::class, 'hold'])
             ->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')
-            ->middleware(['throttle:direct-booking-mutation', 'throttle:direct-booking-hold'])->name('hold');
+            ->middleware('throttle:direct-booking-mutation')->name('hold');
         Route::get('orders/{orderReference}/status', [DirectBookingWebController::class, 'status'])
             ->where('orderReference', '[0-9A-HJKMNP-TV-Z]{26}')->name('status');
         Route::get('orders/{orderReference}/poll', [DirectBookingWebController::class, 'poll'])

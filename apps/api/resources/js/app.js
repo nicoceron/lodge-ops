@@ -7,12 +7,32 @@ if (app) {
     }
 
     document.querySelectorAll('form[data-disable-submit]').forEach((form) => {
-        form.addEventListener('submit', () => {
+        let submitting = false;
+        const disableSubmit = () => {
             form.setAttribute('aria-busy', 'true');
             form.querySelectorAll('button[type="submit"]').forEach((button) => {
                 button.disabled = true;
                 button.setAttribute('aria-disabled', 'true');
             });
+        };
+        form.addEventListener('click', (event) => {
+            if (!(event.target instanceof HTMLButtonElement) || event.target.type !== 'submit') return;
+            if (submitting) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+            }
+            if (!form.checkValidity()) return;
+            submitting = true;
+            window.setTimeout(disableSubmit, 0);
+        }, true);
+        form.addEventListener('submit', () => {
+            if (submitting) {
+                disableSubmit();
+                return;
+            }
+            submitting = true;
+            disableSubmit();
         });
     });
 

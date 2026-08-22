@@ -4,6 +4,7 @@ namespace Tests\Feature\DirectBooking;
 
 use App\View\DirectBookingPresenter;
 use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -451,6 +452,290 @@ class DirectBookingPublicUxTest extends TestCase
             ->assertSee('Instruction version 2')
             ->assertDontSee('Contract-mock')
             ->assertDontSee('UI fixture only');
+    }
+
+    public function test_unavailable_search_response_renders_a_closed_results_state_without_booking_ctas(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(function (ClientRequest $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+            if (str_ends_with($path, '/availability')) {
+                return Http::response([
+                    'error' => [
+                        'code' => 'unavailable',
+                        'message' => 'No availability is published for these dates.',
+                        'correlation_id' => 'availability-closed-001',
+                        'retryable' => true,
+                    ],
+                ], 409);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+
+        $response = $this->get('/book/estancia-viento-sur?lang=en&arrival_date=2026-09-10&departure_date=2026-09-12&adults=2&children=0&infants=0&currency=COP');
+
+        $response->assertOk()
+            ->assertSee('No published option is available for these dates')
+            ->assertSee('Request another date')
+            ->assertDontSee('Review this stay')
+            ->assertDontSee('Hold this stay and continue to payment')
+            ->assertDontSee('Continue with selected payment method');
+    }
+
+    public function test_not_ready_property_stops_the_quote_entry_point(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(fn (ClientRequest $request) => Http::response([
+            'error' => [
+                'code' => 'booking_unavailable',
+                'message' => 'This property is not ready for public booking.',
+                'correlation_id' => 'not-ready-001',
+                'retryable' => true,
+            ],
+        ], 503));
+
+        $response = $this->get('/book/not-ready-lodge');
+
+        $response->assertOk()
+            ->assertSee('Direct booking unavailable')
+            ->assertSee('Direct booking is temporarily unavailable for this property.')
+            ->assertDontSee('Check availability')
+            ->assertDontSee('Review this stay')
+            ->assertDontSee('Hold this stay and continue to payment');
+    }
+
+    public function test_dom_amount_tampering_never_reaches_hold_or_checkout_api_payloads(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(function (ClientRequest $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/hold')) {
+                return Http::response(['data' => $this->integratedHeldStatus()], 200);
+            }
+            if (str_ends_with($path, '/checkout')) {
+                return Http::response(['data' => [
+                    'order_reference' => self::REFERENCE,
+                    'state' => 'payment_pending',
+                    'state_version' => 4,
+                    'method' => 'hosted_checkout',
+                    'checkout_url' => 'https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=opaque',
+                    'hold_expires_at' => '2026-09-10T12:30:00Z',
+                    'checkout_expires_at' => '2026-09-10T12:45:00Z',
+                ]], 200);
+            }
+            if (str_contains($path, '/policies/')) {
+                return Http::response(['data' => [
+                    'kind' => basename($path),
+                    'locale' => 'en',
+                    'version' => 1,
+                    'checksum' => str_repeat('a', 64),
+                    'title' => 'Published policy',
+                    'body' => 'Published policy content.',
+                ]], 200);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+        $flowKey = 'direct_booking_ui.'.hash('sha256', 'estancia-viento-sur:'.self::REFERENCE);
+        $request = $this->withSession([
+            $flowKey => [
+                'quote' => $this->integratedQuote(),
+                'property' => $this->integratedProperty(),
+                'search' => ['adults' => 2, 'children' => 0, 'infants' => 0, 'locale' => 'en', 'ui_locale' => 'en'],
+            ],
+        ])->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('a', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('b', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+
+        $review = $request->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/review');
+        $review->assertOk()
+            ->assertDontSee('name="amount_minor"', false)
+            ->assertDontSee('name="total"', false)
+            ->assertDontSee('name="deposit"', false);
+
+        $request->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/hold', [
+            'expected_state_version' => 2,
+            'hold_idempotency_key' => (string) Str::uuid(),
+            'first_name' => 'Public',
+            'last_name' => 'Guest',
+            'email' => 'tamper@example.test',
+            'phone' => '+573001112233',
+            'currency' => 'USD',
+            'amount_minor' => 1,
+            'total' => ['amount_minor' => 1, 'currency' => 'USD'],
+            'deposit' => ['amount_minor' => 1, 'currency' => 'USD'],
+            'consent' => [
+                'terms' => '1',
+                'privacy' => '1',
+                'cancellation' => '1',
+                'no_show' => '1',
+            ],
+            'turnstile_token' => 'bot-verification-not-required',
+        ])->assertRedirect('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status');
+
+        Http::assertSent(function (ClientRequest $request): bool {
+            if (! str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/hold')) {
+                return false;
+            }
+
+            $payload = $request->data();
+
+            return ! array_key_exists('amount_minor', $payload)
+                && ! array_key_exists('total', $payload)
+                && ! array_key_exists('deposit', $payload)
+                && ! array_key_exists('currency', $payload);
+        });
+
+        $request->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/checkout', [
+            'expected_state_version' => 3,
+            'method' => 'hosted_checkout',
+            'checkout_idempotency_key' => (string) Str::uuid(),
+            'amount_minor' => 1,
+            'currency' => 'USD',
+        ])->assertRedirect('https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=opaque');
+
+        Http::assertSent(function (ClientRequest $request): bool {
+            if (! str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/checkout')) {
+                return false;
+            }
+
+            $payload = $request->data();
+
+            return $payload === ['expected_state_version' => 3, 'method' => 'hosted_checkout'];
+        });
+    }
+
+    public function test_failure_expiry_and_review_states_never_render_a_confirmed_or_payable_room(): void
+    {
+        $this->fakeContract();
+
+        $cases = [
+            'payment_failed' => ['title' => 'Payment was not completed', 'button' => 'Start a new secure checkout'],
+            'expired' => ['title' => 'Booking session expired', 'button' => 'Recover with current dates'],
+            'paid_needs_review' => ['title' => 'Payment received — review required', 'button' => null],
+        ];
+        foreach ($cases as $state => $expectations) {
+            $response = $this->get('/book/rincon-grande/orders/'.self::REFERENCE.'/status?lang=en&fixture_state='.$state);
+
+            $response->assertOk()
+                ->assertSee($expectations['title'])
+                ->assertDontSee('Reservation confirmed')
+                ->assertDontSee('Continue with selected payment method')
+                ->assertDontSee('Paid</dd>', false);
+            if ($expectations['button'] !== null) {
+                $response->assertSee($expectations['button']);
+            }
+        }
+    }
+
+    public function test_fixture_retry_keeps_the_failed_order_unpaid_and_redirects_to_the_hosted_checkout(): void
+    {
+        $this->fakeContract();
+
+        $status = $this->get('/book/rincon-grande/orders/'.self::REFERENCE.'/status?fixture_state=payment_failed');
+        $status->assertOk()
+            ->assertSee('/book/rincon-grande/orders/'.self::REFERENCE.'/payments/retry?fixture_state=payment_failed', false);
+
+        $response = $this->post('/book/rincon-grande/orders/'.self::REFERENCE.'/payments/retry?fixture_state=payment_failed', [
+            'expected_state_version' => 5,
+            'retry_idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $response->assertRedirect('https://checkout.example.test/opaque-session');
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/payments/retry')
+            && $request->hasHeader('Authorization', 'Bearer '.str_repeat('A', 64)));
+    }
+
+    public function test_evidence_submission_renders_as_unconfirmed_evidence_pending_state(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(function (ClientRequest $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/manual-payment-evidence')) {
+                $this->assertTrue($request->isMultipart());
+                $this->assertTrue($request->hasHeader('Accept', 'application/json'));
+                $this->assertStringStartsWith('multipart/form-data; boundary=', (string) ($request->header('Content-Type')[0] ?? ''));
+
+                return Http::response(['data' => [
+                    'order_reference' => self::REFERENCE,
+                    'state' => 'evidence_pending',
+                    'state_version' => 5,
+                    'session_expires_at' => '2026-09-10T14:00:00Z',
+                    'quote_expires_at' => '2026-09-10T12:20:00Z',
+                    'hold_expires_at' => '2026-09-10T12:30:00Z',
+                    'checkout_expires_at' => null,
+                    'payment_capabilities' => [['method' => 'manual_bank_transfer', 'currency' => 'COP']],
+                    'actions' => ['contact_property'],
+                    'safe_failure_code' => null,
+                ]], 202);
+            }
+            if (str_ends_with($path, '/orders/'.self::REFERENCE)) {
+                return Http::response(['data' => [
+                    'order_reference' => self::REFERENCE,
+                    'state' => 'evidence_pending',
+                    'state_version' => 5,
+                    'session_expires_at' => '2026-09-10T14:00:00Z',
+                    'quote_expires_at' => '2026-09-10T12:20:00Z',
+                    'hold_expires_at' => '2026-09-10T12:30:00Z',
+                    'checkout_expires_at' => null,
+                    'payment_capabilities' => [['method' => 'manual_bank_transfer', 'currency' => 'COP']],
+                    'actions' => ['contact_property'],
+                    'safe_failure_code' => null,
+                ]], 200);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+        $flowKey = 'direct_booking_ui.'.hash('sha256', 'estancia-viento-sur:'.self::REFERENCE);
+        $request = $this->withSession([
+            $flowKey => [
+                'quote' => $this->integratedQuote(),
+                'property' => $this->integratedProperty(),
+                'manual_payment_instructions' => [
+                    'title' => 'Bank transfer instructions',
+                    'body' => 'Send the exact COP deposit.',
+                    'version' => 2,
+                    'currency' => 'COP',
+                ],
+                'search' => ['adults' => 2, 'children' => 0, 'infants' => 0, 'locale' => 'en', 'ui_locale' => 'en'],
+            ],
+        ])->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('a', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('b', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+
+        $response = $request->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/manual-payment-evidence', [
+            'expected_state_version' => 4,
+            'evidence_idempotency_key' => (string) Str::uuid(),
+            'evidence' => UploadedFile::fake()->image('transfer.png', 20, 20),
+        ]);
+
+        $response->assertRedirect('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status');
+        $request->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status')
+            ->assertOk()
+            ->assertSee('Evidence received')
+            ->assertSee('Uploading it did not record a payment.')
+            ->assertDontSee('Reservation confirmed')
+            ->assertDontSee('Paid</dd>', false);
     }
 
     private function fakeContract(): void
