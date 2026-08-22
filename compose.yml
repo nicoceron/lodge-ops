@@ -12,6 +12,8 @@ x-api-common: &api-common
     APP_NAME: Inn
     APP_DEBUG: "true"
     APP_URL: http://localhost:${API_PORT:-8000}
+    PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
+    TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.18.0.1}
     DB_CONNECTION: pgsql
     DB_HOST: postgres
     DB_PORT: 5432

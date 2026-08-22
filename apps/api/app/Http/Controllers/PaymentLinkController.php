@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Enums\PaymentRequestState;
+use App\Models\DirectBookingOrder;
+use App\Models\DirectBookingPropertySetting;
 use App\Models\ExchangeRate;
 use App\Models\PaymentAttempt;
 use App\Models\Tenant;
@@ -60,7 +62,23 @@ class PaymentLinkController extends Controller
     {
         $attempt = PaymentAttempt::withoutGlobalScopes()->where('external_reference', $externalReference)->firstOrFail();
         app(TenantContext::class)->set(Tenant::query()->findOrFail($attempt->tenant_id));
+        $directBookingReturnUrl = null;
+        $directBookingOrder = DirectBookingOrder::withoutGlobalScopes()
+            ->where('reservation_id', $attempt->reservation_id)
+            ->first();
+        $setting = $directBookingOrder === null ? null : DirectBookingPropertySetting::withoutGlobalScopes()
+            ->where('property_id', $directBookingOrder->property_id)
+            ->first();
+        if ($directBookingOrder !== null && $setting !== null) {
+            $directBookingReturnUrl = route('direct-booking.status', [
+                $setting->public_slug,
+                $directBookingOrder->public_reference,
+            ]);
+        }
 
-        return view('payments.return', ['attempt' => $attempt->fresh()]);
+        return view('payments.return', [
+            'attempt' => $attempt->fresh(),
+            'directBookingReturnUrl' => $directBookingReturnUrl,
+        ]);
     }
 }

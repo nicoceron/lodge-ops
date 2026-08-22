@@ -121,9 +121,18 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
         $this->getJson($base."/orders/{$reference}", $auth)
             ->assertOk()
             ->assertJsonPath('data.state', 'payment_pending');
-        $this->get('/pay/return/'.$externalReference)
+        $return = $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
+            ->withHeaders([
+                'X-Forwarded-Proto' => 'https',
+                'X-Forwarded-Host' => 'book.example.test',
+            ])
+            ->get('/pay/return/'.$externalReference);
+        $return
             ->assertOk()
-            ->assertSee('never records money');
+            ->assertSee('never records money')
+            ->assertSee('/book/'.$setting->public_slug.'/orders/'.$reference.'/status')
+            ->assertSee('https://book.example.test/book/'.$setting->public_slug.'/orders/'.$reference.'/status')
+            ->assertSee('provider query is informational');
 
         $this->getJson($base."/orders/{$reference}", $auth)
             ->assertOk()
