@@ -319,6 +319,72 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
         $this->assertNotSame('confirmed', $recovered->json('data.state'));
     }
 
+    public function test_recover_reprices_the_authoritative_quote_for_selected_dates(): void
+    {
+        [$tenant, $property, , $membership] = $this->tenantEnvironment();
+        [$setting, $categoryItem] = $this->launchReadyCopProperty($property);
+        $originalStay = $this->stay($categoryItem->public_key);
+        $newArrival = now($property->timezone)->addDays(30)->toDateString();
+        $newDeparture = now($property->timezone)->addDays(32)->toDateString();
+
+        $plan = RatePlan::query()->create([
+            'property_id' => $property->id,
+            'name' => 'Recovery date pricing',
+            'version' => 2,
+            'currency' => 'COP',
+            'state' => 'draft',
+            'is_active' => true,
+        ]);
+        RateRule::query()->create([
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $categoryItem->resource_category_id,
+            'amount_minor' => 40_000,
+            'priority' => 0,
+        ]);
+        RateRule::query()->create([
+            'rate_plan_id' => $plan->id,
+            'resource_category_id' => $categoryItem->resource_category_id,
+            'amount_minor' => 70_000,
+            'starts_on' => $newArrival,
+            'ends_on' => $newDeparture,
+            'priority' => 100,
+        ]);
+        DB::table('rate_plans')->where('id', $plan->id)->update(['state' => 'published', 'published_at' => now()]);
+
+        $base = '/api/v1/direct-booking/properties/'.$setting->public_slug;
+        [$reference, $auth, $held, $recoveryToken] = $this->heldOrder($base, $originalStay);
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $order = DirectBookingOrder::query()->where('public_reference', $reference)->firstOrFail();
+        $order->forceFill(['hold_expires_at' => now()->subMinute()])->save();
+        $order->reservation->forceFill(['hold_expires_at' => now()->subMinute()])->save();
+        Artisan::call('direct-booking:maintain', ['--tenant' => $tenant->id]);
+
+        $expired = $this->getJson($base."/orders/{$reference}", $auth)
+            ->assertOk()
+            ->assertJsonPath('data.state', 'expired');
+        $recovered = $this->postJson($base."/orders/{$reference}/recover", [
+            'expected_state_version' => $expired->json('data.state_version'),
+            'arrival_date' => $newArrival,
+            'departure_date' => $newDeparture,
+        ], ['Authorization' => 'Bearer '.$recoveryToken, 'Idempotency-Key' => (string) Str::uuid()])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'started');
+
+        app(TenantContext::class)->set($tenant, $membership);
+        $recoveredOrder = DirectBookingOrder::query()->where('public_reference', $reference)->firstOrFail();
+        $recoveredQuote = $recoveredOrder->bookingQuote()->with('lines')->firstOrFail();
+
+        $this->assertNull($recoveredOrder->payment_request_id);
+        $this->assertNull($recoveredOrder->hold_expires_at);
+        $this->assertNull($recoveredOrder->checkout_expires_at);
+        $this->assertSame($newArrival, data_get($recoveredQuote->calculation_snapshot, 'business_dates.arrival'));
+        $this->assertSame($newDeparture, data_get($recoveredQuote->calculation_snapshot, 'business_dates.departure'));
+        $this->assertSame(140_000, $recoveredQuote->total_minor);
+        $this->assertSame($newArrival, $recoveredQuote->lines->firstOrFail()->service_on->toDateString());
+        $this->assertNotSame($held->json('data.state_version'), $recovered->json('data.state_version'));
+    }
+
     public function test_expired_hold_cannot_checkout_and_releases_inventory(): void
     {
         [$tenant, $property, , $membership] = $this->tenantEnvironment();
@@ -556,7 +622,7 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
         ];
     }
 
-    /** @param array<string, mixed> $stay @return array{0: string, 1: array{Authorization: string}, 2: TestResponse} */
+    /** @param array<string, mixed> $stay @return array{0: string, 1: array{Authorization: string}, 2: TestResponse, 3: string} */
     private function quotedOrder(string $base, array $stay): array
     {
         $begun = $this->postJson($base.'/orders', [
@@ -571,18 +637,18 @@ class DirectBookingHostedCheckoutCopTest extends TestCase
             'Idempotency-Key' => (string) Str::uuid(),
         ])->assertOk();
 
-        return [$reference, $auth, $quoted];
+        return [$reference, $auth, $quoted, (string) $begun->json('data.recovery_token')];
     }
 
-    /** @param array<string, mixed> $stay @return array{0: string, 1: array{Authorization: string}, 2: TestResponse} */
+    /** @param array<string, mixed> $stay @return array{0: string, 1: array{Authorization: string}, 2: TestResponse, 3: string} */
     private function heldOrder(string $base, array $stay): array
     {
-        [$reference, $auth, $quoted] = $this->quotedOrder($base, $stay);
+        [$reference, $auth, $quoted, $recoveryToken] = $this->quotedOrder($base, $stay);
         $held = $this->postJson($base."/orders/{$reference}/hold", $this->holdBody($quoted), $auth + [
             'Idempotency-Key' => (string) Str::uuid(),
         ])->assertOk();
 
-        return [$reference, $auth, $held];
+        return [$reference, $auth, $held, $recoveryToken];
     }
 
     /** @return array<string, mixed> */

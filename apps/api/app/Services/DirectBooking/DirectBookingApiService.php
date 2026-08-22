@@ -557,15 +557,62 @@ final class DirectBookingApiService
         }
     }
 
-    /** @return array<string, mixed> */
-    public function recover(DirectBookingPropertySetting $setting, string $reference, string $recoveryToken, int $expectedVersion, string $retryIdentity): array
-    {
-        return DB::transaction(function () use ($setting, $reference, $recoveryToken, $expectedVersion, $retryIdentity): array {
+    /** @param array{arrival_date?: string, departure_date?: string} $data @return array<string, mixed> */
+    public function recover(
+        DirectBookingPropertySetting $setting,
+        string $reference,
+        string $recoveryToken,
+        int $expectedVersion,
+        string $retryIdentity,
+        array $data = [],
+    ): array {
+        return DB::transaction(function () use ($setting, $reference, $recoveryToken, $expectedVersion, $retryIdentity, $data): array {
             $recovered = $this->tokens->recover($recoveryToken, $setting->property_id);
             $order = $recovered['order'];
             if (! hash_equals($reference, $order->public_reference) || $order->state !== DirectBookingOrderState::Expired) {
                 throw new AuthenticationException;
             }
+            $hasArrival = array_key_exists('arrival_date', $data);
+            $hasDeparture = array_key_exists('departure_date', $data);
+            if ($hasArrival xor $hasDeparture) {
+                throw ValidationException::withMessages([
+                    'arrival_date' => 'Arrival and departure are required together when changing recovery dates.',
+                    'departure_date' => 'Arrival and departure are required together when changing recovery dates.',
+                ]);
+            }
+            $repriced = null;
+            if ($hasArrival && $hasDeparture && $order->booking_quote_id !== null) {
+                $sourceQuote = BookingQuote::query()->with('lines')->lockForUpdate()->find($order->booking_quote_id);
+                if ($sourceQuote === null || $sourceQuote->property_id !== $setting->property_id) {
+                    throw new DirectBookingContractException(DirectBookingErrorCode::Unavailable, DirectBookingErrorCode::Unavailable->publicMessage());
+                }
+                try {
+                    $repriced = $this->quotes->create([
+                        ...$sourceQuote->inputs,
+                        'property_id' => $setting->property_id,
+                        'rate_plan_id' => $sourceQuote->rate_plan_id,
+                        'resource_category_id' => $sourceQuote->resource_category_id,
+                        'resource_id' => $sourceQuote->resource_id,
+                        'program_id' => $sourceQuote->program_id,
+                        'starts_at' => $this->localDate($setting, $data['arrival_date']),
+                        'ends_at' => $this->localDate($setting, $data['departure_date']),
+                        'adults' => $sourceQuote->adults,
+                        'children' => $sourceQuote->children,
+                        'infants' => $sourceQuote->infants,
+                        'optional_services' => (array) ($sourceQuote->inputs['optional_services'] ?? []),
+                        'promotion_session_hash' => data_get($sourceQuote->calculation_snapshot, 'promotion_session_hash'),
+                    ]);
+                } catch (ValidationException $exception) {
+                    $this->throwUnavailableQuote($exception);
+                }
+            }
+            $order->forceFill([
+                'booking_quote_id' => $repriced !== null ? $repriced->id : $order->booking_quote_id,
+                'payment_request_id' => null,
+                'quote_expires_at' => $repriced?->expires_at,
+                'hold_expires_at' => null,
+                'checkout_expires_at' => null,
+            ])->save();
             $transition = $this->states->transition(
                 $order,
                 DirectBookingOrderState::Started,

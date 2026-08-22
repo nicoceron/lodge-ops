@@ -173,6 +173,7 @@ final class DirectBookingContractController extends Controller
                 (string) $request->bearerToken(),
                 (int) $data['expected_state_version'],
                 $this->retry($request),
+                $data,
             );
         });
     }
