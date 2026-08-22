@@ -47,6 +47,55 @@ class DirectBookingPublicUxTest extends TestCase
         $this->assertStringContainsString("frame-ancestors 'none'", (string) $response->headers->get('Content-Security-Policy'));
     }
 
+    public function test_program_selection_is_sent_to_availability_and_renders_as_available(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        $programKey = '01K3A6P8V4T2N9R7W1X0Y3Z5QM';
+        $property = $this->integratedProperty();
+        $property['bookables'][] = [
+            'key' => $programKey,
+            'kind' => 'program',
+            'name' => 'Riding program',
+            'summary' => 'A guided riding program.',
+            'media' => [],
+        ];
+
+        Http::fake(function (ClientRequest $request) use ($programKey, $property) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/availability')) {
+                $payload = $request->data();
+                $selected = ($payload['program_key'] ?? null) === $programKey;
+
+                return Http::response(['data' => [
+                    'arrival_date' => '2026-09-10',
+                    'departure_date' => '2026-09-12',
+                    'timezone' => 'America/Argentina/Rio_Gallegos',
+                    'currency' => 'COP',
+                    'options' => [
+                        ['key' => '01M0M41SNCGJ4AHRZB7252F2W8', 'kind' => 'category', 'bookable' => false],
+                        ['key' => $programKey, 'kind' => 'program', 'bookable' => $selected],
+                    ],
+                ]], 200);
+            }
+
+            return Http::response(['data' => $property], 200);
+        });
+
+        $response = $this->get('/book/estancia-viento-sur?lang=en&arrival_date=2026-09-10&departure_date=2026-09-12&adults=2&children=0&infants=0&currency=COP&program_key='.$programKey);
+
+        $response->assertOk()
+            ->assertSee('Riding program')
+            ->assertSee('Available')
+            ->assertSee('name="program_key" value="'.$programKey.'"', false)
+            ->assertDontSee('No published option is available for these dates');
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/availability')
+            && ($request->data()['program_key'] ?? null) === $programKey);
+    }
+
     public function test_quote_review_uses_http_only_encrypted_credentials_and_never_renders_raw_tokens_or_guest_fields(): void
     {
         $this->fakeContract();
@@ -312,7 +361,7 @@ class DirectBookingPublicUxTest extends TestCase
             ->assertDontSee('name="cvv"', false)
             ->assertDontSee('name="expiry"', false);
 
-        Http::assertSentCount(12);
+        Http::assertSentCount(16);
         Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/api/v1/direct-booking/properties/estancia-viento-sur'));
         Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '8096') || str_contains($request->url(), 'fixture_state'));
     }
@@ -332,6 +381,79 @@ class DirectBookingPublicUxTest extends TestCase
             ->assertSee('Buscar estadías disponibles')
             ->assertSee('name="locale" value="en"', false)
             ->assertSee('name="ui_locale" value="es-AR"', false);
+    }
+
+    public function test_recovery_forwards_selected_dates_and_keeps_them_on_the_search_redirect(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(function (ClientRequest $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/recover')) {
+                return Http::response(['data' => [
+                    'order_reference' => self::REFERENCE,
+                    'session_token' => 'S'.str_repeat('a', 63),
+                    'recovery_token' => 'R'.str_repeat('b', 63),
+                    'state' => 'started',
+                    'state_version' => 6,
+                    'locale' => 'en',
+                    'currency' => 'COP',
+                    'session_expires_at' => '2026-09-10T14:00:00Z',
+                    'recovery_expires_at' => '2026-09-17T12:00:00Z',
+                ]], 200);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+
+        $response = $this->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('c', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('d', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE)
+            ->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/recover', [
+                'expected_state_version' => 5,
+                'recover_idempotency_key' => (string) Str::uuid(),
+                'arrival_date' => '2026-10-10',
+                'departure_date' => '2026-10-14',
+            ]);
+
+        $response->assertRedirect();
+        parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
+        $this->assertSame('2026-10-10', $query['arrival_date'] ?? null);
+        $this->assertSame('2026-10-14', $query['departure_date'] ?? null);
+        $this->assertSame('1', $query['recovered'] ?? null);
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/recover')
+            && $request->data() === [
+                'expected_state_version' => 5,
+                'arrival_date' => '2026-10-10',
+                'departure_date' => '2026-10-14',
+            ]);
+    }
+
+    public function test_recovery_rejects_a_partial_date_selection_before_calling_the_api(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake();
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+
+        $response = $this->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('c', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('d', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE)
+            ->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/recover', [
+                'expected_state_version' => 5,
+                'recover_idempotency_key' => (string) Str::uuid(),
+                'arrival_date' => '2026-10-10',
+            ]);
+
+        $response->assertSessionHasErrors('departure_date');
+        Http::assertNothingSent();
     }
 
     public function test_held_status_keeps_the_server_quote_and_manual_instructions_are_not_fixture_copy(): void
@@ -361,6 +483,65 @@ class DirectBookingPublicUxTest extends TestCase
             ->assertSee('Not paid')
             ->assertSee('Stay held temporarily');
         $response->assertDontSee('Contract-mock');
+    }
+
+    public function test_hold_is_blocked_when_required_policy_text_cannot_be_loaded(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        Http::fake(function (ClientRequest $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_contains($path, '/policies/')) {
+                return Http::response(['error' => [
+                    'code' => 'booking_unavailable',
+                    'message' => 'Policy publication unavailable.',
+                ]], 503);
+            }
+            if (str_ends_with($path, '/hold')) {
+                return Http::response(['data' => $this->integratedHeldStatus()], 200);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+        $flowKey = 'direct_booking_ui.'.hash('sha256', 'estancia-viento-sur:'.self::REFERENCE);
+        $request = $this->withSession([
+            $flowKey => [
+                'quote' => $this->integratedQuote(),
+                'property' => $this->integratedProperty(),
+                'search' => ['adults' => 2, 'children' => 0, 'infants' => 0, 'locale' => 'en', 'ui_locale' => 'en'],
+            ],
+        ])->withCookie('inn_booking_session_'.$suffix, 'S'.str_repeat('a', 63))
+            ->withCookie('inn_booking_recovery_'.$suffix, 'R'.str_repeat('b', 63))
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+
+        $review = $request->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/review');
+        $review->assertOk()
+            ->assertSee('This exact published policy is unavailable.')
+            ->assertSee('disabled', false);
+
+        $response = $request->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/hold', [
+            'expected_state_version' => 2,
+            'hold_idempotency_key' => (string) Str::uuid(),
+            'first_name' => 'Public',
+            'last_name' => 'Guest',
+            'email' => 'policy-failure@example.test',
+            'phone' => '+573001112233',
+            'consent' => [
+                'terms' => '1',
+                'privacy' => '1',
+                'cancellation' => '1',
+                'no_show' => '1',
+            ],
+            'turnstile_token' => 'bot-verification-not-required',
+        ]);
+
+        $response->assertOk()
+            ->assertSee('An exact required policy version is unavailable. The booking cannot continue.');
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/hold'));
     }
 
     public function test_confirmation_renders_only_api_document_download_paths(): void

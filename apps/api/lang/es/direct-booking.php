@@ -20,6 +20,8 @@ return [
         'children' => 'Niños',
         'infants' => 'Bebés',
         'currency' => 'Moneda',
+        'program' => 'Programa (opcional)',
+        'all_programs' => 'Todas las estadías y programas',
         'search' => 'Consultar disponibilidad',
         'results' => 'Opciones disponibles',
         'results_hint' => 'Inn solo comparte si una opción se puede reservar. La asignación exacta y la cantidad disponible siguen siendo privadas.',

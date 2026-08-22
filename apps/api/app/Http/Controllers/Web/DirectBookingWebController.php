@@ -22,6 +22,9 @@ final class DirectBookingWebController extends Controller
 {
     private const ORDER_REFERENCE_PATTERN = '/^[0-9A-HJKMNP-TV-Z]{26}$/';
 
+    /** @var list<string> */
+    private const POLICY_KINDS = ['terms', 'privacy', 'cancellation', 'no_show', 'marketing_consent'];
+
     public function __construct(private readonly DirectBookingUiClient $client) {}
 
     public function show(Request $request, string $propertySlug): View
@@ -38,6 +41,8 @@ final class DirectBookingWebController extends Controller
         $searchAttempted = $request->hasAny(['arrival_date', 'departure_date', 'adults', 'children', 'infants']);
         $availability = null;
         $errors = Validator::make([], [])->errors();
+        $programKey = $request->query('program_key');
+        $programKey = is_string($programKey) && $programKey !== '' ? $programKey : null;
         $search = [
             'arrival_date' => (string) $request->query('arrival_date', ''),
             'departure_date' => (string) $request->query('departure_date', ''),
@@ -47,6 +52,7 @@ final class DirectBookingWebController extends Controller
             'currency' => (string) $request->query('currency', $property['supported_currencies'][0] ?? 'USD'),
             'locale' => $apiLocale,
             'ui_locale' => $locale,
+            'program_key' => $programKey,
         ];
 
         if ($searchAttempted) {
@@ -174,17 +180,7 @@ final class DirectBookingWebController extends Controller
         $apiLocale = (string) ($flow['search']['api_locale'] ?? $property['locale'] ?? 'en');
         $locale = $this->flowLocale($request, $flow, $apiLocale);
         $quote = (array) $flow['quote'];
-        $policies = [];
-        foreach ((array) ($quote['policies'] ?? []) as $policySnapshot) {
-            $kind = (string) ($policySnapshot['kind'] ?? '');
-            if (! in_array($kind, ['terms', 'privacy', 'cancellation', 'no_show', 'marketing_consent'], true)) {
-                continue;
-            }
-            $response = $this->call(fn () => $this->client->policy($request, $propertySlug, $kind, $apiLocale));
-            $policies[$kind] = $response?->successful()
-                ? (array) $response->json('data', [])
-                : ['kind' => $kind, 'title' => __('direct-booking.policy.'.$kind), 'body' => __('direct-booking.policy.unavailable')];
-        }
+        [$policies, $policiesReady] = $this->loadPolicies($request, $propertySlug, $quote, $apiLocale);
 
         return view('direct-booking.review', [
             'property' => $property,
@@ -193,6 +189,7 @@ final class DirectBookingWebController extends Controller
             'quote' => $quote,
             'search' => (array) ($flow['search'] ?? []),
             'policies' => $policies,
+            'policiesReady' => $policiesReady,
             'locale' => $locale,
             'turnstile' => $this->turnstile('direct_booking_hold'),
         ]);
@@ -225,9 +222,18 @@ final class DirectBookingWebController extends Controller
             return $this->reviewWithErrors($request, $propertySlug, $orderReference, $validator->errors()->toArray());
         }
         $facts = $validator->validated();
+        [, $policiesReady] = $this->loadPolicies(
+            $request,
+            $propertySlug,
+            $quote,
+            (string) ($flow['search']['api_locale'] ?? $flow['property']['locale'] ?? 'en'),
+        );
+        if (! $policiesReady) {
+            return $this->reviewWithErrors($request, $propertySlug, $orderReference, ['booking' => [__('direct-booking.errors.policy_missing')]]);
+        }
         $snapshots = collect((array) ($quote['policies'] ?? []))->keyBy('kind');
         $consents = [];
-        foreach (['terms', 'privacy', 'cancellation', 'no_show', 'marketing_consent'] as $kind) {
+        foreach (self::POLICY_KINDS as $kind) {
             $snapshot = (array) $snapshots->get($kind, []);
             if (! isset($snapshot['version'], $snapshot['checksum'])) {
                 if ($kind === 'marketing_consent') {
@@ -440,8 +446,8 @@ final class DirectBookingWebController extends Controller
         $facts = $request->validate([
             'expected_state_version' => ['required', 'integer', 'min:1'],
             'recover_idempotency_key' => ['required', 'uuid'],
-            'arrival_date' => ['nullable', 'date_format:Y-m-d'],
-            'departure_date' => ['nullable', 'date_format:Y-m-d', 'after:arrival_date'],
+            'arrival_date' => ['nullable', 'date_format:Y-m-d', 'required_with:departure_date', 'after_or_equal:today'],
+            'departure_date' => ['nullable', 'date_format:Y-m-d', 'required_with:arrival_date', 'after:arrival_date'],
         ]);
         $payload = ['expected_state_version' => (int) $facts['expected_state_version']];
         if (filled($facts['arrival_date'] ?? null)) {
@@ -454,7 +460,12 @@ final class DirectBookingWebController extends Controller
         }
         $data = (array) $response->json('data', []);
         $reference = (string) ($data['order_reference'] ?? $orderReference);
-        $redirect = redirect()->route('direct-booking.show', [$propertySlug, 'recovered' => 1]);
+        $redirectQuery = ['recovered' => 1];
+        if (filled($facts['arrival_date'] ?? null) && filled($facts['departure_date'] ?? null)) {
+            $redirectQuery['arrival_date'] = $facts['arrival_date'];
+            $redirectQuery['departure_date'] = $facts['departure_date'];
+        }
+        $redirect = redirect()->route('direct-booking.show', [$propertySlug] + $redirectQuery);
 
         return $this->withCredentials($redirect, $request, $propertySlug, $reference, (string) ($data['session_token'] ?? ''), (string) ($data['recovery_token'] ?? ''));
     }
@@ -503,7 +514,7 @@ final class DirectBookingWebController extends Controller
     /** @param array<string, mixed> $query */
     private function landingError(string $propertySlug, string $code, array $query = []): RedirectResponse
     {
-        $safeQuery = Arr::only($query, ['arrival_date', 'departure_date', 'adults', 'children', 'infants', 'currency', 'locale']);
+        $safeQuery = Arr::only($query, ['arrival_date', 'departure_date', 'adults', 'children', 'infants', 'currency', 'locale', 'program_key']);
         $uiLocale = (string) ($query['ui_locale'] ?? $query['lang'] ?? '');
         if ($uiLocale !== '') {
             $safeQuery['lang'] = str_starts_with(strtolower($uiLocale), 'es') ? 'es' : 'en';
@@ -530,6 +541,7 @@ final class DirectBookingWebController extends Controller
             'infants' => ['required', 'integer', 'min:0', 'max:20'],
             'currency' => ['required', Rule::in((array) ($property['supported_currencies'] ?? []))],
             'locale' => ['required', Rule::in((array) ($property['supported_locales'] ?? []))],
+            'program_key' => ['nullable', 'string', 'regex:/^[0-9A-HJKMNP-TV-Z]{26}$/'],
         ];
     }
 
@@ -562,7 +574,62 @@ final class DirectBookingWebController extends Controller
             ],
             'currency' => (string) $facts['currency'],
             'locale' => (string) $facts['locale'],
+            'program_key' => filled($facts['program_key'] ?? null) ? (string) $facts['program_key'] : null,
         ];
+    }
+
+    /** @param array<string, mixed> $quote @return array{0: array<string, array<string, mixed>>, 1: bool} */
+    private function loadPolicies(Request $request, string $propertySlug, array $quote, string $apiLocale): array
+    {
+        $snapshots = collect((array) ($quote['policies'] ?? []))->keyBy('kind');
+        $policies = [];
+        $ready = true;
+
+        foreach (self::POLICY_KINDS as $kind) {
+            $snapshot = (array) $snapshots->get($kind, []);
+            if ($snapshot === [] && $kind === 'marketing_consent') {
+                continue;
+            }
+
+            $response = $snapshot === []
+                ? null
+                : $this->call(fn () => $this->client->policy($request, $propertySlug, $kind, $apiLocale));
+            $policy = $response?->successful() ? (array) $response->json('data', []) : [];
+            if (! $this->matchesPolicySnapshot($policy, $snapshot, $kind, $apiLocale)) {
+                $ready = false;
+                $policies[$kind] = [
+                    'kind' => $kind,
+                    'title' => __('direct-booking.policy.'.$kind),
+                    'body' => __('direct-booking.policy.unavailable'),
+                ];
+
+                continue;
+            }
+
+            $policies[$kind] = $policy;
+        }
+
+        return [$policies, $ready];
+    }
+
+    /** @param array<string, mixed> $policy @param array<string, mixed> $snapshot */
+    private function matchesPolicySnapshot(array $policy, array $snapshot, string $kind, string $apiLocale): bool
+    {
+        $checksum = $snapshot['checksum'] ?? null;
+        $version = $snapshot['version'] ?? null;
+        if (! is_string($checksum) || preg_match('/^[a-f0-9]{64}$/', $checksum) !== 1 || ! is_int($version)) {
+            return false;
+        }
+
+        return ($policy['kind'] ?? null) === $kind
+            && ($policy['locale'] ?? null) === $apiLocale
+            && ($policy['version'] ?? null) === $version
+            && is_string($policy['checksum'] ?? null)
+            && hash_equals($checksum, $policy['checksum'])
+            && is_string($policy['title'] ?? null)
+            && trim($policy['title']) !== ''
+            && is_string($policy['body'] ?? null)
+            && trim($policy['body']) !== '';
     }
 
     /** @return array<string, string> */

@@ -68,7 +68,7 @@
                 <section class="booking-card final-action">
                     @include('direct-booking._turnstile')
                     <p>{{ __('direct-booking.review.hold_hint') }}</p>
-                    <button class="button wide" type="submit" @disabled(empty($turnstile['site_key']) && empty($turnstile['mock_token']))>{{ __('direct-booking.review.hold') }}</button>
+                    <button class="button wide" type="submit" @disabled(!$policiesReady || (empty($turnstile['site_key']) && empty($turnstile['mock_token'])))>{{ __('direct-booking.review.hold') }}</button>
                 </section>
             </form>
         </div>

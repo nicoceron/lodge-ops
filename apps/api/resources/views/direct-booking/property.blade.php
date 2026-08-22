@@ -36,6 +36,9 @@
             </div>
             <div class="form-actions">
                 <label class="currency-field" for="currency">{{ __('direct-booking.property.currency') }}<select id="currency" name="currency">@foreach($property['supported_currencies'] as $currency)<option value="{{ $currency }}" @selected($search['currency'] === $currency)>{{ $currency }}</option>@endforeach</select></label>
+                @if(collect($property['bookables'] ?? [])->contains('kind', 'program'))
+                    <label class="program-field" for="program_key">{{ __('direct-booking.property.program') }}<select id="program_key" name="program_key"><option value="">{{ __('direct-booking.property.all_programs') }}</option>@foreach($property['bookables'] as $item)@if(($item['kind'] ?? null) === 'program')<option value="{{ $item['key'] }}" @selected(($search['program_key'] ?? null) === $item['key'])>{{ $item['name'] }}</option>@endif @endforeach</select></label>
+                @endif
                 <button class="button" type="submit">{{ __('direct-booking.property.search') }}</button>
             </div>
         </form>
@@ -53,7 +56,7 @@
             @else
                 <form method="post" action="{{ route('direct-booking.quote', $propertySlug) }}" class="booking-form booking-card" data-disable-submit>
                     @csrf
-                    @foreach(['arrival_date','departure_date','adults','children','infants','currency','locale','ui_locale'] as $field)<input type="hidden" name="{{ $field }}" value="{{ $search[$field] }}">@endforeach
+                    @foreach(['arrival_date','departure_date','adults','children','infants','currency','locale','ui_locale','program_key'] as $field)<input type="hidden" name="{{ $field }}" value="{{ $search[$field] ?? '' }}">@endforeach
                     @foreach($attribution as $key => $value)<input type="hidden" name="attribution[{{ $key }}]" value="{{ $value }}">@endforeach
                     <input type="hidden" name="begin_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
                     <input type="hidden" name="quote_idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">

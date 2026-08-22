@@ -20,6 +20,8 @@ return [
         'children' => 'Children',
         'infants' => 'Infants',
         'currency' => 'Currency',
+        'program' => 'Program (optional)',
+        'all_programs' => 'All stays and programs',
         'search' => 'Check availability',
         'results' => 'Available options',
         'results_hint' => 'Inn shares bookability only. Exact room assignments and inventory counts stay private.',
