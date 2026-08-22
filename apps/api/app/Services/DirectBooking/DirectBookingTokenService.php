@@ -57,6 +57,33 @@ final class DirectBookingTokenService
         return $order;
     }
 
+    /**
+     * Resolve a session or recovery credential for the read-only status projection.
+     *
+     * @throws AuthenticationException
+     */
+    public function resolveForDisplay(string $token, ?string $expectedPropertyId = null): DirectBookingOrder
+    {
+        if (! preg_match('/^[A-Za-z0-9]{64}$/', $token)) {
+            throw new AuthenticationException;
+        }
+        $hash = self::hash($token);
+        $order = DirectBookingOrder::withoutGlobalScopes()
+            ->where(fn ($query) => $query->where('token_hash', $hash)->orWhere('recovery_token_hash', $hash))
+            ->first();
+        $isRecoveryCredential = $order !== null
+            && hash_equals((string) $order->getRawOriginal('recovery_token_hash'), $hash);
+        if ($order === null
+            || ($expectedPropertyId !== null && ! hash_equals($expectedPropertyId, $order->property_id))
+            || $order->revoked_at !== null
+            || ($isRecoveryCredential && $order->recovery_expires_at?->isPast() !== false)
+            || ! $order->tenant()->where('is_active', true)->exists()) {
+            throw new AuthenticationException;
+        }
+
+        return $order;
+    }
+
     /** @return array{order: DirectBookingOrder, token: string} */
     public function rotate(DirectBookingOrder $order): array
     {

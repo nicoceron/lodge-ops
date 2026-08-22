@@ -456,6 +456,102 @@ class DirectBookingPublicUxTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_expired_session_uses_recovery_for_status_display_but_not_mutations(): void
+    {
+        config([
+            'direct-booking-ui.api_base_url' => 'http://localhost:8000/api/v1',
+            'direct-booking-ui.allow_fixture_controls' => false,
+            'direct-booking-ui.contract_mock_turnstile_token' => null,
+        ]);
+        $session = 'S'.str_repeat('a', 63);
+        $recovery = 'R'.str_repeat('b', 63);
+        $suffix = substr(hash('sha256', 'estancia-viento-sur'), 0, 12);
+        $flowKey = 'direct_booking_ui.'.hash('sha256', 'estancia-viento-sur:'.self::REFERENCE);
+        Http::fake(function (ClientRequest $request) use ($session, $recovery) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/orders/'.self::REFERENCE)) {
+                if ($request->hasHeader('Authorization', 'Bearer '.$recovery)) {
+                    return Http::response(['data' => [
+                        'order_reference' => self::REFERENCE,
+                        'state' => 'expired',
+                        'state_version' => 5,
+                        'session_expires_at' => '2026-09-10T12:00:00Z',
+                        'quote_expires_at' => '2026-09-10T12:20:00Z',
+                        'hold_expires_at' => null,
+                        'checkout_expires_at' => null,
+                        'payment_capabilities' => [],
+                        'actions' => ['recover'],
+                        'safe_failure_code' => null,
+                    ]], 200);
+                }
+                if ($request->hasHeader('Authorization', 'Bearer '.$session)) {
+                    return Http::response(['error' => ['code' => 'not_found']], 404);
+                }
+
+                return Http::response(['error' => ['code' => 'not_found']], 404);
+            }
+
+            return Http::response(['data' => $this->integratedProperty()], 200);
+        });
+        $flow = [
+            $flowKey => [
+                'quote' => $this->integratedQuote(),
+                'property' => $this->integratedProperty(),
+                'search' => ['adults' => 2, 'children' => 0, 'infants' => 0, 'locale' => 'en', 'ui_locale' => 'en'],
+            ],
+        ];
+        $statusRequest = $this->withSession($flow)
+            ->withCookie('inn_booking_session_'.$suffix, $session)
+            ->withCookie('inn_booking_recovery_'.$suffix, $recovery)
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+
+        $status = $statusRequest->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/status');
+        $status->assertOk()
+            ->assertSee('Booking session expired')
+            ->assertSee('Recover with current dates')
+            ->assertSee('name="arrival_date"', false)
+            ->assertSee('name="departure_date"', false);
+        Http::assertSent(fn (ClientRequest $clientRequest): bool => str_ends_with(
+            (string) parse_url($clientRequest->url(), PHP_URL_PATH),
+            '/orders/'.self::REFERENCE,
+        ) && $clientRequest->hasHeader('Authorization', 'Bearer '.$recovery));
+        $statusRequest->get('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/poll')
+            ->assertOk()
+            ->assertJsonPath('state', 'expired')
+            ->assertJsonPath('terminal', false);
+
+        $mutationRequest = $this->withSession($flow)
+            ->withCookie('inn_booking_session_'.$suffix, '')
+            ->withCookie('inn_booking_recovery_'.$suffix, $recovery)
+            ->withCookie('inn_booking_order_'.$suffix, self::REFERENCE);
+        $mutationRequest->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/hold', [
+            'expected_state_version' => 5,
+            'hold_idempotency_key' => (string) Str::uuid(),
+            'first_name' => 'Expired',
+            'email' => 'expired-session@example.test',
+            'consent' => [
+                'terms' => '1',
+                'privacy' => '1',
+                'cancellation' => '1',
+                'no_show' => '1',
+            ],
+            'turnstile_token' => 'bot-verification-not-required',
+        ])->assertOk()->assertSee('Direct booking unavailable');
+        $mutationRequest->post('/book/estancia-viento-sur/orders/'.self::REFERENCE.'/checkout', [
+            'expected_state_version' => 5,
+            'method' => 'hosted_checkout',
+            'checkout_idempotency_key' => (string) Str::uuid(),
+        ])->assertRedirect('/book/estancia-viento-sur/unavailable');
+        Http::assertNotSent(fn (ClientRequest $clientRequest): bool => in_array(
+            (string) parse_url($clientRequest->url(), PHP_URL_PATH),
+            [
+                '/api/v1/direct-booking/properties/estancia-viento-sur/orders/'.self::REFERENCE.'/hold',
+                '/api/v1/direct-booking/properties/estancia-viento-sur/orders/'.self::REFERENCE.'/checkout',
+            ],
+            true,
+        ));
+    }
+
     public function test_held_status_keeps_the_server_quote_and_manual_instructions_are_not_fixture_copy(): void
     {
         config([

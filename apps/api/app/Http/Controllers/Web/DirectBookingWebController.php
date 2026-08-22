@@ -271,7 +271,7 @@ final class DirectBookingWebController extends Controller
 
     public function status(Request $request, string $propertySlug, string $orderReference): View
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true, allowExpiredSession: true);
         if ($credentials === null) {
             return $this->unavailableView($request, $propertySlug);
         }
@@ -279,7 +279,7 @@ final class DirectBookingWebController extends Controller
         $apiLocale = (string) data_get($flow, 'search.api_locale', $this->requestedLocale($request));
         $uiLocale = $this->flowLocale($request, $flow, $apiLocale);
         $propertyResponse = $this->propertyResponse($request, $propertySlug, $apiLocale);
-        $statusResponse = $this->call(fn () => $this->client->status($request, $propertySlug, $orderReference, $credentials['session']));
+        $statusResponse = $this->displayStatusResponse($request, $propertySlug, $orderReference, $credentials);
         if (! $propertyResponse?->successful() || ! $statusResponse?->successful()) {
             return $this->unavailableView($request, $propertySlug, $statusResponse);
         }
@@ -310,11 +310,11 @@ final class DirectBookingWebController extends Controller
 
     public function poll(Request $request, string $propertySlug, string $orderReference): JsonResponse
     {
-        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true);
+        $credentials = $this->credentials($request, $propertySlug, $orderReference, fixtureFallback: true, allowExpiredSession: true);
         if ($credentials === null) {
             return response()->json(['state' => 'unavailable'], 404, ['Cache-Control' => 'no-store, private']);
         }
-        $statusResponse = $this->call(fn () => $this->client->status($request, $propertySlug, $orderReference, $credentials['session']));
+        $statusResponse = $this->displayStatusResponse($request, $propertySlug, $orderReference, $credentials);
         if (! $statusResponse?->successful()) {
             return response()->json(['state' => 'unavailable'], $statusResponse?->status() ?? 503, ['Cache-Control' => 'no-store, private']);
         }
@@ -736,6 +736,36 @@ final class DirectBookingWebController extends Controller
     private function validToken(string $token): bool
     {
         return preg_match('/^[A-Za-z0-9]{64}$/', $token) === 1;
+    }
+
+    /** @param array{session: string, recovery?: string} $credentials */
+    private function displayStatusResponse(Request $request, string $propertySlug, string $orderReference, array $credentials): ?ClientResponse
+    {
+        // Status/poll are display-only; fall back to the independently expiring recovery credential.
+        $tokens = [];
+        if ($this->validToken($credentials['session'])) {
+            $tokens[] = $credentials['session'];
+        }
+        if (isset($credentials['recovery']) && $this->validToken($credentials['recovery'])) {
+            $tokens[] = $credentials['recovery'];
+        }
+        $response = null;
+        foreach ($tokens as $index => $token) {
+            $response = $this->call(fn () => $this->client->status($request, $propertySlug, $orderReference, $token));
+            if ($response?->successful()) {
+                return $response;
+            }
+            if ($index === 0 && ! $this->isCredentialFailure($response)) {
+                return $response;
+            }
+        }
+
+        return $response;
+    }
+
+    private function isCredentialFailure(?ClientResponse $response): bool
+    {
+        return in_array($response?->status(), [401, 404], true) || $this->errorCode($response) === 'not_found';
     }
 
     private function validHostedCheckoutUrl(string $url): bool
